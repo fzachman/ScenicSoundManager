@@ -1,0 +1,59 @@
+PRAGMA foreign_keys = ON;
+
+-- Audio files in the library (referenced by path, not moved)
+CREATE TABLE IF NOT EXISTS audio_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path TEXT NOT NULL UNIQUE,
+    title TEXT,
+    artist TEXT,
+    duration_seconds REAL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audio_files_title ON audio_files(title COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_audio_files_artist ON audio_files(artist COLLATE NOCASE);
+
+-- User-defined tags
+CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    color TEXT,  -- Hex color for UI display
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Many-to-many: audio files <-> tags
+CREATE TABLE IF NOT EXISTS audio_file_tags (
+    audio_file_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    PRIMARY KEY (audio_file_id, tag_id),
+    FOREIGN KEY (audio_file_id) REFERENCES audio_files(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_audio_file_tags_tag_id ON audio_file_tags(tag_id);
+
+-- Scene definitions
+CREATE TABLE IF NOT EXISTS scenes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Audio files in scenes with per-scene settings
+CREATE TABLE IF NOT EXISTS scene_audio_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scene_id INTEGER NOT NULL,
+    audio_file_id INTEGER NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    volume REAL NOT NULL DEFAULT 1.0,
+    is_repeat INTEGER NOT NULL DEFAULT 0,
+    play_mode INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (scene_id) REFERENCES scenes(id) ON DELETE CASCADE,
+    FOREIGN KEY (audio_file_id) REFERENCES audio_files(id) ON DELETE CASCADE,
+    UNIQUE (scene_id, audio_file_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_scene_audio_files_scene_id ON scene_audio_files(scene_id, position);

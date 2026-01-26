@@ -1,0 +1,449 @@
+"""SQLite database connection management"""
+
+import os
+import sqlite3
+from pathlib import Path
+from typing import Optional
+
+from .models import AudioFile, Tag, Scene, SceneAudioFile
+
+
+class DatabaseConnection:
+    """Manages SQLite database connection and operations"""
+
+    def __init__(self, db_path: Optional[str] = None):
+        if db_path is None:
+            # Default to user's application support directory
+            app_support = Path.home() / "Library" / "Application Support" / "SoundManager"
+            app_support.mkdir(parents=True, exist_ok=True)
+            db_path = str(app_support / "soundmanager.db")
+
+        self.db_path = db_path
+        self.connection: Optional[sqlite3.Connection] = None
+
+    def connect(self) -> None:
+        """Establish database connection and initialize schema"""
+        self.connection = sqlite3.connect(self.db_path)
+        self.connection.row_factory = sqlite3.Row
+        self.connection.execute("PRAGMA foreign_keys = ON")
+        self._initialize_schema()
+
+    def _initialize_schema(self) -> None:
+        """Create database tables if they don't exist"""
+        schema_path = Path(__file__).parent / "schema.sql"
+        with open(schema_path, "r") as f:
+            schema = f.read()
+        self.connection.executescript(schema)
+        self._ensure_scene_positions()
+        self._ensure_scene_track_play_mode()
+        self.connection.commit()
+
+    def _ensure_scene_positions(self) -> None:
+        """Ensure scenes have a position column and values"""
+        cursor = self.connection.execute("PRAGMA table_info(scenes)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if "position" not in columns:
+            self.connection.execute(
+                "ALTER TABLE scenes ADD COLUMN position INTEGER NOT NULL DEFAULT 0"
+            )
+
+        # Initialize positions for existing rows if needed
+        rows = self.connection.execute(
+            "SELECT id, position FROM scenes ORDER BY title COLLATE NOCASE"
+        ).fetchall()
+        has_nonzero = any(row["position"] != 0 for row in rows)
+        if rows and not has_nonzero:
+            for index, row in enumerate(rows):
+                self.connection.execute(
+                    "UPDATE scenes SET position = ? WHERE id = ?",
+                    (index, row["id"])
+                )
+
+    def _ensure_scene_track_play_mode(self) -> None:
+        """Ensure scene tracks have a play_mode column"""
+        cursor = self.connection.execute("PRAGMA table_info(scene_audio_files)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if "play_mode" not in columns:
+            self.connection.execute(
+                "ALTER TABLE scene_audio_files ADD COLUMN play_mode INTEGER NOT NULL DEFAULT 1"
+            )
+        self.connection.execute(
+            "UPDATE scene_audio_files SET play_mode = 1 WHERE play_mode IS NULL"
+        )
+
+    def close(self) -> None:
+        """Close database connection"""
+        if self.connection:
+            self.connection.close()
+            self.connection = None
+
+    # Audio File operations
+    def add_audio_file(self, audio_file: AudioFile) -> int:
+        """Add an audio file to the library, return its ID"""
+        cursor = self.connection.execute(
+            """
+            INSERT INTO audio_files (file_path, title, artist, duration_seconds)
+            VALUES (?, ?, ?, ?)
+            """,
+            (audio_file.file_path, audio_file.title, audio_file.artist, audio_file.duration_seconds)
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def get_audio_file(self, file_id: int) -> Optional[AudioFile]:
+        """Get an audio file by ID"""
+        cursor = self.connection.execute(
+            "SELECT * FROM audio_files WHERE id = ?", (file_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            audio_file = self._row_to_audio_file(row)
+            audio_file.tags = self.get_tags_for_audio_file(file_id)
+            return audio_file
+        return None
+
+    def get_audio_file_by_path(self, file_path: str) -> Optional[AudioFile]:
+        """Get an audio file by path"""
+        cursor = self.connection.execute(
+            "SELECT * FROM audio_files WHERE file_path = ?", (file_path,)
+        )
+        row = cursor.fetchone()
+        if row:
+            audio_file = self._row_to_audio_file(row)
+            audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
+            return audio_file
+        return None
+
+    def get_all_audio_files(self) -> list[AudioFile]:
+        """Get all audio files in the library"""
+        cursor = self.connection.execute(
+            "SELECT * FROM audio_files ORDER BY title COLLATE NOCASE"
+        )
+        files = []
+        for row in cursor.fetchall():
+            audio_file = self._row_to_audio_file(row)
+            audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
+            files.append(audio_file)
+        return files
+
+    def search_audio_files(self, query: str, tag_ids: Optional[list[int]] = None) -> list[AudioFile]:
+        """Search audio files by title, artist, or tags"""
+        query_pattern = f"%{query}%"
+
+        if tag_ids:
+            include_no_tag = -1 in tag_ids
+            real_tag_ids = [tag_id for tag_id in tag_ids if tag_id != -1]
+
+            # Filter by tags and rank by number of matched tags (descending).
+            if real_tag_ids:
+                placeholders = ",".join("?" * len(real_tag_ids))
+                join_type = "LEFT JOIN" if include_no_tag else "JOIN"
+                sql = f"""
+                    SELECT af.*, COUNT(DISTINCT aft.tag_id) AS match_count
+                    FROM audio_files af
+                    {join_type} audio_file_tags aft ON af.id = aft.audio_file_id
+                    WHERE (
+                        aft.tag_id IN ({placeholders})
+                        {"OR aft.tag_id IS NULL" if include_no_tag else ""}
+                    )
+                    AND (af.title LIKE ? OR af.artist LIKE ?)
+                    GROUP BY af.id
+                    ORDER BY match_count DESC, af.title COLLATE NOCASE
+                """
+                params = real_tag_ids + [query_pattern, query_pattern]
+            else:
+                sql = """
+                    SELECT af.* FROM audio_files af
+                    LEFT JOIN audio_file_tags aft ON af.id = aft.audio_file_id
+                    WHERE aft.tag_id IS NULL
+                    AND (af.title LIKE ? OR af.artist LIKE ?)
+                    ORDER BY af.title COLLATE NOCASE
+                """
+                params = [query_pattern, query_pattern]
+        else:
+            sql = """
+                SELECT * FROM audio_files
+                WHERE title LIKE ? OR artist LIKE ?
+                ORDER BY title COLLATE NOCASE
+            """
+            params = [query_pattern, query_pattern]
+
+        cursor = self.connection.execute(sql, params)
+        files = []
+        for row in cursor.fetchall():
+            audio_file = self._row_to_audio_file(row)
+            audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
+            files.append(audio_file)
+        return files
+
+    def update_audio_file(self, audio_file: AudioFile) -> None:
+        """Update an audio file's metadata"""
+        self.connection.execute(
+            """
+            UPDATE audio_files
+            SET title = ?, artist = ?, duration_seconds = ?, updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (audio_file.title, audio_file.artist, audio_file.duration_seconds, audio_file.id)
+        )
+        self.connection.commit()
+
+    def delete_audio_file(self, file_id: int) -> None:
+        """Delete an audio file from the library"""
+        self.connection.execute("DELETE FROM audio_files WHERE id = ?", (file_id,))
+        self.connection.commit()
+
+    def _row_to_audio_file(self, row: sqlite3.Row) -> AudioFile:
+        """Convert a database row to an AudioFile object"""
+        return AudioFile(
+            id=row["id"],
+            file_path=row["file_path"],
+            title=row["title"],
+            artist=row["artist"],
+            duration_seconds=row["duration_seconds"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"]
+        )
+
+    # Tag operations
+    def add_tag(self, tag: Tag) -> int:
+        """Add a new tag, return its ID"""
+        cursor = self.connection.execute(
+            "INSERT INTO tags (name, color) VALUES (?, ?)",
+            (tag.name, tag.color)
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def get_all_tags(self) -> list[Tag]:
+        """Get all tags"""
+        cursor = self.connection.execute("SELECT * FROM tags ORDER BY name COLLATE NOCASE")
+        return [self._row_to_tag(row) for row in cursor.fetchall()]
+
+    def get_tag_by_name(self, name: str) -> Optional[Tag]:
+        """Get a tag by name (case-insensitive)"""
+        cursor = self.connection.execute(
+            "SELECT * FROM tags WHERE name = ? COLLATE NOCASE", (name,)
+        )
+        row = cursor.fetchone()
+        return self._row_to_tag(row) if row else None
+
+    def update_tag(self, tag: Tag) -> None:
+        """Update a tag"""
+        self.connection.execute(
+            "UPDATE tags SET name = ?, color = ? WHERE id = ?",
+            (tag.name, tag.color, tag.id)
+        )
+        self.connection.commit()
+
+    def delete_tag(self, tag_id: int) -> None:
+        """Delete a tag"""
+        self.connection.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
+        self.connection.commit()
+
+    def _row_to_tag(self, row: sqlite3.Row) -> Tag:
+        """Convert a database row to a Tag object"""
+        return Tag(
+            id=row["id"],
+            name=row["name"],
+            color=row["color"],
+            created_at=row["created_at"]
+        )
+
+    # Audio file <-> Tag associations
+    def add_tag_to_audio_file(self, audio_file_id: int, tag_id: int) -> None:
+        """Associate a tag with an audio file"""
+        self.connection.execute(
+            "INSERT OR IGNORE INTO audio_file_tags (audio_file_id, tag_id) VALUES (?, ?)",
+            (audio_file_id, tag_id)
+        )
+        self.connection.commit()
+
+    def remove_tag_from_audio_file(self, audio_file_id: int, tag_id: int) -> None:
+        """Remove a tag association from an audio file"""
+        self.connection.execute(
+            "DELETE FROM audio_file_tags WHERE audio_file_id = ? AND tag_id = ?",
+            (audio_file_id, tag_id)
+        )
+        self.connection.commit()
+
+    def get_tags_for_audio_file(self, audio_file_id: int) -> list[Tag]:
+        """Get all tags for an audio file"""
+        cursor = self.connection.execute(
+            """
+            SELECT t.* FROM tags t
+            JOIN audio_file_tags aft ON t.id = aft.tag_id
+            WHERE aft.audio_file_id = ?
+            ORDER BY t.name COLLATE NOCASE
+            """,
+            (audio_file_id,)
+        )
+        return [self._row_to_tag(row) for row in cursor.fetchall()]
+
+    def get_audio_files_by_tag(self, tag_id: int) -> list[AudioFile]:
+        """Get all audio files with a specific tag"""
+        cursor = self.connection.execute(
+            """
+            SELECT af.* FROM audio_files af
+            JOIN audio_file_tags aft ON af.id = aft.audio_file_id
+            WHERE aft.tag_id = ?
+            ORDER BY af.title COLLATE NOCASE
+            """,
+            (tag_id,)
+        )
+        files = []
+        for row in cursor.fetchall():
+            audio_file = self._row_to_audio_file(row)
+            audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
+            files.append(audio_file)
+        return files
+
+    # Scene operations
+    def add_scene(self, scene: Scene) -> int:
+        """Add a new scene, return its ID"""
+        self.connection.execute("UPDATE scenes SET position = position + 1")
+        next_position = 0
+        cursor = self.connection.execute(
+            "INSERT INTO scenes (title, position) VALUES (?, ?)",
+            (scene.title, next_position)
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def get_scene(self, scene_id: int) -> Optional[Scene]:
+        """Get a scene by ID with all its tracks"""
+        cursor = self.connection.execute(
+            "SELECT * FROM scenes WHERE id = ?", (scene_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            scene = self._row_to_scene(row)
+            scene.tracks = self.get_scene_tracks(scene_id)
+            return scene
+        return None
+
+    def get_all_scenes(self) -> list[Scene]:
+        """Get all scenes"""
+        cursor = self.connection.execute(
+            "SELECT * FROM scenes ORDER BY position, title COLLATE NOCASE"
+        )
+        return [self._row_to_scene(row) for row in cursor.fetchall()]
+
+    def search_scenes(self, query: str) -> list[Scene]:
+        """Search scenes by title"""
+        cursor = self.connection.execute(
+            "SELECT * FROM scenes WHERE title LIKE ? ORDER BY position, title COLLATE NOCASE",
+            (f"%{query}%",)
+        )
+        return [self._row_to_scene(row) for row in cursor.fetchall()]
+
+    def update_scene(self, scene: Scene) -> None:
+        """Update a scene's title"""
+        self.connection.execute(
+            "UPDATE scenes SET title = ?, updated_at = datetime('now') WHERE id = ?",
+            (scene.title, scene.id)
+        )
+        self.connection.commit()
+
+    def delete_scene(self, scene_id: int) -> None:
+        """Delete a scene"""
+        self.connection.execute("DELETE FROM scenes WHERE id = ?", (scene_id,))
+        self.connection.commit()
+
+    def _row_to_scene(self, row: sqlite3.Row) -> Scene:
+        """Convert a database row to a Scene object"""
+        return Scene(
+            id=row["id"],
+            title=row["title"],
+            position=row["position"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"]
+        )
+
+    def reorder_scenes(self, scene_ids: list[int]) -> None:
+        """Reorder scenes by updating their positions"""
+        for position, scene_id in enumerate(scene_ids):
+            self.connection.execute(
+                "UPDATE scenes SET position = ? WHERE id = ?",
+                (position, scene_id)
+            )
+        self.connection.commit()
+
+    # Scene track operations
+    def add_track_to_scene(
+        self,
+        scene_id: int,
+        audio_file_id: int,
+        position: int = 0,
+        play_mode: bool = True,
+    ) -> int:
+        """Add an audio file to a scene, return the scene_audio_file ID"""
+        cursor = self.connection.execute(
+            """
+            INSERT INTO scene_audio_files (scene_id, audio_file_id, position, play_mode)
+            VALUES (?, ?, ?, ?)
+            """,
+            (scene_id, audio_file_id, position, int(play_mode))
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def get_scene_tracks(self, scene_id: int) -> list[SceneAudioFile]:
+        """Get all tracks in a scene with their audio file data"""
+        cursor = self.connection.execute(
+            """
+            SELECT saf.*, af.file_path, af.title, af.artist, af.duration_seconds
+            FROM scene_audio_files saf
+            JOIN audio_files af ON saf.audio_file_id = af.id
+            WHERE saf.scene_id = ?
+            ORDER BY saf.position
+            """,
+            (scene_id,)
+        )
+        tracks = []
+        for row in cursor.fetchall():
+            audio_file = AudioFile(
+                id=row["audio_file_id"],
+                file_path=row["file_path"],
+                title=row["title"],
+                artist=row["artist"],
+                duration_seconds=row["duration_seconds"]
+            )
+            track = SceneAudioFile(
+                id=row["id"],
+                scene_id=row["scene_id"],
+                audio_file_id=row["audio_file_id"],
+                position=row["position"],
+                volume=row["volume"],
+                is_repeat=bool(row["is_repeat"]),
+                play_mode=bool(row["play_mode"]),
+                audio_file=audio_file
+            )
+            tracks.append(track)
+        return tracks
+
+    def update_track_settings(self, track: SceneAudioFile) -> None:
+        """Update a track's volume, repeat, position, and play mode settings"""
+        self.connection.execute(
+            """
+            UPDATE scene_audio_files
+            SET volume = ?, is_repeat = ?, position = ?, play_mode = ?
+            WHERE id = ?
+            """,
+            (track.volume, int(track.is_repeat), track.position, int(track.play_mode), track.id)
+        )
+        self.connection.commit()
+
+    def remove_track_from_scene(self, track_id: int) -> None:
+        """Remove a track from a scene"""
+        self.connection.execute("DELETE FROM scene_audio_files WHERE id = ?", (track_id,))
+        self.connection.commit()
+
+    def reorder_tracks(self, scene_id: int, track_ids: list[int]) -> None:
+        """Reorder tracks in a scene by updating their positions"""
+        for position, track_id in enumerate(track_ids):
+            self.connection.execute(
+                "UPDATE scene_audio_files SET position = ? WHERE id = ? AND scene_id = ?",
+                (position, track_id, scene_id)
+            )
+        self.connection.commit()
