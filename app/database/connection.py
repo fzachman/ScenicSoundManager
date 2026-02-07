@@ -540,7 +540,7 @@ class DatabaseConnection:
         return cursor.lastrowid
 
     def get_playlist_tracks(self, playlist_id: int) -> list[PlaylistTrack]:
-        """Get all tracks in a playlist with their audio file data"""
+        """Get all tracks in a playlist with their audio file data and tags"""
         cursor = self.connection.execute(
             """
             SELECT pt.*, af.file_path, af.title, af.artist, af.duration_seconds
@@ -560,6 +560,7 @@ class DatabaseConnection:
                 artist=row["artist"],
                 duration_seconds=row["duration_seconds"]
             )
+            audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
             track = PlaylistTrack(
                 id=row["id"],
                 playlist_id=row["playlist_id"],

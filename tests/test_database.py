@@ -325,3 +325,18 @@ class TestPlaylists:
         db.delete_playlist(playlist_id)
 
         assert db.get_playlist(playlist_id) is None
+
+    def test_playlist_tracks_include_tags(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Tagged Playlist"))
+        file_id = db.add_audio_file(AudioFile(file_path="/tagged.mp3", title="Tagged Track"))
+        tag_id = db.add_tag(Tag(name="Combat", color="#FF0000"))
+        db.add_tag_to_audio_file(file_id, tag_id)
+        db.add_track_to_playlist(playlist_id, file_id)
+
+        playlist = db.get_playlist(playlist_id)
+
+        assert len(playlist.tracks) == 1
+        assert playlist.tracks[0].audio_file is not None
+        assert len(playlist.tracks[0].audio_file.tags) == 1
+        assert playlist.tracks[0].audio_file.tags[0].name == "Combat"
+        assert playlist.tracks[0].audio_file.tags[0].color == "#FF0000"

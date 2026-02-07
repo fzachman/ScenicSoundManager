@@ -105,3 +105,32 @@ Changes made:
   - Connected playlist_selection_changed signal to persist selection
   - Added _restore_last_playlist() called on startup
 - All 26 existing tests pass, all imports verified
+
+PL-005: Playlist details: rename, track table, and reordering
+Status: DONE
+Date: 2026-02-06
+
+Changes made:
+- app/playlists/playlist_editor.py: PlaylistEditor
+  - Added editable playlist name: double-click title label switches to QLineEdit
+  - _start_title_edit(): shows line edit with current name, selects all text
+  - _finish_title_edit(): validates, persists via db.update_playlist(), emits playlist_renamed signal
+  - New playlist_renamed signal (int, str) notifies parent when name changes
+  - clear() resets title edit state (hides edit, shows label, clears tooltip)
+  - load_playlist() sets "Double-click to rename" tooltip on title label
+- app/playlists/playlist_editor.py: PlaylistTrackItem
+  - Added position number display (1-indexed) in left column with fixed 28px width
+  - Added tag badges below artist using Styles.tag_badge_style() with tag colors
+  - Artist and tags shown on same detail row with horizontal layout
+  - update_position() method for live updates after drag-drop reorder
+  - Constructor takes position parameter
+- app/playlists/playlist_editor.py: PlaylistEditor._on_tracks_reordered()
+  - Added _update_position_numbers() call after drag-drop to keep numbers in sync
+- app/database/connection.py: get_playlist_tracks()
+  - Now loads tags for each AudioFile via get_tags_for_audio_file()
+- app/playlists/playlists_widget.py: PlaylistsWidget
+  - Connected playlist_editor.playlist_renamed to _on_playlist_renamed handler
+  - _on_playlist_renamed() refreshes sidebar list when name changes in editor
+- tests/test_database.py: Added test_playlist_tracks_include_tags
+  - Verifies playlist tracks load with tag name and color from associated AudioFile
+- All 27 tests pass (26 existing + 1 new)

@@ -226,11 +226,11 @@
       "definition_of_done": [
         "Playlist details fully editable with persistable order."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 60,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "Editable playlist title (double-click), track position numbers, tag badges, tags loaded from DB, rename signal wired to sidebar. 1 new test added, all 27 pass."
     },
     {
       "id": "PL-006",

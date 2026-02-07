@@ -4,7 +4,7 @@ from typing import Optional
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QFrame
+    QScrollArea, QFrame, QLineEdit
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QByteArray
 from PyQt6.QtGui import QDrag
@@ -19,9 +19,10 @@ class PlaylistTrackItem(QFrame):
 
     remove_requested = pyqtSignal(int)  # track_id
 
-    def __init__(self, track: PlaylistTrack, parent=None):
+    def __init__(self, track: PlaylistTrack, position: int = 0, parent=None):
         super().__init__(parent)
         self.track = track
+        self.position = position
         self._icons = IconLibrary()
         self._drag_start_pos = None
 
@@ -41,6 +42,13 @@ class PlaylistTrackItem(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
 
+        # Position number
+        self.position_label = QLabel(str(self.position + 1))
+        self.position_label.setFixedWidth(28)
+        self.position_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.position_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 13px; font-weight: bold;")
+        layout.addWidget(self.position_label)
+
         # Track info
         info_layout = QVBoxLayout()
         if self.track.audio_file:
@@ -48,10 +56,25 @@ class PlaylistTrackItem(QFrame):
             title_label.setStyleSheet("font-weight: bold; font-size: 13px;")
             info_layout.addWidget(title_label)
 
+            # Artist and tags row
+            detail_layout = QHBoxLayout()
+            detail_layout.setSpacing(6)
+
             if self.track.audio_file.artist:
                 artist_label = QLabel(self.track.audio_file.artist)
                 artist_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px;")
-                info_layout.addWidget(artist_label)
+                detail_layout.addWidget(artist_label)
+
+            # Tags
+            if self.track.audio_file.tags:
+                for tag in self.track.audio_file.tags:
+                    tag_label = QLabel(tag.name)
+                    color = tag.color or Styles.PRIMARY
+                    tag_label.setStyleSheet(Styles.tag_badge_style(color))
+                    detail_layout.addWidget(tag_label)
+
+            detail_layout.addStretch()
+            info_layout.addLayout(detail_layout)
         else:
             title_label = QLabel("Unknown Track")
             title_label.setStyleSheet("font-weight: bold; font-size: 13px;")
@@ -83,6 +106,11 @@ class PlaylistTrackItem(QFrame):
         """)
         remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.track.id))
         layout.addWidget(remove_btn)
+
+    def update_position(self, position: int):
+        """Update the displayed position number"""
+        self.position = position
+        self.position_label.setText(str(position + 1))
 
     def mousePressEvent(self, event):
         from PyQt6.QtWidgets import QApplication
@@ -198,6 +226,7 @@ class PlaylistEditor(QWidget):
     """Editor for a single playlist's tracks"""
 
     playlist_modified = pyqtSignal()
+    playlist_renamed = pyqtSignal(int, str)  # playlist_id, new_name
 
     def __init__(self, db: DatabaseConnection, parent=None):
         super().__init__(parent)
@@ -212,12 +241,19 @@ class PlaylistEditor(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Header with playlist title
+        # Header with playlist title (clickable to edit)
         header = QHBoxLayout()
 
         self.title_label = QLabel("Select a playlist")
         self.title_label.setStyleSheet("font-weight: bold; font-size: 18px;")
+        self.title_label.mouseDoubleClickEvent = self._start_title_edit
         header.addWidget(self.title_label)
+
+        self.title_edit = QLineEdit()
+        self.title_edit.setStyleSheet("font-weight: bold; font-size: 18px;")
+        self.title_edit.editingFinished.connect(self._finish_title_edit)
+        self.title_edit.hide()
+        header.addWidget(self.title_edit)
 
         header.addStretch()
         layout.addLayout(header)
@@ -256,12 +292,40 @@ class PlaylistEditor(QWidget):
         """Load a playlist for editing"""
         self._current_playlist = playlist
         self.title_label.setText(playlist.name)
+        self.title_label.setToolTip("Double-click to rename")
 
         # Enable controls
         self.add_tracks_btn.setEnabled(True)
 
         # Load tracks
         self._refresh_tracks()
+
+    def _start_title_edit(self, event):
+        """Switch title label to editable line edit"""
+        if not self._current_playlist:
+            return
+        self.title_label.hide()
+        self.title_edit.setText(self._current_playlist.name)
+        self.title_edit.show()
+        self.title_edit.setFocus()
+        self.title_edit.selectAll()
+
+    def _finish_title_edit(self):
+        """Commit the title edit"""
+        self.title_edit.hide()
+        self.title_label.show()
+
+        if not self._current_playlist:
+            return
+
+        new_name = self.title_edit.text().strip()
+        if not new_name or new_name == self._current_playlist.name:
+            return
+
+        self._current_playlist.name = new_name
+        self.db.update_playlist(self._current_playlist)
+        self.title_label.setText(new_name)
+        self.playlist_renamed.emit(self._current_playlist.id, new_name)
 
     def _refresh_tracks(self):
         """Refresh track display"""
@@ -288,12 +352,12 @@ class PlaylistEditor(QWidget):
         else:
             self.empty_label.hide()
 
-            for track in playlist.tracks:
-                self._add_track_item(track)
+            for i, track in enumerate(playlist.tracks):
+                self._add_track_item(track, position=i)
 
-    def _add_track_item(self, track: PlaylistTrack):
+    def _add_track_item(self, track: PlaylistTrack, position: int):
         """Add a track item widget"""
-        item = PlaylistTrackItem(track)
+        item = PlaylistTrackItem(track, position=position)
         item.remove_requested.connect(self._remove_track)
 
         self._track_items[track.id] = item
@@ -334,7 +398,18 @@ class PlaylistEditor(QWidget):
         if not self._current_playlist or not track_ids:
             return
         self._persist_track_order(track_ids)
+        self._update_position_numbers()
         self.playlist_modified.emit()
+
+    def _update_position_numbers(self):
+        """Update position labels after reorder"""
+        layout = self.tracks_container.layout()
+        if not layout:
+            return
+        for i in range(layout.count()):
+            widget = layout.itemAt(i).widget()
+            if isinstance(widget, PlaylistTrackItem):
+                widget.update_position(i)
 
     def _persist_track_order(self, track_ids: Optional[list[int]] = None):
         if not self._current_playlist:
@@ -349,7 +424,10 @@ class PlaylistEditor(QWidget):
         """Clear the editor"""
         self._track_items.clear()
         self._current_playlist = None
+        self.title_edit.hide()
+        self.title_label.show()
         self.title_label.setText("Select a playlist")
+        self.title_label.setToolTip("")
         self.add_tracks_btn.setEnabled(False)
 
         # Clear track items

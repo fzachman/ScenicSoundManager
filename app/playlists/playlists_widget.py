@@ -45,6 +45,7 @@ class PlaylistsWidget(QWidget):
         self.playlist_list.playlist_selected.connect(self._on_playlist_selected)
         self.playlist_list.playlist_created.connect(self._on_playlist_created)
         self.playlist_list.playlist_deleted.connect(self._on_playlist_deleted)
+        self.playlist_editor.playlist_renamed.connect(self._on_playlist_renamed)
 
     def _on_playlist_selected(self, playlist: Playlist):
         """Handle playlist selection"""
@@ -61,6 +62,10 @@ class PlaylistsWidget(QWidget):
     def _on_playlist_deleted(self, playlist_id: int):
         """Handle playlist deletion"""
         self.playlist_editor.clear()
+
+    def _on_playlist_renamed(self, playlist_id: int, new_name: str):
+        """Handle playlist rename from editor"""
+        self.playlist_list.refresh_playlists()
 
     def select_playlist(self, playlist_id: int):
         """Select and load a playlist by ID"""
