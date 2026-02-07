@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS scene_playlist_entries (
     scene_id INTEGER NOT NULL,
     playlist_id INTEGER NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
+    volume REAL NOT NULL DEFAULT 1.0,
     is_shuffle INTEGER NOT NULL DEFAULT 0,
     is_repeat INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (scene_id) REFERENCES scenes(id) ON DELETE CASCADE,

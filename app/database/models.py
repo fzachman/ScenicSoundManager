@@ -76,6 +76,7 @@ class ScenePlaylistEntry:
     scene_id: Optional[int] = None
     playlist_id: Optional[int] = None
     position: int = 0
+    volume: float = 1.0  # 0.0 to 1.0
     is_shuffle: bool = False
     is_repeat: bool = False
     play_mode: bool = True

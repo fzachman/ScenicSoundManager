@@ -3,7 +3,7 @@
 from typing import Optional
 
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel,
+    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QSlider,
     QPushButton, QFrame, QMenu, QApplication
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QMimeData, QByteArray
@@ -17,6 +17,7 @@ from ..shared.icons import IconLibrary
 class PlaylistEntryControl(QFrame):
     """Widget for controlling a playlist entry in a scene"""
 
+    volume_changed = pyqtSignal(int, float)  # entry_id, volume (0-1)
     shuffle_changed = pyqtSignal(int, bool)  # entry_id, is_shuffle
     repeat_changed = pyqtSignal(int, bool)  # entry_id, is_repeat
     play_mode_changed = pyqtSignal(int, bool)  # entry_id, play_mode
@@ -107,6 +108,39 @@ class PlaylistEntryControl(QFrame):
 
         layout.addLayout(top_row)
 
+        # Now-playing row: shows currently playing track title
+        self.now_playing_label = QLabel("")
+        self.now_playing_label.setStyleSheet(f"color: {Styles.SUCCESS}; font-size: 11px; padding-left: 32px;")
+        self.now_playing_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.now_playing_label.hide()
+        layout.addWidget(self.now_playing_label)
+
+        # Volume row
+        volume_row = QHBoxLayout()
+
+        volume_label = QLabel("Vol:")
+        volume_label.setStyleSheet(f"color: {Styles.TEXT_MUTED};")
+        volume_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        volume_row.addWidget(volume_label)
+
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setMinimum(0)
+        self.volume_slider.setMaximum(100)
+        self.volume_slider.setValue(int(self.entry.volume * 100))
+        self.volume_slider.setFixedWidth(120)
+        self.volume_slider.valueChanged.connect(self._on_volume_changed)
+        volume_row.addWidget(self.volume_slider)
+
+        self.volume_value_label = QLabel(f"{int(self.entry.volume * 100)}%")
+        self.volume_value_label.setFixedWidth(40)
+        self.volume_value_label.setStyleSheet(f"color: {Styles.TEXT_MUTED};")
+        self.volume_value_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        volume_row.addWidget(self.volume_value_label)
+
+        volume_row.addStretch()
+
+        layout.addLayout(volume_row)
+
         # Bottom row: track count info + shuffle + repeat
         bottom_row = QHBoxLayout()
 
@@ -140,6 +174,20 @@ class PlaylistEntryControl(QFrame):
         self._update_repeat_button()
 
         layout.addLayout(bottom_row)
+
+    def _on_volume_changed(self, value: int):
+        """Handle volume slider change"""
+        volume = value / 100.0
+        self.volume_value_label.setText(f"{value}%")
+        self.volume_changed.emit(self.entry.id, volume)
+
+    def set_current_track(self, title: str):
+        """Update the now-playing display with the current track title"""
+        if title:
+            self.now_playing_label.setText(f"Now playing: {title}")
+            self.now_playing_label.show()
+        else:
+            self.now_playing_label.hide()
 
     def _toggle_play(self):
         """Toggle play mode"""

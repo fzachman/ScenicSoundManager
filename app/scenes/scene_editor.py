@@ -505,10 +505,16 @@ class SceneEditor(QWidget):
     def _add_playlist_entry_control(self, entry: ScenePlaylistEntry):
         """Add a playlist entry control widget"""
         control = PlaylistEntryControl(entry)
+        control.volume_changed.connect(self._on_playlist_entry_volume_changed)
         control.shuffle_changed.connect(self._on_playlist_entry_shuffle_changed)
         control.repeat_changed.connect(self._on_playlist_entry_repeat_changed)
         control.play_mode_changed.connect(self._on_playlist_entry_play_mode_changed)
         control.remove_requested.connect(self._remove_playlist_entry)
+
+        # Update now-playing if player already active
+        player = self._playlist_players.get(entry.id)
+        if player and player.current_audio_file_id:
+            self._update_playlist_entry_now_playing(entry.id, player.current_audio_file_id)
 
         self._playlist_entry_controls[entry.id] = control
         self.tracks_layout.addWidget(control)
@@ -543,6 +549,20 @@ class SceneEditor(QWidget):
         self.db.remove_playlist_from_scene(entry_id)
         self._refresh_tracks()
         self.scene_modified.emit()
+
+    def _on_playlist_entry_volume_changed(self, entry_id: int, volume: float):
+        """Handle playlist entry volume change"""
+        if not self._current_scene:
+            return
+        for entry in self._current_scene.playlist_entries:
+            if entry.id == entry_id:
+                entry.volume = volume
+                self.db.update_scene_playlist_entry(entry)
+                break
+        # Forward to running player if active
+        player = self._playlist_players.get(entry_id)
+        if player:
+            player.set_volume(int(volume * 100))
 
     def _on_playlist_entry_shuffle_changed(self, entry_id: int, is_shuffle: bool):
         """Handle playlist entry shuffle toggle change"""
@@ -612,15 +632,48 @@ class SceneEditor(QWidget):
             engine=self.audio_engine,
             is_shuffle=entry.is_shuffle,
             is_repeat=entry.is_repeat,
+            volume=int(entry.volume * 100),
+        )
+        player.track_changed.connect(
+            lambda audio_file_id, eid=entry.id: self._update_playlist_entry_now_playing(eid, audio_file_id)
+        )
+        player.playback_finished.connect(
+            lambda eid=entry.id: self._on_playlist_entry_finished(eid)
         )
         self._playlist_players[entry.id] = player
         player.start(500)
+
+    def _update_playlist_entry_now_playing(self, entry_id: int, audio_file_id: int):
+        """Update the now-playing display for a playlist entry control."""
+        control = self._playlist_entry_controls.get(entry_id)
+        if not control:
+            return
+        # Look up audio file title from the playlist's tracks
+        entry = next(
+            (e for e in self._current_scene.playlist_entries if e.id == entry_id),
+            None,
+        )
+        if entry and entry.playlist and entry.playlist.tracks:
+            for track in entry.playlist.tracks:
+                if track.audio_file_id == audio_file_id and track.audio_file:
+                    control.set_current_track(track.audio_file.display_title)
+                    return
+        control.set_current_track("")
+
+    def _on_playlist_entry_finished(self, entry_id: int):
+        """Handle playlist entry playback finished (no repeat)."""
+        control = self._playlist_entry_controls.get(entry_id)
+        if control:
+            control.set_current_track("")
 
     def _stop_all_playlist_players(self):
         """Stop and release all scene playlist players."""
         for player in self._playlist_players.values():
             player.release()
         self._playlist_players.clear()
+        # Clear now-playing labels
+        for control in self._playlist_entry_controls.values():
+            control.set_current_track("")
 
     def _remove_track(self, track_id: int):
         """Remove a track from the scene"""

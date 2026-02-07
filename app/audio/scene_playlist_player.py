@@ -34,6 +34,7 @@ class ScenePlaylistPlayer(QObject):
         engine: AudioEngine,
         is_shuffle: bool = False,
         is_repeat: bool = False,
+        volume: int = 100,
     ):
         super().__init__()
         self._playlist_id = playlist_id
@@ -41,6 +42,7 @@ class ScenePlaylistPlayer(QObject):
         self._engine = engine
         self._is_shuffle = is_shuffle
         self._is_repeat = is_repeat
+        self._volume = volume  # 0-100
 
         self._player: Optional[TrackPlayer] = None
         self._shuffle = SmartShuffle()
@@ -64,6 +66,12 @@ class ScenePlaylistPlayer(QObject):
     @property
     def current_audio_file_id(self) -> Optional[int]:
         return self._current_audio_file_id
+
+    def set_volume(self, volume: int) -> None:
+        """Update volume (0-100). Applies immediately to the current player."""
+        self._volume = volume
+        if self._player:
+            self._player.target_volume = volume
 
     def set_shuffle(self, enabled: bool) -> None:
         """Update shuffle mode (can be toggled during playback)."""
@@ -136,6 +144,7 @@ class ScenePlaylistPlayer(QObject):
         self._release_player()
 
         self._player = TrackPlayer(track.audio_file.file_path, self._engine)
+        self._player.target_volume = self._volume
         self._player.end_reached.connect(self._on_track_ended)
         self._player.fade_in(fade_ms)
         self._current_audio_file_id = audio_file_id
