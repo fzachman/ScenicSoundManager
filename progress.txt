@@ -74,3 +74,34 @@ Changes made:
   - Passes them as disabled_track_ids to AudioFileSearchDialog
   - Removed redundant duplicate check since disabled tracks can't be selected
 - All 26 existing tests pass
+
+PL-004: Build Playlists module UI shell and list
+Status: DONE
+Date: 2026-02-06
+
+Changes made:
+- Created app/playlists/ package with 4 files:
+  - __init__.py: Exports PlaylistsWidget, PlaylistListWidget, PlaylistEditor
+  - playlists_widget.py: PlaylistsWidget - main container with QSplitter (250:750)
+    - Left sidebar: PlaylistListWidget, Right panel: PlaylistEditor
+    - Signals: playlist_selection_changed bubbles up to MainWindow
+    - Connects list selection/create/delete to editor load/clear
+  - playlist_list.py: PlaylistListWidget - sidebar with full CRUD
+    - Header with reorder toggle button (drag-drop ordering)
+    - SearchBar with debounced search (search_playlists / get_all_playlists)
+    - QListWidget with click/double-click/context menu support
+    - Create (TextInputDialog), rename (double-click/context), duplicate, delete
+    - Drag-drop reordering with persist via reorder_playlists()
+    - Signals: playlist_selected, playlist_created, playlist_deleted
+  - playlist_editor.py: PlaylistEditor - detail panel with track management
+    - Title label, Add Tracks button (reuses AudioFileSearchDialog with disabled_track_ids)
+    - PlaylistTrackItem: displays track title/artist/duration with remove button
+    - PlaylistTrackListContainer: drag-drop reordering for tracks
+    - Track add/remove with persistence, track order persistence
+    - Signals: playlist_modified
+- app/main_window.py:
+  - Added PlaylistsWidget import and tab (appears after Scenes)
+  - Added SETTINGS_LAST_PLAYLIST_ID for selection persistence
+  - Connected playlist_selection_changed signal to persist selection
+  - Added _restore_last_playlist() called on startup
+- All 26 existing tests pass, all imports verified

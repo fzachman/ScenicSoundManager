@@ -188,11 +188,11 @@
       "definition_of_done": [
         "Playlists module shell matches the overall app styling and layout guidance."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 60,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "Created app/playlists/ package (4 files). PlaylistsWidget with splitter, PlaylistListWidget with full CRUD/search/reorder, PlaylistEditor with track management and drag-drop. Wired into MainWindow as third tab with selection persistence. All 26 tests pass."
     },
     {
       "id": "PL-005",

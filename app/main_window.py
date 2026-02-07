@@ -10,6 +10,7 @@ from .database import DatabaseConnection
 from .audio import AudioEngine
 from .library import LibraryWidget
 from .scenes import ScenesWidget
+from .playlists import PlaylistsWidget
 from .shared.styles import Styles
 
 
@@ -21,6 +22,7 @@ class MainWindow(QMainWindow):
     SETTINGS_UI_GROUP = "ui"
     SETTINGS_ACTIVE_TAB = "active_tab"
     SETTINGS_LAST_SCENE_ID = "last_scene_id"
+    SETTINGS_LAST_PLAYLIST_ID = "last_playlist_id"
 
     def __init__(self):
         super().__init__()
@@ -43,6 +45,7 @@ class MainWindow(QMainWindow):
         self._restore_master_volume()
         self._restore_active_tab()
         self._restore_last_scene()
+        self._restore_last_playlist()
 
     def _setup_ui(self):
         """Set up the main UI components"""
@@ -116,6 +119,10 @@ class MainWindow(QMainWindow):
         self.scenes_widget = ScenesWidget(self.db, self.audio_engine)
         self.tab_widget.addTab(self.scenes_widget, "Scenes")
 
+        # Playlists tab
+        self.playlists_widget = PlaylistsWidget(self.db)
+        self.tab_widget.addTab(self.playlists_widget, "Playlists")
+
         # Connect signals between modules
         self._connect_signals()
 
@@ -127,6 +134,7 @@ class MainWindow(QMainWindow):
         )
         self.scenes_widget.playback_state_changed.connect(self._on_playback_state_changed)
         self.scenes_widget.scene_selection_changed.connect(self._on_scene_selection_changed)
+        self.playlists_widget.playlist_selection_changed.connect(self._on_playlist_selection_changed)
         self.current_scene_btn.clicked.connect(self._on_current_scene_clicked)
 
     def _on_master_volume_changed(self, value: int):
@@ -185,6 +193,21 @@ class MainWindow(QMainWindow):
         if scene_id is None:
             return
         self.scenes_widget.select_scene(scene_id)
+
+    def _on_playlist_selection_changed(self, playlist_id: int):
+        settings = QSettings()
+        settings.beginGroup(self.SETTINGS_UI_GROUP)
+        settings.setValue(self.SETTINGS_LAST_PLAYLIST_ID, playlist_id)
+        settings.endGroup()
+
+    def _restore_last_playlist(self):
+        settings = QSettings()
+        settings.beginGroup(self.SETTINGS_UI_GROUP)
+        playlist_id = settings.value(self.SETTINGS_LAST_PLAYLIST_ID, type=int)
+        settings.endGroup()
+        if playlist_id is None:
+            return
+        self.playlists_widget.select_playlist(playlist_id)
 
     def _on_playback_state_changed(self, scene_id, scene_title, is_playing: bool):
         if is_playing and scene_id:
