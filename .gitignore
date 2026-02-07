@@ -1,2 +1,3 @@
 loop.sh
 .DS_Store
+__pycache__/
