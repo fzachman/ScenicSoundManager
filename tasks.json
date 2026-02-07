@@ -443,11 +443,11 @@
       "definition_of_done": [
         "Per-entry controls are usable and persist."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 45,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "Already implemented as part of PL-010. PlaylistEntryControl has shuffle and repeat toggle buttons with full signal wiring through SceneEditor to database persistence."
     },
     {
       "id": "PL-012",
@@ -480,11 +480,11 @@
       "definition_of_done": [
         "Scene playback with playlist entries behaves correctly across track boundaries."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 75,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "ScenePlaylistPlayer class in app/audio/scene_playlist_player.py. Sequential and shuffle playback with repeat support. Integrated into SceneEditor with start/pause/resume/stop. Shuffle/repeat toggle forwarding to active players. 22 new tests, all 79 pass."
     },
     {
       "id": "PL-013",
@@ -545,11 +545,11 @@
       "definition_of_done": [
         "Now playing table visually matches existing app styles and displays correct prefix."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 30,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "Already implemented as part of PL-008/PL-009. Currently Playing widget shows 'Scene: <name>' and 'Playlist: <name>' prefix with proper styling, hover effect, and click-to-navigate."
     }
   ]
 }

@@ -302,3 +302,43 @@ Changes made:
   - reorder_scene_playlist_entries, delete_scene_cascades_playlist_entries
   - delete_playlist_cascades_scene_entries
 - All 57 tests pass (47 existing + 10 new)
+
+PL-012: Playback engine support for playlist entries in scenes
+Status: DONE
+Date: 2026-02-06
+
+Changes made:
+- app/audio/scene_playlist_player.py: New ScenePlaylistPlayer class
+  - Manages sequential or smart-shuffled playback through a playlist's tracks within a scene
+  - Each instance drives a single TrackPlayer at a time, auto-advancing on track end
+  - start(): initializes playback from beginning (sequential or shuffled first track)
+  - pause()/resume(): fade-based pause and resume support
+  - stop()/release(): stop playback and release TrackPlayer resources
+  - _on_track_ended(): auto-advances to next track; stops or restarts based on repeat mode
+  - _get_next_audio_file_id(): returns next track via shuffle or sequential index
+  - _restart(): handles repeat mode - reshuffles if shuffle enabled, resets to index 0 otherwise
+  - set_shuffle()/set_repeat(): live toggle during playback, independent of playlist module
+  - track_changed signal emitted when a new track starts playing
+  - playback_finished signal emitted when playlist ends (no repeat)
+- app/audio/__init__.py: Exported ScenePlaylistPlayer
+- app/scenes/scene_editor.py: SceneEditor extended for playlist entry playback
+  - Added _playlist_players dict (entry_id -> ScenePlaylistPlayer) for tracking active players
+  - _start_scene_playback(): creates and starts ScenePlaylistPlayer for each playlist entry;
+    resumes existing players on pause/unpause instead of recreating
+  - _pause_scene_playback(): pauses all playlist players alongside audio tracks
+  - _stop_active_scene(): stops and releases all playlist players via _stop_all_playlist_players()
+  - _start_playlist_entry(): factory method creating ScenePlaylistPlayer with entry settings
+  - _stop_all_playlist_players(): releases all players and clears the dict
+  - _on_playlist_entry_shuffle_changed(): now forwards toggle to running player
+  - _on_playlist_entry_repeat_changed(): now forwards toggle to running player
+  - _remove_playlist_entry(): stops player for removed entry before DB delete
+  - Import updated to include ScenePlaylistPlayer
+- tests/test_scene_playlist_player.py: 22 new tests covering:
+  - Init: loads tracks from DB, empty playlist, initial state
+  - Sequential playback: next track ordering, reaches end, full traversal
+  - Shuffle playback: SmartShuffle init, no repeats until all played, cycle complete
+  - Toggle: set_shuffle during playback, set_repeat
+  - Repeat behavior: restart sequential (first track), restart shuffle (reshuffles)
+  - Track end handling: advances, stops at end (no repeat), restarts (repeat), no-op when stopped
+  - Start/stop: empty playlist no-op, start sets playing, shuffle picks from pool, stop clears state, pause/resume
+- All 79 tests pass (57 existing + 22 new)

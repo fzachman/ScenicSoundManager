@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, Qt, QSize
 
 from ..database import DatabaseConnection, Scene, SceneAudioFile, ScenePlaylistEntry, AudioFile
-from ..audio import AudioEngine, SceneMixer, TrackPlayer
+from ..audio import AudioEngine, SceneMixer, TrackPlayer, ScenePlaylistPlayer
 from ..library import TagManager
 from ..shared.styles import Styles
 from ..shared.icons import IconLibrary
@@ -333,6 +333,7 @@ class SceneEditor(QWidget):
         self._current_scene: Optional[Scene] = None
         self._track_controls: dict[int, TrackControl] = {}
         self._playlist_entry_controls: dict[int, PlaylistEntryControl] = {}
+        self._playlist_players: dict[int, ScenePlaylistPlayer] = {}  # entry_id -> player
         self._icons = IconLibrary()
 
         self._setup_ui()
@@ -534,6 +535,10 @@ class SceneEditor(QWidget):
 
     def _remove_playlist_entry(self, entry_id: int):
         """Remove a playlist entry from the scene"""
+        # Stop player if running
+        player = self._playlist_players.pop(entry_id, None)
+        if player:
+            player.release()
         self.db.remove_playlist_from_scene(entry_id)
         self._refresh_tracks()
         self.scene_modified.emit()
@@ -547,6 +552,10 @@ class SceneEditor(QWidget):
                 entry.is_shuffle = is_shuffle
                 self.db.update_scene_playlist_entry(entry)
                 break
+        # Forward to running player if active
+        player = self._playlist_players.get(entry_id)
+        if player:
+            player.set_shuffle(is_shuffle)
 
     def _on_playlist_entry_repeat_changed(self, entry_id: int, is_repeat: bool):
         """Handle playlist entry repeat toggle change"""
@@ -557,6 +566,28 @@ class SceneEditor(QWidget):
                 entry.is_repeat = is_repeat
                 self.db.update_scene_playlist_entry(entry)
                 break
+        # Forward to running player if active
+        player = self._playlist_players.get(entry_id)
+        if player:
+            player.set_repeat(is_repeat)
+
+    def _start_playlist_entry(self, entry: ScenePlaylistEntry):
+        """Create and start a ScenePlaylistPlayer for a playlist entry."""
+        player = ScenePlaylistPlayer(
+            playlist_id=entry.playlist_id,
+            db=self.db,
+            engine=self.audio_engine,
+            is_shuffle=entry.is_shuffle,
+            is_repeat=entry.is_repeat,
+        )
+        self._playlist_players[entry.id] = player
+        player.start(500)
+
+    def _stop_all_playlist_players(self):
+        """Stop and release all scene playlist players."""
+        for player in self._playlist_players.values():
+            player.release()
+        self._playlist_players.clear()
 
     def _remove_track(self, track_id: int):
         """Remove a track from the scene"""
@@ -633,7 +664,7 @@ class SceneEditor(QWidget):
             self._start_scene_playback()
 
     def _start_scene_playback(self):
-        """Start playback for all tracks in play mode"""
+        """Start playback for all tracks in play mode and playlist entries"""
         if not self._current_scene:
             return
 
@@ -642,13 +673,23 @@ class SceneEditor(QWidget):
             if track.play_mode:
                 self._play_track(track)
 
+        # Start or resume playlist entry players
+        for entry in self._current_scene.playlist_entries:
+            existing = self._playlist_players.get(entry.id)
+            if existing:
+                existing.resume(500)
+            else:
+                self._start_playlist_entry(entry)
+
         self._scene_playing = True
         self._sync_scene_play_button()
         self.playback_state_changed.emit(self._active_scene_id, self._active_scene_title, True)
 
     def _pause_scene_playback(self):
-        """Pause all currently playing tracks"""
+        """Pause all currently playing tracks and playlist entries"""
         self.mixer.pause_all(1000)
+        for player in self._playlist_players.values():
+            player.pause(1000)
         self._scene_playing = False
         self._sync_scene_play_button()
         self.playback_state_changed.emit(self._active_scene_id, self._active_scene_title, False)
@@ -697,6 +738,7 @@ class SceneEditor(QWidget):
         """Stop playback and clear the active scene"""
         self.mixer.stop_all()
         self.mixer.clear()
+        self._stop_all_playlist_players()
         self._scene_playing = False
         self._active_scene_id = None
         self._active_scene_title = None
