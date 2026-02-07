@@ -19,6 +19,7 @@ class PlaylistEntryControl(QFrame):
 
     shuffle_changed = pyqtSignal(int, bool)  # entry_id, is_shuffle
     repeat_changed = pyqtSignal(int, bool)  # entry_id, is_repeat
+    play_mode_changed = pyqtSignal(int, bool)  # entry_id, play_mode
     remove_requested = pyqtSignal(int)  # entry_id
 
     MIME_TYPE = "application/x-soundmanager-scene-playlist"
@@ -28,6 +29,7 @@ class PlaylistEntryControl(QFrame):
         self.entry = entry
         self._icons = IconLibrary()
         self._drag_start_pos = None
+        self._play_mode = bool(entry.play_mode)
         self._shuffle_mode = bool(entry.is_shuffle)
         self._repeat_mode = bool(entry.is_repeat)
 
@@ -42,11 +44,11 @@ class PlaylistEntryControl(QFrame):
                 padding-left: 6px;
             }}
         """
-        self.setStyleSheet(self._base_style)
         if self.entry.playlist:
             self.setToolTip(f"Playlist: {self.entry.playlist.name}")
 
         self._setup_ui()
+        self._update_play_mode_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -76,6 +78,13 @@ class PlaylistEntryControl(QFrame):
         self.title_label.setStyleSheet("font-weight: bold; font-size: 13px;")
         self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         top_row.addWidget(self.title_label, 1)
+
+        # Play/Pause toggle button
+        self.play_btn = QPushButton()
+        self.play_btn.setFixedSize(36, 36)
+        self.play_btn.setIconSize(self.play_btn.size())
+        self.play_btn.clicked.connect(self._toggle_play)
+        top_row.addWidget(self.play_btn)
 
         # Remove button
         remove_btn = QPushButton("\u00d7")
@@ -131,6 +140,61 @@ class PlaylistEntryControl(QFrame):
         self._update_repeat_button()
 
         layout.addLayout(bottom_row)
+
+    def _toggle_play(self):
+        """Toggle play mode"""
+        self._play_mode = not self._play_mode
+        self.entry.play_mode = self._play_mode
+        self._update_play_mode_ui()
+        self.play_mode_changed.emit(self.entry.id, self._play_mode)
+
+    def set_play_mode(self, play_mode: bool):
+        """Update the play mode state"""
+        self._play_mode = bool(play_mode)
+        self.entry.play_mode = self._play_mode
+        self._update_play_mode_ui()
+
+    def _update_play_mode_ui(self):
+        """Update play button and border based on play mode state"""
+        self.play_btn.setIcon(self._icons.icon("play"))
+        if self._play_mode:
+            self.play_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {Styles.SUCCESS};
+                    color: white;
+                    min-width: 30px;
+                    max-width: 30px;
+                    min-height: 30px;
+                    max-height: 30px;
+                    border-radius: 15px;
+                }}
+                QPushButton:hover {{
+                    background-color: #218838;
+                }}
+            """)
+            self.setStyleSheet(self._base_style)
+        else:
+            self.play_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {Styles.BACKGROUND_LIGHTER};
+                    color: {Styles.TEXT_MUTED};
+                    min-width: 30px;
+                    max-width: 30px;
+                    min-height: 30px;
+                    max-height: 30px;
+                    border-radius: 15px;
+                    border: 1px solid {Styles.BORDER};
+                }}
+                QPushButton:hover {{
+                    background-color: {Styles.BACKGROUND_LIGHT};
+                }}
+            """)
+            self.setStyleSheet(self._base_style + f"""
+                PlaylistEntryControl {{
+                    border-left: 4px solid {Styles.BORDER};
+                    padding-left: 6px;
+                }}
+            """)
 
     def _toggle_shuffle(self):
         """Toggle shuffle mode"""

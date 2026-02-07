@@ -36,6 +36,7 @@ class DatabaseConnection:
         self.connection.executescript(schema)
         self._ensure_scene_positions()
         self._ensure_scene_track_play_mode()
+        self._ensure_scene_playlist_entry_play_mode()
         self.connection.commit()
 
     def _ensure_scene_positions(self) -> None:
@@ -69,6 +70,18 @@ class DatabaseConnection:
             )
         self.connection.execute(
             "UPDATE scene_audio_files SET play_mode = 1 WHERE play_mode IS NULL"
+        )
+
+    def _ensure_scene_playlist_entry_play_mode(self) -> None:
+        """Ensure scene playlist entries have a play_mode column"""
+        cursor = self.connection.execute("PRAGMA table_info(scene_playlist_entries)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if "play_mode" not in columns:
+            self.connection.execute(
+                "ALTER TABLE scene_playlist_entries ADD COLUMN play_mode INTEGER NOT NULL DEFAULT 1"
+            )
+        self.connection.execute(
+            "UPDATE scene_playlist_entries SET play_mode = 1 WHERE play_mode IS NULL"
         )
 
     def close(self) -> None:
@@ -457,14 +470,15 @@ class DatabaseConnection:
         position: int = 0,
         is_shuffle: bool = False,
         is_repeat: bool = False,
+        play_mode: bool = True,
     ) -> int:
         """Add a playlist entry to a scene, return the entry ID"""
         cursor = self.connection.execute(
             """
-            INSERT INTO scene_playlist_entries (scene_id, playlist_id, position, is_shuffle, is_repeat)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO scene_playlist_entries (scene_id, playlist_id, position, is_shuffle, is_repeat, play_mode)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (scene_id, playlist_id, position, int(is_shuffle), int(is_repeat))
+            (scene_id, playlist_id, position, int(is_shuffle), int(is_repeat), int(play_mode))
         )
         self.connection.commit()
         return cursor.lastrowid
@@ -498,6 +512,7 @@ class DatabaseConnection:
                 position=row["position"],
                 is_shuffle=bool(row["is_shuffle"]),
                 is_repeat=bool(row["is_repeat"]),
+                play_mode=bool(row["play_mode"]),
                 playlist=playlist
             )
             entries.append(entry)
@@ -508,10 +523,10 @@ class DatabaseConnection:
         self.connection.execute(
             """
             UPDATE scene_playlist_entries
-            SET is_shuffle = ?, is_repeat = ?, position = ?
+            SET is_shuffle = ?, is_repeat = ?, position = ?, play_mode = ?
             WHERE id = ?
             """,
-            (int(entry.is_shuffle), int(entry.is_repeat), entry.position, entry.id)
+            (int(entry.is_shuffle), int(entry.is_repeat), entry.position, int(entry.play_mode), entry.id)
         )
         self.connection.commit()
 

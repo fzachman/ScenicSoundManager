@@ -507,6 +507,7 @@ class SceneEditor(QWidget):
         control = PlaylistEntryControl(entry)
         control.shuffle_changed.connect(self._on_playlist_entry_shuffle_changed)
         control.repeat_changed.connect(self._on_playlist_entry_repeat_changed)
+        control.play_mode_changed.connect(self._on_playlist_entry_play_mode_changed)
         control.remove_requested.connect(self._remove_playlist_entry)
 
         self._playlist_entry_controls[entry.id] = control
@@ -570,6 +571,38 @@ class SceneEditor(QWidget):
         player = self._playlist_players.get(entry_id)
         if player:
             player.set_repeat(is_repeat)
+
+    def _on_playlist_entry_play_mode_changed(self, entry_id: int, play_mode: bool):
+        """Handle playlist entry play mode change"""
+        if not self._current_scene:
+            return
+
+        for entry in self._current_scene.playlist_entries:
+            if entry.id == entry_id:
+                entry.play_mode = play_mode
+                self.db.update_scene_playlist_entry(entry)
+                break
+
+        if self._is_current_scene_active() and self._scene_playing:
+            self._apply_playlist_entry_play_mode(entry_id, play_mode)
+
+    def _apply_playlist_entry_play_mode(self, entry_id: int, play_mode: bool):
+        """Start or pause a playlist entry based on play mode"""
+        if play_mode:
+            entry = next(
+                (e for e in self._current_scene.playlist_entries if e.id == entry_id),
+                None,
+            )
+            if entry:
+                existing = self._playlist_players.get(entry_id)
+                if existing:
+                    existing.resume(500)
+                else:
+                    self._start_playlist_entry(entry)
+        else:
+            player = self._playlist_players.get(entry_id)
+            if player:
+                player.pause(500)
 
     def _start_playlist_entry(self, entry: ScenePlaylistEntry):
         """Create and start a ScenePlaylistPlayer for a playlist entry."""
@@ -673,13 +706,14 @@ class SceneEditor(QWidget):
             if track.play_mode:
                 self._play_track(track)
 
-        # Start or resume playlist entry players
+        # Start or resume playlist entry players (only those in play mode)
         for entry in self._current_scene.playlist_entries:
-            existing = self._playlist_players.get(entry.id)
-            if existing:
-                existing.resume(500)
-            else:
-                self._start_playlist_entry(entry)
+            if entry.play_mode:
+                existing = self._playlist_players.get(entry.id)
+                if existing:
+                    existing.resume(500)
+                else:
+                    self._start_playlist_entry(entry)
 
         self._scene_playing = True
         self._sync_scene_play_button()

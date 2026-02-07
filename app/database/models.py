@@ -78,6 +78,7 @@ class ScenePlaylistEntry:
     position: int = 0
     is_shuffle: bool = False
     is_repeat: bool = False
+    play_mode: bool = True
     playlist: Optional["Playlist"] = None
 
 
