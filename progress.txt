@@ -1,0 +1,34 @@
+PL-001: Inventory existing scenes, playback, and picker code
+Status: DONE
+Date: 2026-02-06
+
+Summary of findings:
+- PyQt6 desktop app with VLC audio backend, SQLite persistence
+- Tab-based UI in MainWindow (Library, Scenes)
+- Models (dataclasses): AudioFile, Tag, Scene, SceneAudioFile in app/database/models.py
+- Schema: app/database/schema.sql (audio_files, tags, audio_file_tags, scenes, scene_audio_files)
+- DB operations: app/database/connection.py (CRUD for all entities)
+- Audio: AudioEngine (VLC singleton), TrackPlayer (per-track fade), SceneMixer (multi-track) in app/audio/
+- Scenes module: ScenesWidget (splitter), SceneListWidget (sidebar list), SceneEditor (detail + playback), TrackControl (per-track widget)
+- Track picker: AudioFileSearchDialog in app/scenes/scene_editor.py (search, tag filter, preview, multi-select)
+- Shared: SearchBar, TextInputDialog, IconLibrary, Styles
+- Tests: pytest in tests/test_database.py with temp DB fixture
+
+Key reuse points for playlists:
+- SceneListWidget pattern -> PlaylistListWidget (sidebar with search, create, rename, delete, reorder)
+- SceneEditor pattern -> PlaylistEditor (detail panel, track list, play/pause)
+- AudioFileSearchDialog -> reuse with new disabled_track_ids param
+- TrackControl -> reuse for playlist tracks
+- SceneMixer -> reuse for playlist playback
+- SearchBar, TextInputDialog, Styles, IconLibrary -> reuse throughout
+
+Files to create/modify for playlists:
+- app/database/models.py: add Playlist, PlaylistTrack dataclasses
+- app/database/schema.sql: add playlists, playlist_tracks tables
+- app/database/connection.py: add playlist CRUD methods
+- app/database/__init__.py: export new models
+- New app/playlists/ package: playlist_list.py, playlist_editor.py, playlists_widget.py, __init__.py
+- app/main_window.py: add Playlists tab, update now-playing for mutual exclusivity
+- app/scenes/scene_editor.py: add disabled_track_ids to AudioFileSearchDialog
+- New app/audio/shuffle.py: smart shuffle utility
+- tests/test_database.py: add playlist persistence tests
