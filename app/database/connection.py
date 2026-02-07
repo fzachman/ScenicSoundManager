@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from .models import AudioFile, Tag, Scene, SceneAudioFile, Playlist, PlaylistTrack
+from .models import AudioFile, Tag, Scene, SceneAudioFile, ScenePlaylistEntry, Playlist, PlaylistTrack
 
 
 class DatabaseConnection:
@@ -311,7 +311,7 @@ class DatabaseConnection:
         return cursor.lastrowid
 
     def get_scene(self, scene_id: int) -> Optional[Scene]:
-        """Get a scene by ID with all its tracks"""
+        """Get a scene by ID with all its tracks and playlist entries"""
         cursor = self.connection.execute(
             "SELECT * FROM scenes WHERE id = ?", (scene_id,)
         )
@@ -319,6 +319,7 @@ class DatabaseConnection:
         if row:
             scene = self._row_to_scene(row)
             scene.tracks = self.get_scene_tracks(scene_id)
+            scene.playlist_entries = self.get_scene_playlist_entries(scene_id)
             return scene
         return None
 
@@ -445,6 +446,86 @@ class DatabaseConnection:
             self.connection.execute(
                 "UPDATE scene_audio_files SET position = ? WHERE id = ? AND scene_id = ?",
                 (position, track_id, scene_id)
+            )
+        self.connection.commit()
+
+    # Scene playlist entry operations
+    def add_playlist_to_scene(
+        self,
+        scene_id: int,
+        playlist_id: int,
+        position: int = 0,
+        is_shuffle: bool = False,
+        is_repeat: bool = False,
+    ) -> int:
+        """Add a playlist entry to a scene, return the entry ID"""
+        cursor = self.connection.execute(
+            """
+            INSERT INTO scene_playlist_entries (scene_id, playlist_id, position, is_shuffle, is_repeat)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (scene_id, playlist_id, position, int(is_shuffle), int(is_repeat))
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def get_scene_playlist_entries(self, scene_id: int) -> list[ScenePlaylistEntry]:
+        """Get all playlist entries in a scene with their playlist data"""
+        cursor = self.connection.execute(
+            """
+            SELECT spe.*, p.name, p.position AS playlist_position,
+                   p.created_at AS playlist_created_at, p.updated_at AS playlist_updated_at
+            FROM scene_playlist_entries spe
+            JOIN playlists p ON spe.playlist_id = p.id
+            WHERE spe.scene_id = ?
+            ORDER BY spe.position
+            """,
+            (scene_id,)
+        )
+        entries = []
+        for row in cursor.fetchall():
+            playlist = Playlist(
+                id=row["playlist_id"],
+                name=row["name"],
+                position=row["playlist_position"],
+                created_at=row["playlist_created_at"],
+                updated_at=row["playlist_updated_at"]
+            )
+            entry = ScenePlaylistEntry(
+                id=row["id"],
+                scene_id=row["scene_id"],
+                playlist_id=row["playlist_id"],
+                position=row["position"],
+                is_shuffle=bool(row["is_shuffle"]),
+                is_repeat=bool(row["is_repeat"]),
+                playlist=playlist
+            )
+            entries.append(entry)
+        return entries
+
+    def update_scene_playlist_entry(self, entry: ScenePlaylistEntry) -> None:
+        """Update a scene playlist entry's settings"""
+        self.connection.execute(
+            """
+            UPDATE scene_playlist_entries
+            SET is_shuffle = ?, is_repeat = ?, position = ?
+            WHERE id = ?
+            """,
+            (int(entry.is_shuffle), int(entry.is_repeat), entry.position, entry.id)
+        )
+        self.connection.commit()
+
+    def remove_playlist_from_scene(self, entry_id: int) -> None:
+        """Remove a playlist entry from a scene"""
+        self.connection.execute("DELETE FROM scene_playlist_entries WHERE id = ?", (entry_id,))
+        self.connection.commit()
+
+    def reorder_scene_playlist_entries(self, scene_id: int, entry_ids: list[int]) -> None:
+        """Reorder playlist entries in a scene by updating their positions"""
+        for position, entry_id in enumerate(entry_ids):
+            self.connection.execute(
+                "UPDATE scene_playlist_entries SET position = ? WHERE id = ? AND scene_id = ?",
+                (position, entry_id, scene_id)
             )
         self.connection.commit()
 

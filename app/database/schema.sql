@@ -58,6 +58,21 @@ CREATE TABLE IF NOT EXISTS scene_audio_files (
 
 CREATE INDEX IF NOT EXISTS idx_scene_audio_files_scene_id ON scene_audio_files(scene_id, position);
 
+-- Playlist entries within scenes (playlist as a track type in a scene)
+CREATE TABLE IF NOT EXISTS scene_playlist_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scene_id INTEGER NOT NULL,
+    playlist_id INTEGER NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    is_shuffle INTEGER NOT NULL DEFAULT 0,
+    is_repeat INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (scene_id) REFERENCES scenes(id) ON DELETE CASCADE,
+    FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+    UNIQUE (scene_id, playlist_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_scene_playlist_entries_scene_id ON scene_playlist_entries(scene_id, position);
+
 -- Playlist definitions
 CREATE TABLE IF NOT EXISTS playlists (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -250,3 +250,55 @@ Changes made:
   No infinite loop since stopped signals have is_playing=False which never triggers
   the exclusivity guard.
 - All 47 tests pass (no new tests - mutual exclusivity is UI integration logic)
+
+PL-010: Add playlist as scene track type
+Status: DONE
+Date: 2026-02-06
+
+Changes made:
+- app/database/models.py: Added ScenePlaylistEntry dataclass
+  - Fields: id, scene_id, playlist_id, position, is_shuffle, is_repeat, playlist reference
+  - Added playlist_entries list field to Scene dataclass
+- app/database/schema.sql: Added scene_playlist_entries table
+  - Columns: id, scene_id, playlist_id, position, is_shuffle, is_repeat
+  - UNIQUE(scene_id, playlist_id) constraint prevents duplicates
+  - Foreign keys cascade on scene/playlist delete
+  - Index on (scene_id, position)
+- app/database/connection.py: Added scene playlist entry CRUD methods
+  - add_playlist_to_scene(): insert with shuffle/repeat settings
+  - get_scene_playlist_entries(): join with playlists table for name
+  - update_scene_playlist_entry(): update shuffle/repeat/position
+  - remove_playlist_from_scene(): delete entry
+  - reorder_scene_playlist_entries(): update positions
+  - get_scene() now also loads playlist_entries
+- app/database/__init__.py: Exported ScenePlaylistEntry
+- app/scenes/playlist_entry_control.py: New PlaylistEntryControl widget
+  - Shows "PL" type badge + playlist name + track count
+  - Shuffle toggle button (per-entry, independent of playlist module)
+  - Repeat toggle button (per-entry)
+  - Remove button with confirmation
+  - Drag-drop support with custom MIME type
+  - Context menu with remove action
+  - Visual styling matches TrackControl with PRIMARY left border
+- app/scenes/playlist_picker_dialog.py: New PlaylistPickerDialog
+  - Single-select dialog showing available playlists
+  - Search by playlist name
+  - Already-added playlists shown as disabled ("Already added")
+  - Track count displayed for each playlist
+  - Signal-based selection tracking
+- app/scenes/scene_editor.py: SceneEditor extended for playlist entries
+  - Added "+ Add Playlist" button next to "+ Add Tracks"
+  - _refresh_tracks() now loads and displays playlist entries below audio tracks
+  - _add_playlist_entry(): opens PlaylistPickerDialog with disabled existing IDs
+  - _remove_playlist_entry(): removes entry and refreshes display
+  - _on_playlist_entry_shuffle_changed/repeat_changed(): persist toggle changes
+  - clear() resets playlist entry state and disables Add Playlist button
+  - Empty state message updated to mention both tracks and playlists
+- app/scenes/__init__.py: Exported PlaylistEntryControl, PlaylistPickerDialog
+- tests/test_database.py: Added TestScenePlaylistEntries class (10 tests)
+  - add_playlist_to_scene, get_scene_playlist_entries, scene_includes_playlist_entries
+  - add_playlist_with_shuffle_and_repeat, update_scene_playlist_entry
+  - remove_playlist_from_scene, playlist_uniqueness_in_scene
+  - reorder_scene_playlist_entries, delete_scene_cascades_playlist_entries
+  - delete_playlist_cascades_scene_entries
+- All 57 tests pass (47 existing + 10 new)

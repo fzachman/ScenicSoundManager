@@ -9,12 +9,13 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QSize
 
-from ..database import DatabaseConnection, Scene, SceneAudioFile, AudioFile
+from ..database import DatabaseConnection, Scene, SceneAudioFile, ScenePlaylistEntry, AudioFile
 from ..audio import AudioEngine, SceneMixer, TrackPlayer
 from ..library import TagManager
 from ..shared.styles import Styles
 from ..shared.icons import IconLibrary
 from .track_control import TrackControl
+from .playlist_entry_control import PlaylistEntryControl
 
 
 class AudioFileSearchDialog(QDialog):
@@ -331,6 +332,7 @@ class SceneEditor(QWidget):
         self._scene_playing = False
         self._current_scene: Optional[Scene] = None
         self._track_controls: dict[int, TrackControl] = {}
+        self._playlist_entry_controls: dict[int, PlaylistEntryControl] = {}
         self._icons = IconLibrary()
 
         self._setup_ui()
@@ -367,12 +369,18 @@ class SceneEditor(QWidget):
 
         layout.addLayout(header)
 
-        # Add tracks button
+        # Add tracks / playlist buttons
         add_layout = QHBoxLayout()
         self.add_tracks_btn = QPushButton("+ Add Tracks")
         self.add_tracks_btn.clicked.connect(self._add_tracks)
         self.add_tracks_btn.setEnabled(False)
         add_layout.addWidget(self.add_tracks_btn)
+
+        self.add_playlist_btn = QPushButton("+ Add Playlist")
+        self.add_playlist_btn.clicked.connect(self._add_playlist_entry)
+        self.add_playlist_btn.setEnabled(False)
+        add_layout.addWidget(self.add_playlist_btn)
+
         add_layout.addStretch()
         layout.addLayout(add_layout)
 
@@ -391,7 +399,7 @@ class SceneEditor(QWidget):
         layout.addWidget(scroll)
 
         # Empty state
-        self.empty_label = QLabel("No tracks in this scene.\nClick '+ Add Tracks' to add audio files.")
+        self.empty_label = QLabel("No tracks in this scene.\nClick '+ Add Tracks' or '+ Add Playlist' to get started.")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; padding: 40px;")
         self.empty_label.hide()
@@ -404,33 +412,36 @@ class SceneEditor(QWidget):
 
         # Enable controls
         self.add_tracks_btn.setEnabled(True)
+        self.add_playlist_btn.setEnabled(True)
         self.play_toggle_btn.setEnabled(True)
         self._sync_scene_play_button()
 
-        # Load tracks
+        # Load tracks and playlist entries
         self._refresh_tracks()
 
     def _refresh_tracks(self):
-        """Refresh track display"""
+        """Refresh track and playlist entry display"""
         if not self._current_scene:
             return
 
-        # Clear existing track controls
+        # Clear existing track controls and playlist entry controls
         while self.tracks_layout.count() > 0:
             item = self.tracks_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         self.tracks_container.clear_registry()
         self._track_controls.clear()
+        self._playlist_entry_controls.clear()
 
-        # Load tracks from scene
+        # Load scene with tracks and playlist entries from DB
         scene = self.db.get_scene(self._current_scene.id)
         if not scene:
             return
 
         self._current_scene = scene
 
-        if not scene.tracks:
+        has_content = bool(scene.tracks) or bool(scene.playlist_entries)
+        if not has_content:
             self.empty_label.show()
         else:
             self.empty_label.hide()
@@ -438,6 +449,10 @@ class SceneEditor(QWidget):
             is_active_scene = self._is_current_scene_active()
             for track in scene.tracks:
                 self._add_track_control(track, is_active_scene)
+
+            # Add playlist entries below audio tracks
+            for entry in scene.playlist_entries:
+                self._add_playlist_entry_control(entry)
 
     def _add_track_control(self, track: SceneAudioFile, use_active_players: bool):
         """Add a track control widget"""
@@ -485,6 +500,63 @@ class SceneEditor(QWidget):
 
             self._refresh_tracks()
             self.scene_modified.emit()
+
+    def _add_playlist_entry_control(self, entry: ScenePlaylistEntry):
+        """Add a playlist entry control widget"""
+        control = PlaylistEntryControl(entry)
+        control.shuffle_changed.connect(self._on_playlist_entry_shuffle_changed)
+        control.repeat_changed.connect(self._on_playlist_entry_repeat_changed)
+        control.remove_requested.connect(self._remove_playlist_entry)
+
+        self._playlist_entry_controls[entry.id] = control
+        self.tracks_layout.addWidget(control)
+
+    def _add_playlist_entry(self):
+        """Show dialog to add a playlist to the scene"""
+        if not self._current_scene:
+            return
+
+        from .playlist_picker_dialog import PlaylistPickerDialog
+
+        existing_playlist_ids = {e.playlist_id for e in self._current_scene.playlist_entries}
+        dialog = PlaylistPickerDialog(
+            self.db,
+            disabled_playlist_ids=existing_playlist_ids,
+            parent=self,
+        )
+        if dialog.exec():
+            playlist = dialog.get_selected_playlist()
+            if playlist:
+                position = len(self._current_scene.playlist_entries)
+                self.db.add_playlist_to_scene(self._current_scene.id, playlist.id, position)
+                self._refresh_tracks()
+                self.scene_modified.emit()
+
+    def _remove_playlist_entry(self, entry_id: int):
+        """Remove a playlist entry from the scene"""
+        self.db.remove_playlist_from_scene(entry_id)
+        self._refresh_tracks()
+        self.scene_modified.emit()
+
+    def _on_playlist_entry_shuffle_changed(self, entry_id: int, is_shuffle: bool):
+        """Handle playlist entry shuffle toggle change"""
+        if not self._current_scene:
+            return
+        for entry in self._current_scene.playlist_entries:
+            if entry.id == entry_id:
+                entry.is_shuffle = is_shuffle
+                self.db.update_scene_playlist_entry(entry)
+                break
+
+    def _on_playlist_entry_repeat_changed(self, entry_id: int, is_repeat: bool):
+        """Handle playlist entry repeat toggle change"""
+        if not self._current_scene:
+            return
+        for entry in self._current_scene.playlist_entries:
+            if entry.id == entry_id:
+                entry.is_repeat = is_repeat
+                self.db.update_scene_playlist_entry(entry)
+                break
 
     def _remove_track(self, track_id: int):
         """Remove a track from the scene"""
@@ -672,13 +744,15 @@ class SceneEditor(QWidget):
         if self._is_current_scene_active():
             self._stop_active_scene()
         self._track_controls.clear()
+        self._playlist_entry_controls.clear()
         self._current_scene = None
         self.title_label.setText("Select a scene")
         self.add_tracks_btn.setEnabled(False)
+        self.add_playlist_btn.setEnabled(False)
         self.play_toggle_btn.setEnabled(False)
         self._sync_scene_play_button()
 
-        # Clear track controls
+        # Clear track and playlist entry controls
         while self.tracks_layout.count() > 0:
             item = self.tracks_layout.takeAt(0)
             if item.widget():

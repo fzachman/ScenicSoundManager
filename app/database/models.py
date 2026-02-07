@@ -53,6 +53,7 @@ class Scene:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     tracks: list["SceneAudioFile"] = field(default_factory=list)
+    playlist_entries: list["ScenePlaylistEntry"] = field(default_factory=list)
 
 
 @dataclass
@@ -66,6 +67,18 @@ class SceneAudioFile:
     is_repeat: bool = False
     play_mode: bool = True
     audio_file: Optional[AudioFile] = None
+
+
+@dataclass
+class ScenePlaylistEntry:
+    """Represents a playlist entry within a scene with per-entry settings"""
+    id: Optional[int] = None
+    scene_id: Optional[int] = None
+    playlist_id: Optional[int] = None
+    position: int = 0
+    is_shuffle: bool = False
+    is_repeat: bool = False
+    playlist: Optional["Playlist"] = None
 
 
 @dataclass

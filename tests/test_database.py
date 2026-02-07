@@ -4,7 +4,7 @@ import os
 import tempfile
 import pytest
 
-from app.database import DatabaseConnection, AudioFile, Tag, Scene, SceneAudioFile, Playlist, PlaylistTrack
+from app.database import DatabaseConnection, AudioFile, Tag, Scene, SceneAudioFile, ScenePlaylistEntry, Playlist, PlaylistTrack
 
 
 @pytest.fixture
@@ -340,3 +340,122 @@ class TestPlaylists:
         assert len(playlist.tracks[0].audio_file.tags) == 1
         assert playlist.tracks[0].audio_file.tags[0].name == "Combat"
         assert playlist.tracks[0].audio_file.tags[0].color == "#FF0000"
+
+
+class TestScenePlaylistEntries:
+    def test_add_playlist_to_scene(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        playlist_id = db.add_playlist(Playlist(name="Battle Music"))
+
+        entry_id = db.add_playlist_to_scene(scene_id, playlist_id, position=0)
+
+        assert entry_id is not None
+        assert entry_id > 0
+
+    def test_get_scene_playlist_entries(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        playlist_id = db.add_playlist(Playlist(name="Battle Music"))
+
+        db.add_playlist_to_scene(scene_id, playlist_id, position=0)
+
+        entries = db.get_scene_playlist_entries(scene_id)
+
+        assert len(entries) == 1
+        assert entries[0].scene_id == scene_id
+        assert entries[0].playlist_id == playlist_id
+        assert entries[0].playlist is not None
+        assert entries[0].playlist.name == "Battle Music"
+        assert entries[0].is_shuffle is False
+        assert entries[0].is_repeat is False
+
+    def test_scene_includes_playlist_entries(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        playlist_id = db.add_playlist(Playlist(name="Battle Music"))
+
+        db.add_playlist_to_scene(scene_id, playlist_id)
+
+        scene = db.get_scene(scene_id)
+
+        assert len(scene.playlist_entries) == 1
+        assert scene.playlist_entries[0].playlist.name == "Battle Music"
+
+    def test_add_playlist_with_shuffle_and_repeat(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        playlist_id = db.add_playlist(Playlist(name="Battle Music"))
+
+        db.add_playlist_to_scene(scene_id, playlist_id, is_shuffle=True, is_repeat=True)
+
+        entries = db.get_scene_playlist_entries(scene_id)
+
+        assert entries[0].is_shuffle is True
+        assert entries[0].is_repeat is True
+
+    def test_update_scene_playlist_entry(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        playlist_id = db.add_playlist(Playlist(name="Battle Music"))
+        entry_id = db.add_playlist_to_scene(scene_id, playlist_id)
+
+        entries = db.get_scene_playlist_entries(scene_id)
+        entry = entries[0]
+        entry.is_shuffle = True
+        entry.is_repeat = True
+        db.update_scene_playlist_entry(entry)
+
+        updated = db.get_scene_playlist_entries(scene_id)
+        assert updated[0].is_shuffle is True
+        assert updated[0].is_repeat is True
+
+    def test_remove_playlist_from_scene(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        playlist_id = db.add_playlist(Playlist(name="Battle Music"))
+        entry_id = db.add_playlist_to_scene(scene_id, playlist_id)
+
+        db.remove_playlist_from_scene(entry_id)
+
+        entries = db.get_scene_playlist_entries(scene_id)
+        assert len(entries) == 0
+
+    def test_playlist_uniqueness_in_scene(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        playlist_id = db.add_playlist(Playlist(name="Battle Music"))
+
+        db.add_playlist_to_scene(scene_id, playlist_id)
+
+        with pytest.raises(Exception):
+            db.add_playlist_to_scene(scene_id, playlist_id)
+
+    def test_reorder_scene_playlist_entries(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        pl_a = db.add_playlist(Playlist(name="A"))
+        pl_b = db.add_playlist(Playlist(name="B"))
+        pl_c = db.add_playlist(Playlist(name="C"))
+
+        e_a = db.add_playlist_to_scene(scene_id, pl_a, position=0)
+        e_b = db.add_playlist_to_scene(scene_id, pl_b, position=1)
+        e_c = db.add_playlist_to_scene(scene_id, pl_c, position=2)
+
+        db.reorder_scene_playlist_entries(scene_id, [e_c, e_a, e_b])
+
+        entries = db.get_scene_playlist_entries(scene_id)
+        assert entries[0].id == e_c
+        assert entries[1].id == e_a
+        assert entries[2].id == e_b
+
+    def test_delete_scene_cascades_playlist_entries(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        playlist_id = db.add_playlist(Playlist(name="Battle Music"))
+        db.add_playlist_to_scene(scene_id, playlist_id)
+
+        db.delete_scene(scene_id)
+
+        assert db.get_scene(scene_id) is None
+
+    def test_delete_playlist_cascades_scene_entries(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        playlist_id = db.add_playlist(Playlist(name="Battle Music"))
+        db.add_playlist_to_scene(scene_id, playlist_id)
+
+        db.delete_playlist(playlist_id)
+
+        entries = db.get_scene_playlist_entries(scene_id)
+        assert len(entries) == 0

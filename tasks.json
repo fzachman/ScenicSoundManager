@@ -407,11 +407,11 @@
       "definition_of_done": [
         "Scene editor supports playlist entries without regressions."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 60,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "ScenePlaylistEntry model, schema, CRUD in connection.py. PlaylistEntryControl widget with shuffle/repeat toggles. PlaylistPickerDialog for selection. SceneEditor extended with Add Playlist button. 10 new tests, all 57 pass."
     },
     {
       "id": "PL-011",
