@@ -370,11 +370,11 @@
       "definition_of_done": [
         "Playback handoff and now playing UI are correct."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 45,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "Mutual exclusivity enforced in MainWindow: starting scene stops playlist, starting playlist stops scene. Now-playing label with Scene:/Playlist: prefix already working from PL-008. All 47 tests pass."
     },
     {
       "id": "PL-010",

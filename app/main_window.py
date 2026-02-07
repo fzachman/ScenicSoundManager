@@ -214,6 +214,9 @@ class MainWindow(QMainWindow):
 
     def _on_scene_playback_changed(self, scene_id, scene_title, is_playing: bool):
         if is_playing and scene_id:
+            # Mutual exclusivity: stop any active playlist before activating scene
+            if self._current_playing_type == "playlist":
+                self.playlists_widget.stop_all_playback()
             self._current_scene_id = scene_id
             self._current_playing_type = "scene"
             self.current_scene_btn.setText(f"Scene: {scene_title or 'Untitled Scene'}")
@@ -226,6 +229,9 @@ class MainWindow(QMainWindow):
 
     def _on_playlist_playback_changed(self, playlist_id, playlist_name, is_playing: bool):
         if is_playing and playlist_id:
+            # Mutual exclusivity: stop any active scene before activating playlist
+            if self._current_playing_type == "scene":
+                self.scenes_widget.stop_all_playback()
             self._current_playlist_playing_id = playlist_id
             self._current_playing_type = "playlist"
             self.current_scene_btn.setText(f"Playlist: {playlist_name or 'Untitled Playlist'}")

@@ -229,3 +229,24 @@ Changes made:
   - Clicking now-playing navigates to correct tab (scenes or playlists)
   - closeEvent stops both scene and playlist playback
 - All 47 tests pass (no new tests needed - playback is UI-driven)
+
+PL-009: Global playback exclusivity and now playing label
+Status: DONE
+Date: 2026-02-06
+
+Changes made:
+- app/main_window.py: _on_scene_playback_changed()
+  - Added mutual exclusivity guard: when a scene starts playing (is_playing=True),
+    checks if _current_playing_type is "playlist" and calls
+    playlists_widget.stop_all_playback() before activating the scene
+- app/main_window.py: _on_playlist_playback_changed()
+  - Added mutual exclusivity guard: when a playlist starts playing (is_playing=True),
+    checks if _current_playing_type is "scene" and calls
+    scenes_widget.stop_all_playback() before activating the playlist
+- Now-playing label already showed "Scene: <name>" / "Playlist: <name>" prefix (from PL-008)
+- Click-to-navigate on now-playing label already worked for both types (from PL-008)
+- Signal flow verified: stop_all triggers synchronous stopped signal, which
+  clears _current_playing_type to None, then the new playback sets it correctly.
+  No infinite loop since stopped signals have is_playing=False which never triggers
+  the exclusivity guard.
+- All 47 tests pass (no new tests - mutual exclusivity is UI integration logic)
