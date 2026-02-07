@@ -30,6 +30,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 800)
         self._tab_restore_done = False
         self._current_scene_id = None
+        self._current_playlist_playing_id = None
+        self._current_playing_type = None  # "scene" or "playlist"
 
         # Initialize core components
         self.db = DatabaseConnection()
@@ -120,7 +122,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.scenes_widget, "Scenes")
 
         # Playlists tab
-        self.playlists_widget = PlaylistsWidget(self.db)
+        self.playlists_widget = PlaylistsWidget(self.db, self.audio_engine)
         self.tab_widget.addTab(self.playlists_widget, "Playlists")
 
         # Connect signals between modules
@@ -132,10 +134,11 @@ class MainWindow(QMainWindow):
         self.library_widget.library_updated.connect(
             self.scenes_widget.refresh_current_scene
         )
-        self.scenes_widget.playback_state_changed.connect(self._on_playback_state_changed)
+        self.scenes_widget.playback_state_changed.connect(self._on_scene_playback_changed)
         self.scenes_widget.scene_selection_changed.connect(self._on_scene_selection_changed)
         self.playlists_widget.playlist_selection_changed.connect(self._on_playlist_selection_changed)
-        self.current_scene_btn.clicked.connect(self._on_current_scene_clicked)
+        self.playlists_widget.playback_state_changed.connect(self._on_playlist_playback_changed)
+        self.current_scene_btn.clicked.connect(self._on_current_playing_clicked)
 
     def _on_master_volume_changed(self, value: int):
         self.audio_engine.master_volume = value
@@ -209,27 +212,47 @@ class MainWindow(QMainWindow):
             return
         self.playlists_widget.select_playlist(playlist_id)
 
-    def _on_playback_state_changed(self, scene_id, scene_title, is_playing: bool):
+    def _on_scene_playback_changed(self, scene_id, scene_title, is_playing: bool):
         if is_playing and scene_id:
             self._current_scene_id = scene_id
-            self.current_scene_btn.setText(scene_title or "Untitled Scene")
+            self._current_playing_type = "scene"
+            self.current_scene_btn.setText(f"Scene: {scene_title or 'Untitled Scene'}")
             self.currently_playing_widget.show()
         else:
-            self._current_scene_id = scene_id if scene_id else None
-            self.currently_playing_widget.hide()
+            if self._current_playing_type == "scene":
+                self._current_scene_id = scene_id if scene_id else None
+                self._current_playing_type = None
+                self.currently_playing_widget.hide()
 
-    def _on_current_scene_clicked(self):
-        if not self._current_scene_id:
-            return
-        scenes_index = self.tab_widget.indexOf(self.scenes_widget)
-        if scenes_index != -1:
-            self.tab_widget.setCurrentIndex(scenes_index)
-        self.scenes_widget.select_scene(self._current_scene_id)
+    def _on_playlist_playback_changed(self, playlist_id, playlist_name, is_playing: bool):
+        if is_playing and playlist_id:
+            self._current_playlist_playing_id = playlist_id
+            self._current_playing_type = "playlist"
+            self.current_scene_btn.setText(f"Playlist: {playlist_name or 'Untitled Playlist'}")
+            self.currently_playing_widget.show()
+        else:
+            if self._current_playing_type == "playlist":
+                self._current_playlist_playing_id = None
+                self._current_playing_type = None
+                self.currently_playing_widget.hide()
+
+    def _on_current_playing_clicked(self):
+        if self._current_playing_type == "scene" and self._current_scene_id:
+            scenes_index = self.tab_widget.indexOf(self.scenes_widget)
+            if scenes_index != -1:
+                self.tab_widget.setCurrentIndex(scenes_index)
+            self.scenes_widget.select_scene(self._current_scene_id)
+        elif self._current_playing_type == "playlist" and self._current_playlist_playing_id:
+            playlists_index = self.tab_widget.indexOf(self.playlists_widget)
+            if playlists_index != -1:
+                self.tab_widget.setCurrentIndex(playlists_index)
+            self.playlists_widget.select_playlist(self._current_playlist_playing_id)
 
     def closeEvent(self, event):
         """Handle application close"""
         # Stop all audio
         self.scenes_widget.stop_all_playback()
+        self.playlists_widget.stop_all_playback()
 
         # Close database
         self.db.close()

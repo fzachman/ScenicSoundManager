@@ -184,3 +184,48 @@ Changes made:
   - Defensive copy of track_ids
   - Statistical randomization verification
 - All 47 tests pass (27 existing + 20 new)
+
+PL-008: Playlist playback controls in Playlists module
+Status: DONE
+Date: 2026-02-06
+
+Changes made:
+- app/playlists/playlist_editor.py: PlaylistEditor
+  - Added playback_state_changed signal (object, object, bool) for playlist_id, name, is_playing
+  - Constructor now takes audio_engine parameter for TrackPlayer creation
+  - Play/Pause button in header: green Play / yellow Pause, toggles playback
+  - Shuffle toggle button: checkable, updates SmartShuffle state, visual feedback (PRIMARY when on)
+  - Next track button (>>) to skip to next track
+  - Single TrackPlayer manages sequential single-track playback (unlike scenes which play all at once)
+  - SmartShuffle integration: when shuffle enabled, uses SmartShuffle.next() for track selection
+  - Sequential mode: cycles through tracks in order, wraps around
+  - Auto-advance on track end via end_reached signal
+  - Now-playing highlight: active track gets PRIMARY border and colored position number
+  - _start_playback(): initializes shuffle, picks first track, emits playing state
+  - _pause_playback(): fades out player, keeps state for resume
+  - _resume_playback(): fades in from pause
+  - _stop_playback(): releases player, clears state, emits stopped
+  - _play_audio_file(): creates TrackPlayer for specific audio_file_id
+  - _next_track(): advances via shuffle or sequential index
+  - Track removal during playback handled gracefully (releases current player)
+  - Shuffle track list updated when tracks added/removed/reordered
+  - load_playlist() enables/disables controls based on track count
+  - clear() stops playback if active playlist is cleared
+  - stop_all() for MainWindow close cleanup
+- app/playlists/playlist_editor.py: PlaylistTrackItem
+  - Added set_now_playing(bool) method for visual now-playing indicator
+  - _apply_style() switches between normal and highlighted border/background
+  - Position label turns PRIMARY color when now-playing
+- app/playlists/playlists_widget.py: PlaylistsWidget
+  - Added playback_state_changed signal, propagated from PlaylistEditor
+  - Constructor now takes audio_engine parameter, passes to PlaylistEditor
+  - Added stop_all_playback() method
+- app/main_window.py: MainWindow
+  - Passes audio_engine to PlaylistsWidget constructor
+  - Added _current_playlist_playing_id and _current_playing_type state vars
+  - Renamed _on_playback_state_changed to _on_scene_playback_changed
+  - Added _on_playlist_playback_changed handler
+  - Currently Playing widget now shows "Scene: <name>" or "Playlist: <name>" prefix
+  - Clicking now-playing navigates to correct tab (scenes or playlists)
+  - closeEvent stops both scene and playlist playback
+- All 47 tests pass (no new tests needed - playback is UI-driven)

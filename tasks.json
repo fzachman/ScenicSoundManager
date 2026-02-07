@@ -334,11 +334,11 @@
       "definition_of_done": [
         "Playlist playback controls operate correctly and update UI."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 60,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "Play/pause, shuffle toggle, next track, now-playing highlight, SmartShuffle integration, auto-advance on track end. PlaylistsWidget and MainWindow wired for playback signals. Currently Playing shows Scene:/Playlist: prefix. All 47 tests pass."
     },
     {
       "id": "PL-009",

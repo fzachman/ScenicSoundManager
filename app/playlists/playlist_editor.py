@@ -1,15 +1,17 @@
 """Playlist editor for managing tracks in a playlist"""
 
+import os
 from typing import Optional
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QLineEdit
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QByteArray
+from PyQt6.QtCore import pyqtSignal, Qt, QByteArray, QSize
 from PyQt6.QtGui import QDrag
 
 from ..database import DatabaseConnection, Playlist, PlaylistTrack
+from ..audio import AudioEngine, TrackPlayer, SmartShuffle
 from ..shared.styles import Styles
 from ..shared.icons import IconLibrary
 
@@ -25,18 +27,42 @@ class PlaylistTrackItem(QFrame):
         self.position = position
         self._icons = IconLibrary()
         self._drag_start_pos = None
+        self._now_playing = False
 
         self.setFrameStyle(QFrame.Shape.StyledPanel)
-        self.setStyleSheet(f"""
-            PlaylistTrackItem {{
-                background-color: {Styles.BACKGROUND_LIGHT};
-                border: 1px solid {Styles.BORDER};
-                border-radius: 4px;
-                padding: 8px;
-            }}
-        """)
+        self._apply_style()
 
         self._setup_ui()
+
+    def _apply_style(self):
+        if self._now_playing:
+            self.setStyleSheet(f"""
+                PlaylistTrackItem {{
+                    background-color: {Styles.BACKGROUND_LIGHTER};
+                    border: 1px solid {Styles.PRIMARY};
+                    border-radius: 4px;
+                    padding: 8px;
+                }}
+            """)
+        else:
+            self.setStyleSheet(f"""
+                PlaylistTrackItem {{
+                    background-color: {Styles.BACKGROUND_LIGHT};
+                    border: 1px solid {Styles.BORDER};
+                    border-radius: 4px;
+                    padding: 8px;
+                }}
+            """)
+
+    def set_now_playing(self, playing: bool):
+        """Set now-playing highlight state"""
+        self._now_playing = playing
+        self._apply_style()
+        # Update position label color to indicate playing
+        if playing:
+            self.position_label.setStyleSheet(f"color: {Styles.PRIMARY}; font-size: 13px; font-weight: bold;")
+        else:
+            self.position_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 13px; font-weight: bold;")
 
     def _setup_ui(self):
         layout = QHBoxLayout(self)
@@ -223,17 +249,29 @@ class PlaylistTrackListContainer(QWidget):
 
 
 class PlaylistEditor(QWidget):
-    """Editor for a single playlist's tracks"""
+    """Editor for a single playlist's tracks with playback controls"""
 
     playlist_modified = pyqtSignal()
     playlist_renamed = pyqtSignal(int, str)  # playlist_id, new_name
+    playback_state_changed = pyqtSignal(object, object, bool)  # playlist_id, playlist_name, is_playing
 
-    def __init__(self, db: DatabaseConnection, parent=None):
+    def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
         super().__init__(parent)
         self.db = db
+        self.audio_engine = audio_engine
         self._current_playlist: Optional[Playlist] = None
         self._track_items: dict[int, PlaylistTrackItem] = {}
         self._icons = IconLibrary()
+
+        # Playback state
+        self._player: Optional[TrackPlayer] = None
+        self._shuffle = SmartShuffle()
+        self._shuffle_enabled = False
+        self._is_playing = False
+        self._active_playlist_id: Optional[int] = None
+        self._active_playlist_name: Optional[str] = None
+        self._current_track_index: int = 0  # sequential index for non-shuffle mode
+        self._current_audio_file_id: Optional[int] = None  # audio_file_id of currently playing track
 
         self._setup_ui()
 
@@ -256,6 +294,56 @@ class PlaylistEditor(QWidget):
         header.addWidget(self.title_edit)
 
         header.addStretch()
+
+        # Playback controls
+        self.shuffle_btn = QPushButton("Shuffle")
+        self.shuffle_btn.setToolTip("Toggle shuffle mode")
+        self.shuffle_btn.setCheckable(True)
+        self.shuffle_btn.setChecked(False)
+        self.shuffle_btn.clicked.connect(self._toggle_shuffle)
+        self.shuffle_btn.setEnabled(False)
+        self._sync_shuffle_button()
+        header.addWidget(self.shuffle_btn)
+
+        self.next_btn = QPushButton()
+        self.next_btn.setIcon(self._icons.icon("play"))
+        self.next_btn.setIconSize(QSize(12, 12))
+        self.next_btn.setToolTip("Next track")
+        self.next_btn.setFixedSize(32, 32)
+        self.next_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Styles.BACKGROUND_LIGHTER};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: {Styles.BORDER};
+            }}
+            QPushButton:disabled {{
+                background-color: {Styles.BACKGROUND_LIGHT};
+            }}
+        """)
+        self.next_btn.setText(">>")
+        self.next_btn.clicked.connect(self._next_track)
+        self.next_btn.setEnabled(False)
+        header.addWidget(self.next_btn)
+
+        self.play_toggle_btn = QPushButton("Play")
+        self.play_toggle_btn.setIcon(self._icons.icon("play"))
+        self.play_toggle_btn.setIconSize(QSize(16, 16))
+        self.play_toggle_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Styles.SUCCESS};
+                padding: 10px 20px;
+            }}
+            QPushButton:hover {{
+                background-color: #218838;
+            }}
+        """)
+        self.play_toggle_btn.clicked.connect(self._toggle_play)
+        self.play_toggle_btn.setEnabled(False)
+        header.addWidget(self.play_toggle_btn)
+
         layout.addLayout(header)
 
         # Add tracks button
@@ -290,12 +378,18 @@ class PlaylistEditor(QWidget):
 
     def load_playlist(self, playlist: Playlist):
         """Load a playlist for editing"""
+        # If switching playlists while playing a different one, keep playback going
         self._current_playlist = playlist
         self.title_label.setText(playlist.name)
         self.title_label.setToolTip("Double-click to rename")
 
         # Enable controls
         self.add_tracks_btn.setEnabled(True)
+        has_tracks = bool(playlist.tracks)
+        self.play_toggle_btn.setEnabled(has_tracks)
+        self.shuffle_btn.setEnabled(has_tracks)
+        self.next_btn.setEnabled(has_tracks and self._is_playing_this_playlist(playlist.id))
+        self._sync_play_button()
 
         # Load tracks
         self._refresh_tracks()
@@ -327,6 +421,10 @@ class PlaylistEditor(QWidget):
         self.title_label.setText(new_name)
         self.playlist_renamed.emit(self._current_playlist.id, new_name)
 
+        # Update active playlist name if this is the active one
+        if self._active_playlist_id == self._current_playlist.id:
+            self._active_playlist_name = new_name
+
     def _refresh_tracks(self):
         """Refresh track display"""
         if not self._current_playlist:
@@ -355,6 +453,9 @@ class PlaylistEditor(QWidget):
             for i, track in enumerate(playlist.tracks):
                 self._add_track_item(track, position=i)
 
+        # Re-highlight now-playing track if applicable
+        self._update_now_playing_highlight()
+
     def _add_track_item(self, track: PlaylistTrack, position: int):
         """Add a track item widget"""
         item = PlaylistTrackItem(track, position=position)
@@ -370,12 +471,10 @@ class PlaylistEditor(QWidget):
             return
 
         from ..scenes.scene_editor import AudioFileSearchDialog
-        from ..audio import AudioEngine
 
         existing_ids = {t.audio_file_id for t in self._current_playlist.tracks}
-        audio_engine = AudioEngine.get_instance()
         dialog = AudioFileSearchDialog(
-            self.db, audio_engine,
+            self.db, self.audio_engine,
             disabled_track_ids=existing_ids, parent=self,
         )
         if dialog.exec():
@@ -385,13 +484,40 @@ class PlaylistEditor(QWidget):
                 self.db.add_track_to_playlist(self._current_playlist.id, file.id, position)
 
             self._refresh_tracks()
+            self._update_shuffle_tracks()
             self.playlist_modified.emit()
 
     def _remove_track(self, track_id: int):
         """Remove a track from the playlist"""
+        # If the currently playing track is being removed, advance first
+        removed_track = None
+        for t in self._current_playlist.tracks:
+            if t.id == track_id:
+                removed_track = t
+                break
+
+        if (removed_track and self._is_playing
+                and self._active_playlist_id == self._current_playlist.id
+                and self._current_audio_file_id == removed_track.audio_file_id):
+            # Stop current playback, will auto-advance or stop
+            self._release_player()
+
         self.db.remove_track_from_playlist(track_id)
         self._refresh_tracks()
         self._persist_track_order()
+        self._update_shuffle_tracks()
+
+        # If no tracks left, stop playback
+        if self._current_playlist and not self._current_playlist.tracks:
+            if self._is_playing and self._active_playlist_id == self._current_playlist.id:
+                self._stop_playback()
+            self.play_toggle_btn.setEnabled(False)
+            self.shuffle_btn.setEnabled(False)
+            self.next_btn.setEnabled(False)
+        else:
+            self.play_toggle_btn.setEnabled(True)
+            self.shuffle_btn.setEnabled(True)
+
         self.playlist_modified.emit()
 
     def _on_tracks_reordered(self, track_ids: list[int]):
@@ -399,6 +525,7 @@ class PlaylistEditor(QWidget):
             return
         self._persist_track_order(track_ids)
         self._update_position_numbers()
+        self._update_shuffle_tracks()
         self.playlist_modified.emit()
 
     def _update_position_numbers(self):
@@ -420,8 +547,257 @@ class PlaylistEditor(QWidget):
             return
         self.db.reorder_playlist_tracks(self._current_playlist.id, track_ids)
 
+    # -- Playback controls --
+
+    def _toggle_play(self):
+        """Toggle play/pause for the current playlist"""
+        if not self._current_playlist or not self._current_playlist.tracks:
+            return
+
+        if self._is_playing_this_playlist(self._current_playlist.id):
+            if self._is_playing:
+                self._pause_playback()
+            else:
+                self._resume_playback()
+        else:
+            self._start_playback()
+
+    def _start_playback(self):
+        """Start playing the current playlist from the beginning"""
+        if not self._current_playlist or not self._current_playlist.tracks:
+            return
+
+        # Stop any previous playback
+        self._stop_playback()
+
+        self._active_playlist_id = self._current_playlist.id
+        self._active_playlist_name = self._current_playlist.name
+        self._current_track_index = 0
+
+        # Initialize shuffle with audio_file_ids
+        audio_file_ids = [t.audio_file_id for t in self._current_playlist.tracks if t.audio_file_id]
+        self._shuffle.update_tracks(audio_file_ids)
+
+        # Pick first track
+        if self._shuffle_enabled:
+            audio_file_id = self._shuffle.next()
+        else:
+            audio_file_id = audio_file_ids[0] if audio_file_ids else None
+
+        if audio_file_id is not None:
+            self._play_audio_file(audio_file_id)
+
+        self._is_playing = True
+        self.next_btn.setEnabled(True)
+        self._sync_play_button()
+        self.playback_state_changed.emit(self._active_playlist_id, self._active_playlist_name, True)
+
+    def _pause_playback(self):
+        """Pause current playback"""
+        if self._player:
+            self._player.fade_out(500, pause_after=True)
+        self._is_playing = False
+        self._sync_play_button()
+        self.playback_state_changed.emit(self._active_playlist_id, self._active_playlist_name, False)
+
+    def _resume_playback(self):
+        """Resume paused playback"""
+        if self._player:
+            self._player.fade_in(500)
+        self._is_playing = True
+        self._sync_play_button()
+        self.playback_state_changed.emit(self._active_playlist_id, self._active_playlist_name, True)
+
+    def _stop_playback(self):
+        """Stop playback completely"""
+        self._release_player()
+        was_playing = self._is_playing
+        self._is_playing = False
+        self._current_audio_file_id = None
+        old_playlist_id = self._active_playlist_id
+        self._active_playlist_id = None
+        self._active_playlist_name = None
+        self._current_track_index = 0
+        self.next_btn.setEnabled(False)
+        self._update_now_playing_highlight()
+        self._sync_play_button()
+        if was_playing:
+            self.playback_state_changed.emit(old_playlist_id, None, False)
+
+    def _play_audio_file(self, audio_file_id: int):
+        """Play a specific audio file from the playlist"""
+        # Find the track in the current playlist
+        track = None
+        for t in self._current_playlist.tracks:
+            if t.audio_file_id == audio_file_id:
+                track = t
+                break
+        if not track or not track.audio_file:
+            return
+
+        if not os.path.exists(track.audio_file.file_path):
+            return
+
+        # Release previous player
+        self._release_player()
+
+        # Create new player
+        self._player = TrackPlayer(track.audio_file.file_path, self.audio_engine)
+        self._player.end_reached.connect(self._on_track_ended)
+        self._player.fade_in(500)
+        self._current_audio_file_id = audio_file_id
+
+        # Update sequential index to match
+        for i, t in enumerate(self._current_playlist.tracks):
+            if t.audio_file_id == audio_file_id:
+                self._current_track_index = i
+                break
+
+        self._update_now_playing_highlight()
+
+    def _next_track(self):
+        """Advance to the next track"""
+        if not self._current_playlist or not self._current_playlist.tracks:
+            return
+        if not self._is_playing_this_playlist(self._current_playlist.id):
+            return
+
+        audio_file_id = self._get_next_audio_file_id()
+        if audio_file_id is not None:
+            self._play_audio_file(audio_file_id)
+        else:
+            # End of playlist, stop
+            self._stop_playback()
+
+    def _get_next_audio_file_id(self) -> Optional[int]:
+        """Get the next audio_file_id to play"""
+        if not self._current_playlist or not self._current_playlist.tracks:
+            return None
+
+        if self._shuffle_enabled:
+            return self._shuffle.next()
+        else:
+            # Sequential: advance index
+            self._current_track_index += 1
+            if self._current_track_index >= len(self._current_playlist.tracks):
+                # Wrap around to start
+                self._current_track_index = 0
+            track = self._current_playlist.tracks[self._current_track_index]
+            return track.audio_file_id
+
+    def _on_track_ended(self):
+        """Handle track end - auto-advance to next"""
+        if not self._is_playing:
+            return
+        audio_file_id = self._get_next_audio_file_id()
+        if audio_file_id is not None:
+            self._play_audio_file(audio_file_id)
+        else:
+            self._stop_playback()
+
+    def _toggle_shuffle(self):
+        """Toggle shuffle mode"""
+        self._shuffle_enabled = self.shuffle_btn.isChecked()
+        self._sync_shuffle_button()
+
+        # If currently playing, update shuffle with remaining tracks
+        if self._is_playing and self._active_playlist_id and self._current_playlist:
+            audio_file_ids = [t.audio_file_id for t in self._current_playlist.tracks if t.audio_file_id]
+            self._shuffle.update_tracks(audio_file_ids)
+
+    def _update_shuffle_tracks(self):
+        """Update the SmartShuffle track list when playlist changes"""
+        if self._current_playlist:
+            audio_file_ids = [t.audio_file_id for t in self._current_playlist.tracks if t.audio_file_id]
+            self._shuffle.update_tracks(audio_file_ids)
+
+    def _release_player(self):
+        """Release the current track player"""
+        if self._player:
+            self._player.stop()
+            self._player.release()
+            self._player = None
+
+    def _update_now_playing_highlight(self):
+        """Update which track item is highlighted as now-playing"""
+        for item in self._track_items.values():
+            is_current = (
+                self._is_playing
+                and self._active_playlist_id == (self._current_playlist.id if self._current_playlist else None)
+                and self._current_audio_file_id == item.track.audio_file_id
+            )
+            item.set_now_playing(is_current)
+
+    def _is_playing_this_playlist(self, playlist_id: int) -> bool:
+        """Check if the given playlist is the active one"""
+        return self._active_playlist_id == playlist_id
+
+    def _sync_play_button(self):
+        """Sync play/pause button appearance with state"""
+        is_active = (
+            self._current_playlist
+            and self._is_playing_this_playlist(self._current_playlist.id)
+            and self._is_playing
+        )
+        if is_active:
+            self.play_toggle_btn.setText("Pause")
+            self.play_toggle_btn.setIcon(self._icons.icon("pause"))
+            self.play_toggle_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {Styles.WARNING};
+                    color: #000;
+                    padding: 10px 20px;
+                }}
+                QPushButton:hover {{
+                    background-color: #E0A800;
+                }}
+            """)
+        else:
+            self.play_toggle_btn.setText("Play")
+            self.play_toggle_btn.setIcon(self._icons.icon("play"))
+            self.play_toggle_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {Styles.SUCCESS};
+                    padding: 10px 20px;
+                }}
+                QPushButton:hover {{
+                    background-color: #218838;
+                }}
+            """)
+
+    def _sync_shuffle_button(self):
+        """Sync shuffle button appearance with state"""
+        if self._shuffle_enabled:
+            self.shuffle_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {Styles.PRIMARY};
+                    padding: 8px 16px;
+                }}
+                QPushButton:hover {{
+                    background-color: {Styles.PRIMARY_DARK};
+                }}
+            """)
+        else:
+            self.shuffle_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {Styles.BACKGROUND_LIGHTER};
+                    padding: 8px 16px;
+                }}
+                QPushButton:hover {{
+                    background-color: {Styles.BORDER};
+                }}
+            """)
+
+    def stop_all(self):
+        """Stop all playback immediately (called by MainWindow on close)"""
+        self._stop_playback()
+
     def clear(self):
         """Clear the editor"""
+        # Stop if this playlist is playing
+        if self._current_playlist and self._is_playing_this_playlist(self._current_playlist.id):
+            self._stop_playback()
+
         self._track_items.clear()
         self._current_playlist = None
         self.title_edit.hide()
@@ -429,6 +805,10 @@ class PlaylistEditor(QWidget):
         self.title_label.setText("Select a playlist")
         self.title_label.setToolTip("")
         self.add_tracks_btn.setEnabled(False)
+        self.play_toggle_btn.setEnabled(False)
+        self.shuffle_btn.setEnabled(False)
+        self.next_btn.setEnabled(False)
+        self._sync_play_button()
 
         # Clear track items
         while self.tracks_layout.count() > 0:
