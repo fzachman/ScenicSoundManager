@@ -3,5 +3,6 @@
 from .engine import AudioEngine
 from .player import TrackPlayer
 from .mixer import SceneMixer
+from .shuffle import SmartShuffle
 
-__all__ = ["AudioEngine", "TrackPlayer", "SceneMixer"]
+__all__ = ["AudioEngine", "TrackPlayer", "SceneMixer", "SmartShuffle"]

@@ -261,11 +261,11 @@
       "definition_of_done": [
         "CRUD actions function and persist across restarts."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 45,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "Already implemented as part of PL-004 (create, delete, rename, duplicate, drag-drop reorder all in PlaylistListWidget) and PL-005 (editable title in PlaylistEditor). All CRUD persists and updates UI."
     },
     {
       "id": "PL-007",
@@ -297,11 +297,11 @@
       "definition_of_done": [
         "Playlist track membership is editable and persists."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 45,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "Already implemented as part of PL-004. PlaylistEditor._add_tracks() opens AudioFileSearchDialog with disabled_track_ids. _remove_track() removes via DB. All persisted."
     },
     {
       "id": "PL-008",
@@ -514,11 +514,11 @@
       "definition_of_done": [
         "Shuffle behavior proven by tests."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 45,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "SmartShuffle class in app/audio/shuffle.py with next/peek/reset/update_tracks. 20 unit tests in tests/test_shuffle.py. All 47 tests pass."
     },
     {
       "id": "PL-014",

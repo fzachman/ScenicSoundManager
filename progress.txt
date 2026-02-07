@@ -134,3 +134,53 @@ Changes made:
 - tests/test_database.py: Added test_playlist_tracks_include_tags
   - Verifies playlist tracks load with tag name and color from associated AudioFile
 - All 27 tests pass (26 existing + 1 new)
+
+PL-006: Playlist CRUD actions
+Status: DONE (already implemented)
+Date: 2026-02-06
+
+Notes: All CRUD actions were already implemented as part of PL-004 and PL-005:
+- Create: PlaylistListWidget._create_playlist() with TextInputDialog + db.add_playlist()
+- Delete: PlaylistListWidget._delete_playlist() with db.delete_playlist() cascade
+- Rename: Both context menu (TextInputDialog) and double-click title edit in PlaylistEditor
+- Duplicate: PlaylistListWidget._duplicate_playlist() copies playlist with tracks
+- Reorder: Drag-drop reordering persisted via db.reorder_playlists()
+- All CRUD signals wired in PlaylistsWidget to update editor and persist selection
+- 14 database CRUD tests already passing
+
+PL-007: Add/remove tracks to playlist via dialog
+Status: DONE (already implemented)
+Date: 2026-02-06
+
+Notes: Track add/remove was already implemented as part of PL-004:
+- Add: PlaylistEditor._add_tracks() opens AudioFileSearchDialog with disabled_track_ids
+- Remove: PlaylistEditor._remove_track() calls db.remove_track_from_playlist()
+- Reorder: PlaylistTrackListContainer drag-drop with db.reorder_playlist_tracks()
+- Duplicate prevention via disabled state in picker dialog (PL-003)
+
+PL-013: Smart shuffle utility and tests
+Status: DONE
+Date: 2026-02-06
+
+Changes made:
+- app/audio/shuffle.py: New SmartShuffle class
+  - In-memory shuffled sequence of track IDs, no repeats until all played
+  - next(): returns next track ID, auto-reshuffles when cycle exhausted
+  - peek(): look ahead without advancing
+  - remaining/cycle_complete: track progress through current cycle
+  - reset(): reshuffle and start over (used when repeat+shuffle restarts)
+  - update_tracks(): change the track list (used when playlist is modified)
+  - track_ids property returns a defensive copy
+- app/audio/__init__.py: Exported SmartShuffle
+- tests/test_shuffle.py: 20 tests covering:
+  - Empty/None track lists
+  - Single track behavior
+  - No repeats within cycle (5, 20, 100 tracks)
+  - Multiple complete cycles all contain every track
+  - remaining count and cycle_complete flag
+  - peek without advancing
+  - reset reshuffles and restores full cycle
+  - update_tracks with new list, empty list, from empty
+  - Defensive copy of track_ids
+  - Statistical randomization verification
+- All 47 tests pass (27 existing + 20 new)
