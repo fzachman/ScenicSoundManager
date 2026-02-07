@@ -53,3 +53,24 @@ Changes made:
 - app/database/__init__.py: Exported Playlist, PlaylistTrack
 - tests/test_database.py: Added 13 tests in TestPlaylists class
   - All 26 tests pass (13 existing + 13 new)
+
+PL-003: Extend track picker dialog to disable already-included tracks
+Status: DONE
+Date: 2026-02-06
+
+Changes made:
+- app/scenes/scene_editor.py: AudioFileSearchDialog
+  - Added optional disabled_track_ids parameter (set[int]) to constructor
+  - _load_files() passes disabled flag to FileSelectItem for tracks in disabled set
+  - Disabled items cannot be pre-selected when reloading after search/filter
+- app/scenes/scene_editor.py: FileSelectItem
+  - Added disabled parameter to constructor
+  - Disabled items use darker background (BACKGROUND), muted title text, no pointer cursor
+  - Shows "Already added" italic label next to duration for disabled items
+  - mousePressEvent returns early for disabled items (cannot be selected)
+  - _update_style() handles disabled state with distinct visual treatment
+- app/scenes/scene_editor.py: SceneEditor._add_tracks()
+  - Collects existing audio_file_ids from current scene tracks
+  - Passes them as disabled_track_ids to AudioFileSearchDialog
+  - Removed redundant duplicate check since disabled tracks can't be selected
+- All 26 existing tests pass

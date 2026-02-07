@@ -20,11 +20,13 @@ from .track_control import TrackControl
 class AudioFileSearchDialog(QDialog):
     """Dialog for searching and selecting audio files to add to a scene"""
 
-    def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
+    def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine,
+                 disabled_track_ids: Optional[set[int]] = None, parent=None):
         super().__init__(parent)
         self.db = db
         self.audio_engine = audio_engine
         self.selected_files: list[AudioFile] = []
+        self._disabled_track_ids: set[int] = disabled_track_ids or set()
         self._preview_player: Optional[TrackPlayer] = None
         self._preview_file_id: Optional[int] = None
         self._preview_item: Optional["FileSelectItem"] = None
@@ -107,11 +109,12 @@ class AudioFileSearchDialog(QDialog):
             self._stop_preview()
 
         for file in files:
-            item = FileSelectItem(file)
+            disabled = file.id in self._disabled_track_ids
+            item = FileSelectItem(file, disabled=disabled)
             item.selection_changed.connect(self._on_selection_changed)
             item.preview_requested.connect(self._on_preview_requested)
             # Check if already selected
-            if file.id in [f.id for f in self.selected_files]:
+            if not disabled and file.id in [f.id for f in self.selected_files]:
                 item.set_selected(True)
             if self._preview_file_id == file.id:
                 self._preview_item = item
@@ -199,15 +202,17 @@ class FileSelectItem(QFrame):
     selection_changed = pyqtSignal(AudioFile, bool)
     preview_requested = pyqtSignal(AudioFile, object)
 
-    def __init__(self, file: AudioFile, parent=None):
+    def __init__(self, file: AudioFile, disabled: bool = False, parent=None):
         super().__init__(parent)
         self.file = file
         self._selected = False
+        self._disabled = disabled
         self._preview_playing = False
         self._icons = IconLibrary()
 
         self.setFrameStyle(QFrame.Shape.StyledPanel)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        if not disabled:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._update_style()
 
         layout = QHBoxLayout(self)
@@ -216,7 +221,8 @@ class FileSelectItem(QFrame):
         # Title and artist
         info_layout = QVBoxLayout()
         title_label = QLabel(file.display_title)
-        title_label.setStyleSheet("font-weight: bold;")
+        text_color = Styles.TEXT_MUTED if disabled else ""
+        title_label.setStyleSheet(f"font-weight: bold; color: {text_color};" if disabled else "font-weight: bold;")
         info_layout.addWidget(title_label)
 
         if file.artist:
@@ -225,6 +231,12 @@ class FileSelectItem(QFrame):
             info_layout.addWidget(artist_label)
 
         layout.addLayout(info_layout, 1)
+
+        # "Already added" label for disabled items
+        if disabled:
+            added_label = QLabel("Already added")
+            added_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px; font-style: italic;")
+            layout.addWidget(added_label)
 
         # Duration
         duration_label = QLabel(file.duration_formatted)
@@ -242,8 +254,17 @@ class FileSelectItem(QFrame):
         layout.addWidget(self.preview_btn)
 
     def _update_style(self):
-        """Update visual style based on selection"""
-        if self._selected:
+        """Update visual style based on selection and disabled state"""
+        if self._disabled:
+            self.setStyleSheet(f"""
+                FileSelectItem {{
+                    background-color: {Styles.BACKGROUND};
+                    border: 1px solid {Styles.BORDER};
+                    border-radius: 4px;
+                    opacity: 0.5;
+                }}
+            """)
+        elif self._selected:
             self.setStyleSheet(f"""
                 FileSelectItem {{
                     background-color: {Styles.PRIMARY};
@@ -285,7 +306,9 @@ class FileSelectItem(QFrame):
         self.preview_requested.emit(self.file, self)
 
     def mousePressEvent(self, event):
-        """Handle click"""
+        """Handle click - disabled items cannot be selected"""
+        if self._disabled:
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             self._selected = not self._selected
             self._update_style()
@@ -449,18 +472,16 @@ class SceneEditor(QWidget):
         if not self._current_scene:
             return
 
-        dialog = AudioFileSearchDialog(self.db, self.audio_engine, self)
+        existing_ids = {t.audio_file_id for t in self._current_scene.tracks}
+        dialog = AudioFileSearchDialog(
+            self.db, self.audio_engine,
+            disabled_track_ids=existing_ids, parent=self,
+        )
         if dialog.exec():
             files = dialog.get_selected_files()
             for file in files:
-                # Check if already in scene
-                existing = any(
-                    t.audio_file_id == file.id
-                    for t in self._current_scene.tracks
-                )
-                if not existing:
-                    position = len(self._current_scene.tracks)
-                    self.db.add_track_to_scene(self._current_scene.id, file.id, position)
+                position = len(self._current_scene.tracks)
+                self.db.add_track_to_scene(self._current_scene.id, file.id, position)
 
             self._refresh_tracks()
             self.scene_modified.emit()

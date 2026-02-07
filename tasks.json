@@ -151,11 +151,11 @@
       "definition_of_done": [
         "Picker dialog supports disabled tracks and works for scenes without regressions."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 45,
-      "last_update": "2026-02-07",
-      "notes": ""
+      "last_update": "2026-02-06",
+      "notes": "Added disabled_track_ids param to AudioFileSearchDialog and disabled state to FileSelectItem. SceneEditor passes existing track IDs. All 26 tests pass."
     },
     {
       "id": "PL-004",
