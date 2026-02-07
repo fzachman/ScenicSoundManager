@@ -1,0 +1,555 @@
+{
+  "feature": {
+    "title": "Playlists Module and Playlist Tracks in Scenes",
+    "problem_statement": "Users need to manage playlists and use them alongside scenes, with consistent playback controls and smart shuffle behavior.",
+    "user_story": "As a user, I can create and manage playlists, play them directly or inside scenes, and always see whether a scene or playlist is currently playing.",
+    "out_of_scope": [],
+    "global_acceptance_criteria": [
+      "Users can create, rename, and delete playlists in a new Playlists module tab.",
+      "Users can add, remove, and reorder tracks in a playlist; tracks are unique within a playlist and duplicates are disabled in the picker.",
+      "Playlists can be played and paused in the Playlists module, with play/pause UI reflecting state.",
+      "Playlist shuffle in the Playlists module uses smart random (no repeats until all tracks have played) and is toggleable.",
+      "Global now playing shows prefix `Scene: <name>` or `Playlist: <name>` and only one can be playing at a time (scene or playlist).",
+      "Scenes can include playlist entries as a track type with per-entry shuffle and repeat toggles independent of the playlist module shuffle.",
+      "When a playlist entry in a scene plays, it advances through the playlist tracks sequentially or via smart shuffle; repeat restarts (reshuffle if shuffle is on).",
+      "Playlists persist across app restarts in the same way as scenes/tracks.",
+      "UI styling matches existing app patterns and aligns with the provided Playlists layout reference."
+    ],
+    "constraints": [
+      "Reuse or extend the existing track picker dialog used for scenes, including search, and disable already-included tracks.",
+      "Smart shuffle avoids repeats until all tracks in the playlist are played; shuffle order need not persist across app restarts but persists while app is open.",
+      "Playlists and scenes are mutually exclusive for global playback; starting one stops the other."
+    ],
+    "assumptions": [
+      "Existing persistence mechanism used for scenes/tracks can be extended for playlists.",
+      "Existing playback engine can be extended to support playlist sources and playlist entries inside scenes.",
+      "Existing UI components for scenes module provide patterns for list, play/pause, and shuffle toggle."
+    ],
+    "dependencies": [
+      "Current scenes module UI and track picker dialog implementation",
+      "Playback engine / audio player state management",
+      "Persistence layer for scenes/tracks"
+    ],
+    "question_log": [
+      {
+        "question": "User-visible goal, success criteria, location, out of scope, verification?",
+        "answer": "Goal: manage playlists and add them to scenes. Success: create/rename playlists; add/remove/reorder tracks; playlist play with smart shuffle; add playlist to scene; per-playlist-entry shuffle in scene. Location: new module tab. Out of scope: none. Verification: agent-performable without user input."
+      },
+      {
+        "question": "Track uniqueness behavior?",
+        "answer": "Disable already-included tracks in the picker (reuse scene track picker dialog if possible)."
+      },
+      {
+        "question": "Playlist-in-scene behavior and shuffle persistence?",
+        "answer": "Playlist entries are their own track type with per-entry shuffle/repeat; smart shuffle avoids repeats until all played; shuffle order persists while app is open but not across restarts."
+      },
+      {
+        "question": "Now playing prefix format?",
+        "answer": "Use `Scene: <name>` and `Playlist: <name>` with that capitalization."
+      }
+    ]
+  },
+  "work_items": [
+    {
+      "id": "PL-001",
+      "title": "Inventory existing scenes, playback, and picker code",
+      "scope": "Read-only analysis to map files, state shapes, and reuse points",
+      "files_touched": [],
+      "inputs": [
+        "Scenes module UI files",
+        "Track picker dialog implementation",
+        "Playback state/store files",
+        "Persistence layer files"
+      ],
+      "outputs": [
+        "Notes on relevant files/components/state shapes for playlists and scene entries",
+        "List of candidate components to reuse"
+      ],
+      "implementation_notes": [
+        "Identify how tracks are represented in scenes and how playback state is set.",
+        "Locate dialog used to add tracks to scenes and its search behavior."
+      ],
+      "acceptance_criteria": [
+        "Clear mapping of files to update for playlists, playback, and picker reuse."
+      ],
+      "verification_steps": [
+        "None (read-only exploration)."
+      ],
+      "definition_of_done": [
+        "Notes captured locally in the work item context."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 30,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-002",
+      "title": "Add playlist data model and persistence",
+      "scope": "Introduce playlist entities with ordered track IDs and persistence wiring",
+      "files_touched": [
+        "data model file(s) for tracks/scenes",
+        "persistence layer files"
+      ],
+      "inputs": [
+        "Existing track and scene schemas",
+        "Persistence storage format"
+      ],
+      "outputs": [
+        "Playlist model with id, name, ordered track IDs",
+        "Persistent storage read/write for playlists"
+      ],
+      "implementation_notes": [
+        "Ensure tracks are unique within a playlist (enforced in UI logic or data layer).",
+        "Use same persistence strategy as scenes/tracks."
+      ],
+      "acceptance_criteria": [
+        "Playlists load on app start and are saved on change.",
+        "Playlist schema supports ordered tracks and rename."
+      ],
+      "verification_steps": [
+        "Run existing automated tests if available.",
+        "Add/adjust unit tests for playlist persistence if test framework exists."
+      ],
+      "definition_of_done": [
+        "Playlist data persists across app restart (verified via automated tests or storage snapshot check)."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 45,
+      "last_update": "2026-02-07",
+      "notes": "If test framework is absent, add a minimal persistence test using existing patterns."
+    },
+    {
+      "id": "PL-003",
+      "title": "Extend track picker dialog to disable already-included tracks",
+      "scope": "Reuse/extend existing add-tracks dialog for playlists and scenes",
+      "files_touched": [
+        "track picker dialog component file(s)"
+      ],
+      "inputs": [
+        "Current picker dialog API",
+        "Set of existing track IDs for target collection"
+      ],
+      "outputs": [
+        "Disabled state for tracks already in the target list",
+        "Reusable dialog for both scenes and playlists"
+      ],
+      "implementation_notes": [
+        "Add prop for `disabledTrackIds` (or equivalent) and apply disabled styles/behavior.",
+        "Ensure search results reflect disabled state."
+      ],
+      "acceptance_criteria": [
+        "Tracks already in a playlist or scene appear disabled in the picker.",
+        "Disabled tracks cannot be selected."
+      ],
+      "verification_steps": [
+        "Add/adjust component tests if applicable.",
+        "Run existing UI test suite if available."
+      ],
+      "definition_of_done": [
+        "Picker dialog supports disabled tracks and works for scenes without regressions."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 45,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-004",
+      "title": "Build Playlists module UI shell and list",
+      "scope": "New module tab and left-hand playlist list layout per design",
+      "files_touched": [
+        "navigation/tab module files",
+        "new playlists module component files"
+      ],
+      "inputs": [
+        "Design reference image",
+        "Existing module tab patterns"
+      ],
+      "outputs": [
+        "Playlists tab",
+        "Sidebar list with selectable playlists and New Playlist button"
+      ],
+      "implementation_notes": [
+        "Follow existing styling and layout patterns used by Scenes.",
+        "Wire selection state to show playlist details on the right."
+      ],
+      "acceptance_criteria": [
+        "Playlists tab appears alongside existing tabs.",
+        "Selecting a playlist updates the detail panel."
+      ],
+      "verification_steps": [
+        "Run UI build/lint/test commands if available.",
+        "Render check via component tests or snapshot tests if present."
+      ],
+      "definition_of_done": [
+        "Playlists module shell matches the overall app styling and layout guidance."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 60,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-005",
+      "title": "Playlist details: rename, track table, and reordering",
+      "scope": "Playlist detail panel with editable name, track list, and reorder controls",
+      "files_touched": [
+        "playlists module component files",
+        "shared list/table components if reused"
+      ],
+      "inputs": [
+        "Playlist state model",
+        "Existing track list UI patterns from scenes/library"
+      ],
+      "outputs": [
+        "Editable playlist title",
+        "Track list table with artist/duration/tags as applicable",
+        "Reorder controls for tracks"
+      ],
+      "implementation_notes": [
+        "Use existing reorder UI pattern from scenes if available.",
+        "Ensure track uniqueness is enforced by dialog, not table."
+      ],
+      "acceptance_criteria": [
+        "User can rename playlist and reorder tracks.",
+        "Track list updates persist."
+      ],
+      "verification_steps": [
+        "Add/adjust component tests if applicable.",
+        "Run existing UI test suite if available."
+      ],
+      "definition_of_done": [
+        "Playlist details fully editable with persistable order."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 60,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-006",
+      "title": "Playlist CRUD actions",
+      "scope": "Create, delete, rename playlists from UI",
+      "files_touched": [
+        "playlists module component files",
+        "state/store files"
+      ],
+      "inputs": [
+        "Playlist model and persistence"
+      ],
+      "outputs": [
+        "Create new playlist flow",
+        "Delete playlist action"
+      ],
+      "implementation_notes": [
+        "Follow Scenes module patterns for add/remove."
+      ],
+      "acceptance_criteria": [
+        "Users can create and delete playlists from the Playlists tab.",
+        "Renames persist and update selections."
+      ],
+      "verification_steps": [
+        "Run existing test suite if available.",
+        "Add unit tests for playlist CRUD if test framework exists."
+      ],
+      "definition_of_done": [
+        "CRUD actions function and persist across restarts."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 45,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-007",
+      "title": "Add/remove tracks to playlist via dialog",
+      "scope": "Reuse track picker dialog with disabled already-in-playlist tracks",
+      "files_touched": [
+        "playlists module component files",
+        "track picker dialog component files"
+      ],
+      "inputs": [
+        "Track picker dialog with disabled support",
+        "Playlist track list"
+      ],
+      "outputs": [
+        "Add tracks action",
+        "Remove track action"
+      ],
+      "implementation_notes": [
+        "Support search in dialog as in scenes.",
+        "Ensure no duplicates can be added."
+      ],
+      "acceptance_criteria": [
+        "Tracks can be added and removed from a playlist.",
+        "Dialog disables already-included tracks."
+      ],
+      "verification_steps": [
+        "Component tests or existing UI tests if available."
+      ],
+      "definition_of_done": [
+        "Playlist track membership is editable and persists."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 45,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-008",
+      "title": "Playlist playback controls in Playlists module",
+      "scope": "Play/pause and shuffle toggle for playlist playback",
+      "files_touched": [
+        "playlists module component files",
+        "playback state files"
+      ],
+      "inputs": [
+        "Playback engine API",
+        "Playlist state"
+      ],
+      "outputs": [
+        "Play button toggles to pause",
+        "Shuffle toggle with smart random behavior"
+      ],
+      "implementation_notes": [
+        "Shuffle mode here is per-playlist module, not per scene entry.",
+        "Ensure UI reflects global playback state."
+      ],
+      "acceptance_criteria": [
+        "Play/pause works for playlists.",
+        "Shuffle toggle affects playback order with no repeats until all tracks played."
+      ],
+      "verification_steps": [
+        "Add unit tests for shuffle selection order if test framework exists.",
+        "Run existing test suite if available."
+      ],
+      "definition_of_done": [
+        "Playlist playback controls operate correctly and update UI."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 60,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-009",
+      "title": "Global playback exclusivity and now playing label",
+      "scope": "Ensure only a scene or playlist can be playing; update global now playing label",
+      "files_touched": [
+        "playback state files",
+        "global now playing UI component files"
+      ],
+      "inputs": [
+        "Existing now playing table component"
+      ],
+      "outputs": [
+        "Playback exclusivity between scene and playlist",
+        "Now playing label with prefix"
+      ],
+      "implementation_notes": [
+        "Starting playlist stops any active scene; starting scene stops active playlist.",
+        "Now playing label should use `Scene: <name>` or `Playlist: <name>`."
+      ],
+      "acceptance_criteria": [
+        "Mutual exclusivity is enforced across playback controls.",
+        "Now playing table reflects correct prefixed label."
+      ],
+      "verification_steps": [
+        "Add unit tests for playback state transitions if test framework exists.",
+        "Run existing test suite if available."
+      ],
+      "definition_of_done": [
+        "Playback handoff and now playing UI are correct."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 45,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-010",
+      "title": "Add playlist as scene track type",
+      "scope": "Extend scene track model to include playlist entries",
+      "files_touched": [
+        "scene track model file(s)",
+        "scene editor UI files"
+      ],
+      "inputs": [
+        "Existing scene track model",
+        "Playlist list"
+      ],
+      "outputs": [
+        "New scene track type for playlist",
+        "UI to add playlist entries to scene"
+      ],
+      "implementation_notes": [
+        "Playlist entries store playlist ID plus per-entry settings (shuffle, repeat).",
+        "Use a picker similar to track picker for playlist selection."
+      ],
+      "acceptance_criteria": [
+        "Scenes can include playlists alongside tracks.",
+        "Playlist entries can be added and removed."
+      ],
+      "verification_steps": [
+        "Add unit tests for scene model changes if test framework exists.",
+        "Run existing test suite if available."
+      ],
+      "definition_of_done": [
+        "Scene editor supports playlist entries without regressions."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 60,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-011",
+      "title": "Scene playlist entry controls (shuffle + repeat)",
+      "scope": "Add per-entry shuffle and repeat toggles for playlists inside scenes",
+      "files_touched": [
+        "scene editor UI files",
+        "scene track row component files"
+      ],
+      "inputs": [
+        "Scene playlist entry model"
+      ],
+      "outputs": [
+        "Shuffle toggle per playlist entry",
+        "Repeat toggle per playlist entry"
+      ],
+      "implementation_notes": [
+        "Shuffle here is independent of playlist module shuffle.",
+        "Match the repeat toggle style already used for tracks."
+      ],
+      "acceptance_criteria": [
+        "Shuffle and repeat toggles appear for playlist entries in scenes.",
+        "Toggles persist with the scene."
+      ],
+      "verification_steps": [
+        "Add component tests if applicable.",
+        "Run existing test suite if available."
+      ],
+      "definition_of_done": [
+        "Per-entry controls are usable and persist."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 45,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-012",
+      "title": "Playback engine support for playlist entries in scenes",
+      "scope": "Play playlist tracks sequentially or smart shuffle within scenes",
+      "files_touched": [
+        "playback engine/state files"
+      ],
+      "inputs": [
+        "Scene playback flow",
+        "Playlist data",
+        "Per-entry shuffle/repeat settings"
+      ],
+      "outputs": [
+        "Playlist-in-scene playback behavior"
+      ],
+      "implementation_notes": [
+        "When a playlist entry is active, select next track based on per-entry shuffle.",
+        "Avoid repeats until all tracks played; keep shuffle order in memory during app session.",
+        "If repeat enabled, restart sequence; if shuffle is on, reshuffle before restart."
+      ],
+      "acceptance_criteria": [
+        "Playlist entries in scenes advance through playlist tracks as specified.",
+        "Repeat and shuffle behavior is correct and independent of playlist module shuffle."
+      ],
+      "verification_steps": [
+        "Add unit tests for selection order and repeat behavior if test framework exists.",
+        "Run existing test suite if available."
+      ],
+      "definition_of_done": [
+        "Scene playback with playlist entries behaves correctly across track boundaries."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 75,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-013",
+      "title": "Smart shuffle utility and tests",
+      "scope": "Shared shuffle logic for playlists and scene playlist entries",
+      "files_touched": [
+        "utility files for playback/shuffle",
+        "test files if present"
+      ],
+      "inputs": [
+        "Playlist track list"
+      ],
+      "outputs": [
+        "Deterministic smart shuffle sequence generator",
+        "Unit tests to enforce no repeats until all played"
+      ],
+      "implementation_notes": [
+        "Use an in-memory sequence and index; regenerate when exhausted.",
+        "If repeat with shuffle, regenerate order before restarting."
+      ],
+      "acceptance_criteria": [
+        "Shuffle does not repeat a track until all tracks are played."
+      ],
+      "verification_steps": [
+        "Run unit tests for shuffle utility."
+      ],
+      "definition_of_done": [
+        "Shuffle behavior proven by tests."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 45,
+      "last_update": "2026-02-07",
+      "notes": ""
+    },
+    {
+      "id": "PL-014",
+      "title": "Now playing table styling updates (scene/playlist prefix)",
+      "scope": "Ensure global now playing table follows app styling and prefix format",
+      "files_touched": [
+        "global now playing table UI component files"
+      ],
+      "inputs": [
+        "Existing styling patterns"
+      ],
+      "outputs": [
+        "Prefixed display labels for scene and playlist"
+      ],
+      "implementation_notes": [
+        "Use `Scene: <name>` and `Playlist: <name>` formatting."
+      ],
+      "acceptance_criteria": [
+        "Now playing table shows correct label and styling."
+      ],
+      "verification_steps": [
+        "Run existing UI test suite or snapshot tests if present."
+      ],
+      "definition_of_done": [
+        "Now playing table visually matches existing app styles and displays correct prefix."
+      ],
+      "status": "proposed",
+      "blockers": [],
+      "estimated_session_minutes": 30,
+      "last_update": "2026-02-07",
+      "notes": ""
+    }
+  ]
+}
