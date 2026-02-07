@@ -115,11 +115,11 @@
       "definition_of_done": [
         "Playlist data persists across app restart (verified via automated tests or storage snapshot check)."
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 45,
-      "last_update": "2026-02-07",
-      "notes": "If test framework is absent, add a minimal persistence test using existing patterns."
+      "last_update": "2026-02-06",
+      "notes": "Playlist and PlaylistTrack models added, schema tables created, full CRUD in connection.py, 13 tests added and passing."
     },
     {
       "id": "PL-003",

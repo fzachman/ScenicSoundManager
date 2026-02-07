@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from .models import AudioFile, Tag, Scene, SceneAudioFile
+from .models import AudioFile, Tag, Scene, SceneAudioFile, Playlist, PlaylistTrack
 
 
 class DatabaseConnection:
@@ -445,5 +445,141 @@ class DatabaseConnection:
             self.connection.execute(
                 "UPDATE scene_audio_files SET position = ? WHERE id = ? AND scene_id = ?",
                 (position, track_id, scene_id)
+            )
+        self.connection.commit()
+
+    # Playlist operations
+    def add_playlist(self, playlist: Playlist) -> int:
+        """Add a new playlist, return its ID"""
+        self.connection.execute("UPDATE playlists SET position = position + 1")
+        cursor = self.connection.execute(
+            "INSERT INTO playlists (name, position) VALUES (?, ?)",
+            (playlist.name, 0)
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def get_playlist(self, playlist_id: int) -> Optional[Playlist]:
+        """Get a playlist by ID with all its tracks"""
+        cursor = self.connection.execute(
+            "SELECT * FROM playlists WHERE id = ?", (playlist_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            playlist = self._row_to_playlist(row)
+            playlist.tracks = self.get_playlist_tracks(playlist_id)
+            return playlist
+        return None
+
+    def get_all_playlists(self) -> list[Playlist]:
+        """Get all playlists"""
+        cursor = self.connection.execute(
+            "SELECT * FROM playlists ORDER BY position, name COLLATE NOCASE"
+        )
+        return [self._row_to_playlist(row) for row in cursor.fetchall()]
+
+    def search_playlists(self, query: str) -> list[Playlist]:
+        """Search playlists by name"""
+        cursor = self.connection.execute(
+            "SELECT * FROM playlists WHERE name LIKE ? ORDER BY position, name COLLATE NOCASE",
+            (f"%{query}%",)
+        )
+        return [self._row_to_playlist(row) for row in cursor.fetchall()]
+
+    def update_playlist(self, playlist: Playlist) -> None:
+        """Update a playlist's name"""
+        self.connection.execute(
+            "UPDATE playlists SET name = ?, updated_at = datetime('now') WHERE id = ?",
+            (playlist.name, playlist.id)
+        )
+        self.connection.commit()
+
+    def delete_playlist(self, playlist_id: int) -> None:
+        """Delete a playlist"""
+        self.connection.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+        self.connection.commit()
+
+    def reorder_playlists(self, playlist_ids: list[int]) -> None:
+        """Reorder playlists by updating their positions"""
+        for position, playlist_id in enumerate(playlist_ids):
+            self.connection.execute(
+                "UPDATE playlists SET position = ? WHERE id = ?",
+                (position, playlist_id)
+            )
+        self.connection.commit()
+
+    def _row_to_playlist(self, row: sqlite3.Row) -> Playlist:
+        """Convert a database row to a Playlist object"""
+        return Playlist(
+            id=row["id"],
+            name=row["name"],
+            position=row["position"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"]
+        )
+
+    # Playlist track operations
+    def add_track_to_playlist(
+        self,
+        playlist_id: int,
+        audio_file_id: int,
+        position: Optional[int] = None,
+    ) -> int:
+        """Add an audio file to a playlist, return the playlist_track ID"""
+        if position is None:
+            cursor = self.connection.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 AS next_pos FROM playlist_tracks WHERE playlist_id = ?",
+                (playlist_id,)
+            )
+            position = cursor.fetchone()["next_pos"]
+        cursor = self.connection.execute(
+            "INSERT INTO playlist_tracks (playlist_id, audio_file_id, position) VALUES (?, ?, ?)",
+            (playlist_id, audio_file_id, position)
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def get_playlist_tracks(self, playlist_id: int) -> list[PlaylistTrack]:
+        """Get all tracks in a playlist with their audio file data"""
+        cursor = self.connection.execute(
+            """
+            SELECT pt.*, af.file_path, af.title, af.artist, af.duration_seconds
+            FROM playlist_tracks pt
+            JOIN audio_files af ON pt.audio_file_id = af.id
+            WHERE pt.playlist_id = ?
+            ORDER BY pt.position
+            """,
+            (playlist_id,)
+        )
+        tracks = []
+        for row in cursor.fetchall():
+            audio_file = AudioFile(
+                id=row["audio_file_id"],
+                file_path=row["file_path"],
+                title=row["title"],
+                artist=row["artist"],
+                duration_seconds=row["duration_seconds"]
+            )
+            track = PlaylistTrack(
+                id=row["id"],
+                playlist_id=row["playlist_id"],
+                audio_file_id=row["audio_file_id"],
+                position=row["position"],
+                audio_file=audio_file
+            )
+            tracks.append(track)
+        return tracks
+
+    def remove_track_from_playlist(self, track_id: int) -> None:
+        """Remove a track from a playlist"""
+        self.connection.execute("DELETE FROM playlist_tracks WHERE id = ?", (track_id,))
+        self.connection.commit()
+
+    def reorder_playlist_tracks(self, playlist_id: int, track_ids: list[int]) -> None:
+        """Reorder tracks in a playlist by updating their positions"""
+        for position, track_id in enumerate(track_ids):
+            self.connection.execute(
+                "UPDATE playlist_tracks SET position = ? WHERE id = ? AND playlist_id = ?",
+                (position, track_id, playlist_id)
             )
         self.connection.commit()

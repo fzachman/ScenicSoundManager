@@ -4,7 +4,7 @@ import os
 import tempfile
 import pytest
 
-from app.database import DatabaseConnection, AudioFile, Tag, Scene, SceneAudioFile
+from app.database import DatabaseConnection, AudioFile, Tag, Scene, SceneAudioFile, Playlist, PlaylistTrack
 
 
 @pytest.fixture
@@ -187,3 +187,141 @@ class TestScenes:
 
         # Scene should be gone
         assert db.get_scene(scene_id) is None
+
+
+class TestPlaylists:
+    def test_add_playlist(self, db):
+        playlist = Playlist(name="My Playlist")
+        playlist_id = db.add_playlist(playlist)
+
+        assert playlist_id is not None
+        assert playlist_id > 0
+
+    def test_get_playlist(self, db):
+        playlist = Playlist(name="Test Playlist")
+        playlist_id = db.add_playlist(playlist)
+
+        retrieved = db.get_playlist(playlist_id)
+
+        assert retrieved is not None
+        assert retrieved.id == playlist_id
+        assert retrieved.name == "Test Playlist"
+
+    def test_get_all_playlists(self, db):
+        db.add_playlist(Playlist(name="Playlist A"))
+        db.add_playlist(Playlist(name="Playlist B"))
+        db.add_playlist(Playlist(name="Playlist C"))
+
+        playlists = db.get_all_playlists()
+
+        assert len(playlists) == 3
+
+    def test_search_playlists(self, db):
+        db.add_playlist(Playlist(name="Battle Music"))
+        db.add_playlist(Playlist(name="Tavern Ambience"))
+        db.add_playlist(Playlist(name="Battle Drums"))
+
+        results = db.search_playlists("battle")
+
+        assert len(results) == 2
+        names = [p.name for p in results]
+        assert "Battle Music" in names
+        assert "Battle Drums" in names
+
+    def test_update_playlist(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Old Name"))
+
+        playlist = db.get_playlist(playlist_id)
+        playlist.name = "New Name"
+        db.update_playlist(playlist)
+
+        retrieved = db.get_playlist(playlist_id)
+        assert retrieved.name == "New Name"
+
+    def test_delete_playlist(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Delete Me"))
+
+        db.delete_playlist(playlist_id)
+
+        assert db.get_playlist(playlist_id) is None
+
+    def test_reorder_playlists(self, db):
+        id_a = db.add_playlist(Playlist(name="A"))
+        id_b = db.add_playlist(Playlist(name="B"))
+        id_c = db.add_playlist(Playlist(name="C"))
+
+        db.reorder_playlists([id_c, id_a, id_b])
+
+        playlists = db.get_all_playlists()
+        assert playlists[0].id == id_c
+        assert playlists[1].id == id_a
+        assert playlists[2].id == id_b
+
+    def test_add_track_to_playlist(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+        file_id = db.add_audio_file(AudioFile(file_path="/track.mp3", title="Track"))
+
+        track_id = db.add_track_to_playlist(playlist_id, file_id)
+
+        assert track_id is not None
+        playlist = db.get_playlist(playlist_id)
+        assert len(playlist.tracks) == 1
+        assert playlist.tracks[0].audio_file_id == file_id
+        assert playlist.tracks[0].audio_file.title == "Track"
+
+    def test_add_track_auto_position(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+        f1 = db.add_audio_file(AudioFile(file_path="/a.mp3", title="A"))
+        f2 = db.add_audio_file(AudioFile(file_path="/b.mp3", title="B"))
+
+        db.add_track_to_playlist(playlist_id, f1)
+        db.add_track_to_playlist(playlist_id, f2)
+
+        playlist = db.get_playlist(playlist_id)
+        assert playlist.tracks[0].position == 0
+        assert playlist.tracks[1].position == 1
+
+    def test_track_uniqueness_in_playlist(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+        file_id = db.add_audio_file(AudioFile(file_path="/track.mp3", title="Track"))
+
+        db.add_track_to_playlist(playlist_id, file_id)
+
+        with pytest.raises(Exception):
+            db.add_track_to_playlist(playlist_id, file_id)
+
+    def test_remove_track_from_playlist(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+        file_id = db.add_audio_file(AudioFile(file_path="/track.mp3", title="Track"))
+        track_id = db.add_track_to_playlist(playlist_id, file_id)
+
+        db.remove_track_from_playlist(track_id)
+
+        playlist = db.get_playlist(playlist_id)
+        assert len(playlist.tracks) == 0
+
+    def test_reorder_playlist_tracks(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+        f1 = db.add_audio_file(AudioFile(file_path="/a.mp3", title="A"))
+        f2 = db.add_audio_file(AudioFile(file_path="/b.mp3", title="B"))
+        f3 = db.add_audio_file(AudioFile(file_path="/c.mp3", title="C"))
+
+        t1 = db.add_track_to_playlist(playlist_id, f1)
+        t2 = db.add_track_to_playlist(playlist_id, f2)
+        t3 = db.add_track_to_playlist(playlist_id, f3)
+
+        db.reorder_playlist_tracks(playlist_id, [t3, t1, t2])
+
+        playlist = db.get_playlist(playlist_id)
+        assert playlist.tracks[0].id == t3
+        assert playlist.tracks[1].id == t1
+        assert playlist.tracks[2].id == t2
+
+    def test_delete_playlist_cascades_tracks(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+        file_id = db.add_audio_file(AudioFile(file_path="/track.mp3", title="Track"))
+        db.add_track_to_playlist(playlist_id, file_id)
+
+        db.delete_playlist(playlist_id)
+
+        assert db.get_playlist(playlist_id) is None

@@ -32,3 +32,24 @@ Files to create/modify for playlists:
 - app/scenes/scene_editor.py: add disabled_track_ids to AudioFileSearchDialog
 - New app/audio/shuffle.py: smart shuffle utility
 - tests/test_database.py: add playlist persistence tests
+
+PL-002: Add playlist data model and persistence
+Status: DONE
+Date: 2026-02-06
+
+Changes made:
+- app/database/models.py: Added Playlist and PlaylistTrack dataclasses
+  - Playlist: id, name, position, created_at, updated_at, tracks list
+  - PlaylistTrack: id, playlist_id, audio_file_id, position, audio_file reference
+- app/database/schema.sql: Added playlists and playlist_tracks tables
+  - playlists: id, name, position, created_at, updated_at
+  - playlist_tracks: id, playlist_id, audio_file_id, position with UNIQUE(playlist_id, audio_file_id)
+  - Index on playlist_tracks(playlist_id, position)
+- app/database/connection.py: Added playlist CRUD methods
+  - add_playlist, get_playlist, get_all_playlists, search_playlists
+  - update_playlist, delete_playlist, reorder_playlists
+  - add_track_to_playlist (auto-position), get_playlist_tracks
+  - remove_track_from_playlist, reorder_playlist_tracks
+- app/database/__init__.py: Exported Playlist, PlaylistTrack
+- tests/test_database.py: Added 13 tests in TestPlaylists class
+  - All 26 tests pass (13 existing + 13 new)

@@ -66,3 +66,24 @@ class SceneAudioFile:
     is_repeat: bool = False
     play_mode: bool = True
     audio_file: Optional[AudioFile] = None
+
+
+@dataclass
+class Playlist:
+    """Represents a playlist of audio files"""
+    id: Optional[int] = None
+    name: str = ""
+    position: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    tracks: list["PlaylistTrack"] = field(default_factory=list)
+
+
+@dataclass
+class PlaylistTrack:
+    """Represents an audio file within a playlist"""
+    id: Optional[int] = None
+    playlist_id: Optional[int] = None
+    audio_file_id: Optional[int] = None
+    position: int = 0
+    audio_file: Optional[AudioFile] = None
