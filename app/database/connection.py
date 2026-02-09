@@ -142,11 +142,10 @@ class DatabaseConnection:
         cursor = self.connection.execute(
             "SELECT * FROM audio_files ORDER BY title COLLATE NOCASE"
         )
-        files = []
-        for row in cursor.fetchall():
-            audio_file = self._row_to_audio_file(row)
-            audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
-            files.append(audio_file)
+        files = [self._row_to_audio_file(row) for row in cursor.fetchall()]
+        tags_by_file = self._batch_load_tags([f.id for f in files])
+        for audio_file in files:
+            audio_file.tags = tags_by_file.get(audio_file.id, [])
         return files
 
     def search_audio_files(self, query: str, tag_ids: Optional[list[int]] = None) -> list[AudioFile]:
@@ -192,11 +191,10 @@ class DatabaseConnection:
             params = [query_pattern, query_pattern]
 
         cursor = self.connection.execute(sql, params)
-        files = []
-        for row in cursor.fetchall():
-            audio_file = self._row_to_audio_file(row)
-            audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
-            files.append(audio_file)
+        files = [self._row_to_audio_file(row) for row in cursor.fetchall()]
+        tags_by_file = self._batch_load_tags([f.id for f in files])
+        for audio_file in files:
+            audio_file.tags = tags_by_file.get(audio_file.id, [])
         return files
 
     def update_audio_file(self, audio_file: AudioFile) -> None:
@@ -303,6 +301,30 @@ class DatabaseConnection:
         )
         return [self._row_to_tag(row) for row in cursor.fetchall()]
 
+    def _batch_load_tags(self, audio_file_ids: list[int]) -> dict[int, list[Tag]]:
+        """Load tags for multiple audio files in a single query.
+
+        Returns a dict mapping audio_file_id -> list of Tags.
+        """
+        if not audio_file_ids:
+            return {}
+
+        placeholders = ",".join("?" * len(audio_file_ids))
+        cursor = self.connection.execute(
+            f"""
+            SELECT aft.audio_file_id, t.* FROM tags t
+            JOIN audio_file_tags aft ON t.id = aft.tag_id
+            WHERE aft.audio_file_id IN ({placeholders})
+            ORDER BY t.name COLLATE NOCASE
+            """,
+            audio_file_ids,
+        )
+
+        tags_by_file: dict[int, list[Tag]] = {fid: [] for fid in audio_file_ids}
+        for row in cursor.fetchall():
+            tags_by_file[row["audio_file_id"]].append(self._row_to_tag(row))
+        return tags_by_file
+
     def get_audio_files_by_tag(self, tag_id: int) -> list[AudioFile]:
         """Get all audio files with a specific tag"""
         cursor = self.connection.execute(
@@ -314,11 +336,10 @@ class DatabaseConnection:
             """,
             (tag_id,)
         )
-        files = []
-        for row in cursor.fetchall():
-            audio_file = self._row_to_audio_file(row)
-            audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
-            files.append(audio_file)
+        files = [self._row_to_audio_file(row) for row in cursor.fetchall()]
+        tags_by_file = self._batch_load_tags([f.id for f in files])
+        for audio_file in files:
+            audio_file.tags = tags_by_file.get(audio_file.id, [])
         return files
 
     # Scene operations
@@ -660,8 +681,12 @@ class DatabaseConnection:
             """,
             (playlist_id,)
         )
+        rows = cursor.fetchall()
+        audio_file_ids = [row["audio_file_id"] for row in rows]
+        tags_by_file = self._batch_load_tags(audio_file_ids)
+
         tracks = []
-        for row in cursor.fetchall():
+        for row in rows:
             audio_file = AudioFile(
                 id=row["audio_file_id"],
                 file_path=row["file_path"],
@@ -669,7 +694,7 @@ class DatabaseConnection:
                 artist=row["artist"],
                 duration_seconds=row["duration_seconds"]
             )
-            audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
+            audio_file.tags = tags_by_file.get(audio_file.id, [])
             track = PlaylistTrack(
                 id=row["id"],
                 playlist_id=row["playlist_id"],
