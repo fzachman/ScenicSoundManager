@@ -6,6 +6,10 @@ from typing import Optional
 from mutagen import File
 from mutagen.easyid3 import EasyID3
 
+from app.shared.logging import get_logger
+
+_log = get_logger(__name__)
+
 
 class MetadataExtractor:
     """Extract metadata from audio files using mutagen"""
@@ -51,7 +55,7 @@ class MetadataExtractor:
         except Exception as e:
             # On error, use filename as title
             result["title"] = os.path.splitext(os.path.basename(file_path))[0]
-            print(f"Error extracting metadata from {file_path}: {e}")
+            _log.error("metadata_extraction_failed", file_path=file_path, error=str(e))
 
         return result
 

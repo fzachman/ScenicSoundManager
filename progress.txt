@@ -44,3 +44,17 @@ Changes made:
   - Updated app/shared/__init__.py: exports configure_logging and get_logger
   - All 79 tests pass
   - Verified manually: structured logs output with timestamps, levels, logger names, and key-value context
+
+== log-04: Replace print statements with structlog calls ==
+Status: COMPLETE
+Date: 2026-02-09
+
+Changes made:
+  - app/audio/engine.py: Added `from app.shared.logging import get_logger` and module-level `_log = get_logger(__name__)`
+    - Line 17-18: Replaced 2 print() calls with _log.warning("vlc_not_available", error=...) and _log.warning("audio_playback_disabled")
+    - Line 42: Replaced print() with _log.warning("vlc_init_failed", error=...)
+  - app/library/metadata.py: Added `from app.shared.logging import get_logger` and module-level `_log = get_logger(__name__)`
+    - Line 54: Replaced print() with _log.error("metadata_extraction_failed", file_path=..., error=...)
+  - setup.py: 5 print statements intentionally kept (CLI build output, not app logging)
+  - Verified: `grep -r 'print(' app/ main.py` returns no matches
+  - All 79 tests pass

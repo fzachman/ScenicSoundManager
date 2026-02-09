@@ -5,6 +5,10 @@ import sys
 import weakref
 from typing import Optional, Any
 
+from app.shared.logging import get_logger
+
+_log = get_logger(__name__)
+
 # Try to import VLC, but handle the case where it's not available
 VLC_AVAILABLE = False
 vlc = None
@@ -14,8 +18,8 @@ try:
     vlc = _vlc
     VLC_AVAILABLE = True
 except (OSError, ImportError) as e:
-    print(f"Warning: VLC not available: {e}")
-    print("Audio playback will be disabled.")
+    _log.warning("vlc_not_available", error=str(e))
+    _log.warning("audio_playback_disabled")
 
 
 class AudioEngine:
@@ -39,7 +43,7 @@ class AudioEngine:
             self.vlc_instance = vlc.Instance("--no-xlib")  # Disable X11 on macOS
             self.available = True
         except Exception as e:
-            print(f"Warning: Could not initialize VLC: {e}")
+            _log.warning("vlc_init_failed", error=str(e))
 
     @classmethod
     def get_instance(cls) -> "AudioEngine":

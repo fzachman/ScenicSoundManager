@@ -168,11 +168,11 @@
       "definition_of_done": [
         "No print statements remain in source"
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 90,
       "last_update": "2026-02-09",
-      "notes": "If any print is required (e.g., CLI output), replace with appropriate logging or explicit stdout handling."
+      "notes": "All 4 app-code print statements replaced with structlog calls. 5 setup.py prints kept as CLI output. All 79 tests pass."
     },
     {
       "id": "log-05",
