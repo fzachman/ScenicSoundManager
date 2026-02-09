@@ -470,7 +470,7 @@ class PlaylistEditor(QWidget):
         if not self._current_playlist:
             return
 
-        from ..scenes.scene_editor import AudioFileSearchDialog
+        from ..shared.dialogs import AudioFileSearchDialog
 
         existing_ids = {t.audio_file_id for t in self._current_playlist.tracks}
         dialog = AudioFileSearchDialog(

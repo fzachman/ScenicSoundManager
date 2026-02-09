@@ -1,14 +1,18 @@
 """Reusable dialog components"""
 
 import colorsys
+import os
+from typing import Optional
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QPushButton, QLabel, QFileDialog, QLineEdit, QSlider, QListWidget
+    QPushButton, QLabel, QFileDialog, QLineEdit, QSlider, QListWidget,
+    QWidget, QScrollArea, QFrame
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import pyqtSignal, Qt, QSize
 
 from .styles import Styles
+from .icons import IconLibrary
 
 
 class FilePickerDialog(QFileDialog):
@@ -392,3 +396,305 @@ class TextInputDialog(QDialog):
 
     def get_text(self) -> str:
         return self.input_field.text().strip()
+
+
+class AudioFileSearchDialog(QDialog):
+    """Dialog for searching and selecting audio files"""
+
+    def __init__(self, db, audio_engine,
+                 disabled_track_ids: Optional[set[int]] = None, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.audio_engine = audio_engine
+        self.selected_files = []
+        self._disabled_track_ids: set[int] = disabled_track_ids or set()
+        self._preview_player = None
+        self._preview_file_id: Optional[int] = None
+        self._preview_item: Optional["FileSelectItem"] = None
+
+        self.setWindowTitle("Add Audio Files")
+        self.setMinimumSize(500, 400)
+        self._setup_ui()
+        self._load_files()
+
+    def _setup_ui(self):
+        from ..library import TagManager
+
+        layout = QVBoxLayout(self)
+
+        # Search bar
+        search_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search by title or artist...")
+        self.search_input.textChanged.connect(self._on_search)
+        search_layout.addWidget(self.search_input)
+        layout.addLayout(search_layout)
+
+        # Tag filter
+        self.tag_manager = TagManager(
+            self.db,
+            allow_manage=False,
+            header_text="Filter by tags",
+        )
+        self.tag_manager.tag_filter_changed.connect(self._on_tag_filter)
+        layout.addWidget(self.tag_manager)
+
+        # File list
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        self.files_container = QWidget()
+        self.files_layout = QVBoxLayout(self.files_container)
+        self.files_layout.setContentsMargins(0, 0, 0, 0)
+        self.files_layout.setSpacing(4)
+        self.files_layout.addStretch()
+
+        scroll.setWidget(self.files_container)
+        layout.addWidget(scroll)
+
+        # Selected count
+        self.selected_label = QLabel("0 files selected")
+        self.selected_label.setStyleSheet(f"color: {Styles.TEXT_MUTED};")
+        layout.addWidget(self.selected_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        self.add_btn = QPushButton("Add Selected")
+        self.add_btn.clicked.connect(self.accept)
+        self.add_btn.setEnabled(False)
+        button_layout.addWidget(self.add_btn)
+
+        layout.addLayout(button_layout)
+
+    def _load_files(self, query: str = ""):
+        """Load files from database"""
+        # Clear existing
+        while self.files_layout.count() > 1:  # Keep stretch
+            item = self.files_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Load files
+        tag_ids = self.tag_manager.get_selected_tag_ids()
+        if query or tag_ids:
+            files = self.db.search_audio_files(query, tag_ids if tag_ids else None)
+        else:
+            files = self.db.get_all_audio_files()
+
+        if self._preview_file_id and self._preview_file_id not in {f.id for f in files}:
+            self._stop_preview()
+
+        for file in files:
+            disabled = file.id in self._disabled_track_ids
+            item = FileSelectItem(file, disabled=disabled)
+            item.selection_changed.connect(self._on_selection_changed)
+            item.preview_requested.connect(self._on_preview_requested)
+            # Check if already selected
+            if not disabled and file.id in [f.id for f in self.selected_files]:
+                item.set_selected(True)
+            if self._preview_file_id == file.id:
+                self._preview_item = item
+                item.set_preview_playing(True)
+            self.files_layout.insertWidget(self.files_layout.count() - 1, item)
+
+    def _on_search(self, query: str):
+        """Handle search"""
+        self._load_files(query)
+
+    def _on_tag_filter(self, tag_ids: list[int]):
+        """Handle tag filter change"""
+        self._load_files(self.search_input.text())
+
+    def _on_selection_changed(self, file, selected: bool):
+        """Handle file selection change"""
+        if selected:
+            if file not in self.selected_files:
+                self.selected_files.append(file)
+        else:
+            self.selected_files = [f for f in self.selected_files if f.id != file.id]
+
+        count = len(self.selected_files)
+        self.selected_label.setText(f"{count} file{'s' if count != 1 else ''} selected")
+        self.add_btn.setEnabled(count > 0)
+
+    def get_selected_files(self):
+        """Get selected files"""
+        return self.selected_files
+
+    def _on_preview_requested(self, file, item: "FileSelectItem"):
+        """Toggle preview playback for a file"""
+        from ..audio import TrackPlayer
+
+        if self._preview_player:
+            self._preview_player.fade_out(300)
+            self._preview_player.release()
+            self._preview_player = None
+            if self._preview_item:
+                self._preview_item.set_preview_playing(False)
+            if self._preview_file_id == file.id:
+                self._preview_file_id = None
+                self._preview_item = None
+                return
+
+        if os.path.exists(file.file_path):
+            self._preview_player = TrackPlayer(file.file_path, self.audio_engine)
+            self._preview_player.end_reached.connect(self._on_preview_ended)
+            self._preview_player.fade_in(300)
+            self._preview_file_id = file.id
+            self._preview_item = item
+            item.set_preview_playing(True)
+
+    def _on_preview_ended(self):
+        """Handle preview playback ended"""
+        if self._preview_item:
+            self._preview_item.set_preview_playing(False)
+        if self._preview_player:
+            self._preview_player.release()
+        self._preview_player = None
+        self._preview_file_id = None
+        self._preview_item = None
+
+    def _stop_preview(self):
+        """Stop any active preview playback"""
+        if self._preview_player:
+            self._preview_player.stop()
+            self._preview_player.release()
+            self._preview_player = None
+        if self._preview_item:
+            self._preview_item.set_preview_playing(False)
+        self._preview_file_id = None
+        self._preview_item = None
+
+    def accept(self):
+        self._stop_preview()
+        super().accept()
+
+    def reject(self):
+        self._stop_preview()
+        super().reject()
+
+
+class FileSelectItem(QFrame):
+    """Selectable file item in search dialog"""
+
+    selection_changed = pyqtSignal(object, bool)
+    preview_requested = pyqtSignal(object, object)
+
+    def __init__(self, file, disabled: bool = False, parent=None):
+        super().__init__(parent)
+        self.file = file
+        self._selected = False
+        self._disabled = disabled
+        self._preview_playing = False
+        self._icons = IconLibrary()
+
+        self.setFrameStyle(QFrame.Shape.StyledPanel)
+        if not disabled:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._update_style()
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        # Title and artist
+        info_layout = QVBoxLayout()
+        title_label = QLabel(file.display_title)
+        text_color = Styles.TEXT_MUTED if disabled else ""
+        title_label.setStyleSheet(f"font-weight: bold; color: {text_color};" if disabled else "font-weight: bold;")
+        info_layout.addWidget(title_label)
+
+        if file.artist:
+            artist_label = QLabel(file.artist)
+            artist_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px;")
+            info_layout.addWidget(artist_label)
+
+        layout.addLayout(info_layout, 1)
+
+        # "Already added" label for disabled items
+        if disabled:
+            added_label = QLabel("Already added")
+            added_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px; font-style: italic;")
+            layout.addWidget(added_label)
+
+        # Duration
+        duration_label = QLabel(file.duration_formatted)
+        duration_label.setStyleSheet(f"color: {Styles.TEXT_MUTED};")
+        layout.addWidget(duration_label)
+
+        # Preview button
+        self.preview_btn = QPushButton()
+        self.preview_btn.setFixedSize(16, 16)
+        self.preview_btn.setIcon(self._icons.icon("play-solid"))
+        self.preview_btn.setIconSize(QSize(12, 12))
+        self.preview_btn.setStyleSheet(Styles.small_play_button_style())
+        self.preview_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.preview_btn.clicked.connect(self._on_preview_clicked)
+        layout.addWidget(self.preview_btn)
+
+    def _update_style(self):
+        """Update visual style based on selection and disabled state"""
+        if self._disabled:
+            self.setStyleSheet(f"""
+                FileSelectItem {{
+                    background-color: {Styles.BACKGROUND};
+                    border: 1px solid {Styles.BORDER};
+                    border-radius: 4px;
+                    opacity: 0.5;
+                }}
+            """)
+        elif self._selected:
+            self.setStyleSheet(f"""
+                FileSelectItem {{
+                    background-color: {Styles.PRIMARY};
+                    border: 1px solid {Styles.PRIMARY};
+                    border-radius: 4px;
+                }}
+            """)
+        else:
+            self.setStyleSheet(f"""
+                FileSelectItem {{
+                    background-color: {Styles.BACKGROUND_LIGHT};
+                    border: 1px solid {Styles.BORDER};
+                    border-radius: 4px;
+                }}
+                FileSelectItem:hover {{
+                    background-color: {Styles.BACKGROUND_LIGHTER};
+                }}
+            """)
+
+    def set_selected(self, selected: bool):
+        """Set selection state"""
+        self._selected = selected
+        self._update_style()
+
+    def set_preview_playing(self, playing: bool):
+        """Update preview button appearance"""
+        self._preview_playing = playing
+        if playing:
+            self.preview_btn.setIcon(self._icons.icon("pause-solid"))
+            self.preview_btn.setIconSize(QSize(12, 12))
+            self.preview_btn.setStyleSheet(Styles.small_stop_button_style())
+        else:
+            self.preview_btn.setIcon(self._icons.icon("play-solid"))
+            self.preview_btn.setIconSize(QSize(12, 12))
+            self.preview_btn.setStyleSheet(Styles.small_play_button_style())
+
+    def _on_preview_clicked(self):
+        """Handle preview click"""
+        self.preview_requested.emit(self.file, self)
+
+    def mousePressEvent(self, event):
+        """Handle click - disabled items cannot be selected"""
+        if self._disabled:
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._selected = not self._selected
+            self._update_style()
+            self.selection_changed.emit(self.file, self._selected)
