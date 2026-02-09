@@ -97,11 +97,11 @@
       "definition_of_done": [
         "Dependency state is correct and committed"
       ],
-      "status": "proposed",
+      "status": "done",
       "blockers": [],
       "estimated_session_minutes": 30,
       "last_update": "2026-02-09",
-      "notes": "Adjust file list depending on actual dependency setup."
+      "notes": "Added structlog>=24.1.0 to requirements.txt, setup.py (install_requires + py2app packages). Installed v25.5.0 in venv. All 79 tests pass."
     },
     {
       "id": "log-03",

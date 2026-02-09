@@ -46,6 +46,7 @@ OPTIONS = {
         "PyQt6",
         "vlc",
         "mutagen",
+        "structlog",
     ],
     "includes": [
         "app",
@@ -132,5 +133,6 @@ if __name__ == "__main__":
             "PyQt6>=6.6.0",
             "python-vlc>=3.0.18",
             "mutagen>=1.47.0",
+            "structlog>=24.1.0",
         ],
     )

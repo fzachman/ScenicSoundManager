@@ -19,3 +19,15 @@ BUILD SCRIPT (5 statements — keep as print, CLI output for setup.py):
 
 Modules affected: app/audio/engine.py, app/library/metadata.py
 No prints found in: tests/, main.py, shared/, app/database/, app/scenes/, app/playlists/
+
+== log-02: Add/confirm structlog dependency ==
+Status: COMPLETE
+Date: 2026-02-09
+
+Changes made:
+  - requirements.txt: Added structlog>=24.1.0 to core dependencies
+  - setup.py install_requires: Added structlog>=24.1.0
+  - setup.py py2app packages: Added "structlog" so it gets bundled in app builds
+  - Installed structlog 25.5.0 into project venv
+  - Verified import works: `import structlog` succeeds
+  - All 79 existing tests pass
