@@ -265,7 +265,7 @@ class Styles:
 
     @staticmethod
     def play_button_style() -> str:
-        """Style for play buttons"""
+        """Style for play buttons (active/on state)"""
         return f"""
             QPushButton {{
                 background-color: {Styles.SUCCESS};
@@ -278,6 +278,57 @@ class Styles:
             }}
             QPushButton:hover {{
                 background-color: #218838;
+            }}
+        """
+
+    @staticmethod
+    def play_button_inactive_style() -> str:
+        """Style for play buttons (inactive/off state)"""
+        return f"""
+            QPushButton {{
+                background-color: {Styles.BACKGROUND_LIGHTER};
+                color: {Styles.TEXT_MUTED};
+                min-width: 30px;
+                max-width: 30px;
+                min-height: 30px;
+                max-height: 30px;
+                border-radius: 15px;
+                border: 1px solid {Styles.BORDER};
+            }}
+            QPushButton:hover {{
+                background-color: {Styles.BACKGROUND_LIGHT};
+            }}
+        """
+
+    @staticmethod
+    def toggle_on_style(radius: int = 6, extra: str = "") -> str:
+        """Style for active toggle buttons (repeat, shuffle, etc.)"""
+        return f"""
+            QPushButton {{
+                background-color: {Styles.PRIMARY};
+                color: white;
+                border: none;
+                border-radius: {radius}px;
+                {extra}
+            }}
+            QPushButton:hover {{
+                background-color: {Styles.PRIMARY_DARK};
+            }}
+        """
+
+    @staticmethod
+    def toggle_off_style(radius: int = 6, extra: str = "") -> str:
+        """Style for inactive toggle buttons (repeat, shuffle, etc.)"""
+        return f"""
+            QPushButton {{
+                background-color: {Styles.BACKGROUND_LIGHTER};
+                color: {Styles.TEXT_MUTED};
+                border: 1px solid {Styles.BORDER};
+                border-radius: {radius}px;
+                {extra}
+            }}
+            QPushButton:hover {{
+                background-color: {Styles.BACKGROUND_LIGHT};
             }}
         """
 

@@ -206,37 +206,10 @@ class PlaylistEntryControl(QFrame):
         """Update play button and border based on play mode state"""
         self.play_btn.setIcon(self._icons.icon("play"))
         if self._play_mode:
-            self.play_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.SUCCESS};
-                    color: white;
-                    min-width: 30px;
-                    max-width: 30px;
-                    min-height: 30px;
-                    max-height: 30px;
-                    border-radius: 15px;
-                }}
-                QPushButton:hover {{
-                    background-color: #218838;
-                }}
-            """)
+            self.play_btn.setStyleSheet(Styles.play_button_style())
             self.setStyleSheet(self._base_style)
         else:
-            self.play_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.BACKGROUND_LIGHTER};
-                    color: {Styles.TEXT_MUTED};
-                    min-width: 30px;
-                    max-width: 30px;
-                    min-height: 30px;
-                    max-height: 30px;
-                    border-radius: 15px;
-                    border: 1px solid {Styles.BORDER};
-                }}
-                QPushButton:hover {{
-                    background-color: {Styles.BACKGROUND_LIGHT};
-                }}
-            """)
+            self.play_btn.setStyleSheet(Styles.play_button_inactive_style())
             self.setStyleSheet(self._base_style + f"""
                 PlaylistEntryControl {{
                     border-left: 4px solid {Styles.BORDER};
@@ -260,61 +233,18 @@ class PlaylistEntryControl(QFrame):
 
     def _update_shuffle_button(self):
         """Update shuffle button appearance"""
+        extra = "padding: 2px 8px; font-size: 11px;"
         if self._shuffle_mode:
-            self.shuffle_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.PRIMARY};
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 2px 8px;
-                    font-size: 11px;
-                }}
-                QPushButton:hover {{
-                    background-color: {Styles.PRIMARY_DARK};
-                }}
-            """)
+            self.shuffle_btn.setStyleSheet(Styles.toggle_on_style(radius=4, extra=extra))
         else:
-            self.shuffle_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.BACKGROUND_LIGHTER};
-                    color: {Styles.TEXT_MUTED};
-                    border: 1px solid {Styles.BORDER};
-                    border-radius: 4px;
-                    padding: 2px 8px;
-                    font-size: 11px;
-                }}
-                QPushButton:hover {{
-                    background-color: {Styles.BACKGROUND_LIGHT};
-                }}
-            """)
+            self.shuffle_btn.setStyleSheet(Styles.toggle_off_style(radius=4, extra=extra))
 
     def _update_repeat_button(self):
         """Update repeat button appearance"""
         if self._repeat_mode:
-            self.repeat_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.PRIMARY};
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                }}
-                QPushButton:hover {{
-                    background-color: {Styles.PRIMARY_DARK};
-                }}
-            """)
+            self.repeat_btn.setStyleSheet(Styles.toggle_on_style())
         else:
-            self.repeat_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.BACKGROUND_LIGHTER};
-                    color: {Styles.TEXT_MUTED};
-                    border: 1px solid {Styles.BORDER};
-                    border-radius: 6px;
-                }}
-                QPushButton:hover {{
-                    background-color: {Styles.BACKGROUND_LIGHT};
-                }}
-            """)
+            self.repeat_btn.setStyleSheet(Styles.toggle_off_style())
 
     def contextMenuEvent(self, event):
         """Show context menu"""
