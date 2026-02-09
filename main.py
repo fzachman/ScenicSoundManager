@@ -29,6 +29,9 @@ def main():
     """Main entry point"""
     setup_environment()
 
+    from app.shared.logging import configure_logging
+    configure_logging()
+
     from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QGuiApplication
     from PyQt6.QtWidgets import QApplication

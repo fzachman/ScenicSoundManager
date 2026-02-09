@@ -31,3 +31,16 @@ Changes made:
   - Installed structlog 25.5.0 into project venv
   - Verified import works: `import structlog` succeeds
   - All 79 existing tests pass
+
+== log-03: Introduce shared structlog configuration ==
+Status: COMPLETE
+Date: 2026-02-09
+
+Changes made:
+  - Created app/shared/logging.py with configure_logging() and get_logger()
+    - configure_logging(): sets up structlog processors (contextvars, log level, ISO timestamps, ConsoleRenderer)
+    - get_logger(name): returns a bound logger, optionally with a logger_name for identification
+  - Updated main.py: calls configure_logging() early in main() before any app imports
+  - Updated app/shared/__init__.py: exports configure_logging and get_logger
+  - All 79 tests pass
+  - Verified manually: structured logs output with timestamps, levels, logger names, and key-value context
