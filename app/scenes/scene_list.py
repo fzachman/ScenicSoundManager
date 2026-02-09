@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 
-from ..database import DatabaseConnection, Scene
+from ..database import DatabaseConnection, Scene, SceneAudioFile
 from ..library.search_bar import SearchBar
 from ..shared.icons import IconLibrary
 from ..shared.dialogs import TextInputDialog
@@ -207,21 +207,22 @@ class SceneListWidget(QWidget):
         # Copy tracks
         tracks = self.db.get_scene_tracks(scene.id)
         for track in tracks:
-            self.db.add_track_to_scene(
+            new_track_id = self.db.add_track_to_scene(
                 new_scene.id,
                 track.audio_file_id,
                 track.position,
                 play_mode=track.play_mode,
             )
-            # Get the new track and update its settings
-            new_tracks = self.db.get_scene_tracks(new_scene.id)
-            for new_track in new_tracks:
-                if new_track.audio_file_id == track.audio_file_id:
-                    new_track.volume = track.volume
-                    new_track.is_repeat = track.is_repeat
-                    new_track.play_mode = track.play_mode
-                    self.db.update_track_settings(new_track)
-                    break
+            new_track = SceneAudioFile(
+                id=new_track_id,
+                scene_id=new_scene.id,
+                audio_file_id=track.audio_file_id,
+                position=track.position,
+                volume=track.volume,
+                is_repeat=track.is_repeat,
+                play_mode=track.play_mode,
+            )
+            self.db.update_track_settings(new_track)
 
         self.refresh_scenes()
         self.scene_created.emit(new_scene)
