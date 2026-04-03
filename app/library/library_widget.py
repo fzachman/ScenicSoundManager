@@ -4,7 +4,8 @@ import os
 from typing import List
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSizePolicy,
+    QFileDialog
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QMimeData
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
@@ -57,6 +58,10 @@ class LibraryWidget(QWidget):
         add_btn = QPushButton("Add Files")
         add_btn.clicked.connect(self._add_files)
         top_bar.addWidget(add_btn)
+
+        add_folder_btn = QPushButton("Add Folder")
+        add_folder_btn.clicked.connect(self._add_folder)
+        top_bar.addWidget(add_folder_btn)
 
         layout.addLayout(top_bar)
 
@@ -167,6 +172,20 @@ class LibraryWidget(QWidget):
 
         if dialog.exec():
             file_paths = dialog.selectedFiles()
+            self._import_files(file_paths)
+
+    def _add_folder(self):
+        """Open native directory picker and import all supported audio files recursively"""
+        dir_path = QFileDialog.getExistingDirectory(self, "Select Folder")
+        if not dir_path:
+            return
+        file_paths = []
+        for root, dirs, files in os.walk(dir_path):
+            for f in files:
+                file_path = os.path.join(root, f)
+                if MetadataExtractor.is_supported_format(file_path):
+                    file_paths.append(file_path)
+        if file_paths:
             self._import_files(file_paths)
 
     def _import_files(self, file_paths: list[str]):
