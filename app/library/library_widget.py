@@ -16,6 +16,7 @@ from .tag_manager import TagManager
 from .search_bar import SearchBar
 from .metadata import MetadataExtractor
 from ..shared.dialogs import FilePickerDialog, DuplicateFilesDialog
+from ..shared.styles import Styles
 
 
 class LibraryWidget(QWidget):
@@ -34,8 +35,8 @@ class LibraryWidget(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(14)
+        layout.setContentsMargins(16, 16, 16, 16)
 
         # Tag filter section
         self.tag_manager = TagManager(self.db, header_text="Filter by tags")
@@ -46,6 +47,7 @@ class LibraryWidget(QWidget):
 
         # Search and add button
         top_bar = QHBoxLayout()
+        top_bar.setSpacing(12)
 
         self.search_bar = SearchBar(placeholder="Search by title or artist...")
         self.search_bar.search_changed.connect(self._on_search)
@@ -59,7 +61,7 @@ class LibraryWidget(QWidget):
 
         # File count label
         self.count_label = QLabel()
-        self.count_label.setStyleSheet("color: #888; font-size: 12px;")
+        self.count_label.setStyleSheet(Styles.subtle_text_style(size=12))
         layout.addWidget(self.count_label)
 
         # File table
@@ -70,14 +72,7 @@ class LibraryWidget(QWidget):
         # Drop hint
         self.drop_hint = QLabel("Drop audio files here to add to library")
         self.drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.drop_hint.setStyleSheet("""
-            color: #666;
-            font-size: 14px;
-            padding: 40px;
-            border: 2px dashed #444;
-            border-radius: 8px;
-            margin: 20px;
-        """)
+        self.drop_hint.setStyleSheet(Styles.empty_state_style())
         self.drop_hint.hide()
         layout.addWidget(self.drop_hint)
 
@@ -183,37 +178,15 @@ class LibraryWidget(QWidget):
         """Handle drag enter"""
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            self.drop_hint.setStyleSheet("""
-                color: #4A90D9;
-                font-size: 14px;
-                padding: 40px;
-                border: 2px dashed #4A90D9;
-                border-radius: 8px;
-                margin: 20px;
-                background-color: rgba(74, 144, 217, 0.1);
-            """)
+            self.drop_hint.setStyleSheet(Styles.empty_state_style(active=True))
 
     def dragLeaveEvent(self, event):
         """Handle drag leave"""
-        self.drop_hint.setStyleSheet("""
-            color: #666;
-            font-size: 14px;
-            padding: 40px;
-            border: 2px dashed #444;
-            border-radius: 8px;
-            margin: 20px;
-        """)
+        self.drop_hint.setStyleSheet(Styles.empty_state_style())
 
     def dropEvent(self, event: QDropEvent):
         """Handle file drop"""
-        self.drop_hint.setStyleSheet("""
-            color: #666;
-            font-size: 14px;
-            padding: 40px;
-            border: 2px dashed #444;
-            border-radius: 8px;
-            margin: 20px;
-        """)
+        self.drop_hint.setStyleSheet(Styles.empty_state_style())
 
         file_paths = []
         for url in event.mimeData().urls():

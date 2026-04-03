@@ -6,9 +6,10 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QMenu, QLayout, QSizePolicy
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QRect, QSize, QPoint
+from PyQt6.QtCore import pyqtSignal, Qt, QRect, QSize, QPoint, QTimer
 
 from ..database import DatabaseConnection, Tag
+from ..shared.layouts import clear_layout
 from ..shared.styles import Styles
 from ..shared.icons import IconLibrary
 from ..shared.dialogs import TagEditDialog
@@ -49,21 +50,7 @@ class TagBadge(QWidget):
             # Remove button
             remove_btn = QPushButton("×")
             remove_btn.setFixedSize(16, 16)
-            remove_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {color};
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-weight: bold;
-                    font-size: 12px;
-                    padding: 0;
-                    margin-left: -5px;
-                }}
-                QPushButton:hover {{
-                    background-color: {Styles.DANGER};
-                }}
-            """)
+            remove_btn.setStyleSheet(Styles.tag_remove_button_style(color))
             remove_btn.clicked.connect(lambda: self.remove_clicked.emit(self.tag))
             layout.addWidget(remove_btn)
 
@@ -139,7 +126,7 @@ class FlowLayout(QLayout):
 
         for item in self._items:
             widget = item.widget()
-            if widget and not widget.isVisible():
+            if widget and widget.isHidden():
                 continue
             space_x = self.spacing()
             space_y = self.spacing()
@@ -186,11 +173,13 @@ class TagManager(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
 
         # Header with add button
         header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(4, 0, 4, 0)
         header_label = QLabel(self._header_text)
-        header_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        header_label.setStyleSheet(Styles.title_style(size=14))
         header_layout.addWidget(header_label)
 
         clear_btn = QPushButton("Clear")
@@ -227,6 +216,7 @@ class TagManager(QWidget):
             add_btn.setIcon(self._icons.icon("plus"))
             add_btn.setIconSize(add_btn.size())
             add_btn.setToolTip("Create new tag")
+            add_btn.setStyleSheet(Styles.compact_icon_button_style())
             add_btn.clicked.connect(self._create_tag)
             footer_layout.addWidget(add_btn)
             footer_layout.addStretch()
@@ -235,27 +225,23 @@ class TagManager(QWidget):
     def refresh_tags(self):
         """Reload tags from database"""
         self.tags_container.setUpdatesEnabled(False)
-        # Clear existing badges
-        while self.tags_layout.count() > 0:
-            item = self.tags_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        clear_layout(self.tags_layout)
 
         # Add "No Tag" pseudo tag first
         no_tag = Tag(id=NO_TAG_ID, name="No Tag", color="#FFFFFF")
         no_tag_badge = TagBadge(no_tag, removable=False)
         no_tag_badge.clicked.connect(self._toggle_tag_filter)
         no_tag_selected = no_tag.id in self._selected_tag_ids
-        no_tag_border = f"border: 2px solid {Styles.PRIMARY};" if no_tag_selected else "border: 1px solid #CCC;"
+        border_color = Styles.PRIMARY if no_tag_selected else Styles.BORDER
         no_tag_badge.set_label_style(f"""
             background-color: #FFFFFF;
             color: #222;
-            {no_tag_border}
-            padding: 1px 8px;
-            border-radius: 9px;
-            min-height: 16px;
+            border: 1px solid {border_color};
+            padding: 3px 10px;
+            border-radius: 11px;
+            min-height: 18px;
             font-size: 11px;
-            font-weight: bold;
+            font-weight: 700;
         """)
         self.tags_layout.addWidget(no_tag_badge)
 
@@ -280,6 +266,7 @@ class TagManager(QWidget):
 
         self.tags_container.setUpdatesEnabled(True)
         self._update_tag_container_height()
+        QTimer.singleShot(0, self._update_tag_container_height)
 
     def _toggle_tag_filter(self, tag: Tag):
         """Toggle tag in filter selection"""
@@ -370,11 +357,45 @@ class TagManager(QWidget):
         width = self._tags_scroll.viewport().width()
         if width <= 0:
             return
-        height = self.tags_layout.heightForWidth(width)
+        height = self._calculate_tag_container_height(width)
         if height <= 0:
-            height = self.tags_container.sizeHint().height()
-        self.tags_container.setMinimumHeight(height)
-        self.tags_container.setMaximumHeight(16777215)
+            return
+        self.tags_container.setFixedHeight(height)
+        self.tags_container.updateGeometry()
+
+    def _calculate_tag_container_height(self, width: int) -> int:
+        margins = self.tags_layout.contentsMargins()
+        available_width = max(width - margins.left() - margins.right(), 1)
+        x = 0
+        y = 0
+        line_height = 0
+        spacing = self.tags_layout.spacing()
+
+        for index in range(self.tags_layout.count()):
+            item = self.tags_layout.itemAt(index)
+            if item is None:
+                continue
+
+            widget = item.widget()
+            if widget and widget.isHidden():
+                continue
+
+            item_size = item.sizeHint()
+            item_width = item_size.width()
+            item_height = item_size.height()
+
+            if x > 0 and (x + item_width) > available_width:
+                x = 0
+                y += line_height + spacing
+                line_height = 0
+
+            x += item_width + spacing
+            line_height = max(line_height, item_height)
+
+        if line_height == 0:
+            return margins.top() + margins.bottom()
+
+        return y + line_height + margins.top() + margins.bottom()
 
 
 class TagAssigner(QWidget):
@@ -409,12 +430,8 @@ class TagAssigner(QWidget):
 
     def refresh_tags(self):
         """Refresh displayed tags"""
-        # Remove existing tag badges (keep add button and stretch)
         layout = self.layout()
-        while layout.count() > 2:
-            item = layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        clear_layout(layout, keep_trailing_items=2)
 
         # Add current tags
         tags = self.db.get_tags_for_audio_file(self.audio_file_id)

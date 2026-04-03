@@ -10,6 +10,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 
 from ..database import DatabaseConnection, Playlist
 from ..shared.styles import Styles
+from ..shared.layouts import clear_layout
 
 
 class PlaylistSelectItem(QFrame):
@@ -167,11 +168,7 @@ class PlaylistPickerDialog(QDialog):
 
     def _load_playlists(self, query: str = ""):
         """Load playlists from database"""
-        # Clear existing
-        while self.list_layout.count() > 1:  # Keep stretch
-            item = self.list_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        clear_layout(self.list_layout, keep_trailing_items=1)
         self._items.clear()
         self._selected_item = None
         self.add_btn.setEnabled(False)

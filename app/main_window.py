@@ -56,24 +56,30 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
 
         layout = QVBoxLayout(central_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(14)
 
-        master_bar = QHBoxLayout()
-        master_bar.setContentsMargins(12, 8, 12, 8)
+        top_bar_widget = QWidget()
+        top_bar_widget.setObjectName("topBarWidget")
+        top_bar_widget.setStyleSheet(Styles.widget_panel_style("QWidget#topBarWidget"))
+        master_bar = QHBoxLayout(top_bar_widget)
+        master_bar.setContentsMargins(18, 14, 18, 14)
+        master_bar.setSpacing(14)
 
         master_label = QLabel("Master Volume")
-        master_label.setStyleSheet("font-weight: bold;")
+        master_label.setStyleSheet(Styles.title_style(size=13))
         master_bar.addWidget(master_label)
 
         self.master_slider = QSlider(Qt.Orientation.Horizontal)
         self.master_slider.setRange(0, 100)
         self.master_slider.setValue(self.audio_engine.master_volume)
-        self.master_slider.setFixedWidth(220)
+        self.master_slider.setFixedWidth(260)
         self.master_slider.valueChanged.connect(self._on_master_volume_changed)
         master_bar.addWidget(self.master_slider)
 
         self.master_value_label = QLabel(f"{self.audio_engine.master_volume}%")
         self.master_value_label.setFixedWidth(50)
+        self.master_value_label.setStyleSheet(Styles.subtle_text_style(size=12))
         master_bar.addWidget(self.master_value_label)
 
         master_bar.addStretch()
@@ -81,37 +87,27 @@ class MainWindow(QMainWindow):
         self.currently_playing_widget = QWidget()
         current_layout = QVBoxLayout(self.currently_playing_widget)
         current_layout.setContentsMargins(0, 0, 0, 0)
-        current_layout.setSpacing(2)
+        current_layout.setSpacing(4)
 
         current_label = QLabel("Currently Playing")
-        current_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px;")
+        current_label.setStyleSheet(Styles.subtle_text_style(size=11))
         current_layout.addWidget(current_label)
 
         self.current_scene_btn = QPushButton("None")
-        self.current_scene_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {Styles.TEXT};
-                text-align: left;
-                padding: 0;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                color: {Styles.PRIMARY};
-            }}
-        """)
+        self.current_scene_btn.setStyleSheet(Styles.ghost_button_style())
         self.current_scene_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         current_layout.addWidget(self.current_scene_btn)
 
         self.currently_playing_widget.hide()
         master_bar.addWidget(self.currently_playing_widget)
 
-        layout.addLayout(master_bar)
+        layout.addWidget(top_bar_widget)
 
         # Tab widget
         self.tab_widget = QTabWidget()
+        self.tab_widget.tabBar().setDrawBase(False)
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
-        layout.addWidget(self.tab_widget)
+        layout.addWidget(self.tab_widget, 1)
 
         # Library tab
         self.library_widget = LibraryWidget(self.db, self.audio_engine)

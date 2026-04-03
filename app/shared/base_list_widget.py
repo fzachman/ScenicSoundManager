@@ -9,8 +9,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from ..library.search_bar import SearchBar
-from .icons import IconLibrary
 from .dialogs import TextInputDialog
+from .icons import IconLibrary
+from .styles import Styles
 
 
 class BaseListWidget(QWidget):
@@ -39,12 +40,13 @@ class BaseListWidget(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(12)
 
         # Header
         header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(4, 0, 4, 0)
         header_label = QLabel(f"{self._entity_name}s")
-        header_label.setStyleSheet("font-weight: bold; font-size: 16px; padding: 8px;")
+        header_label.setStyleSheet(Styles.title_style(size=16))
         header_layout.addWidget(header_label)
         header_layout.addStretch()
 
@@ -54,23 +56,7 @@ class BaseListWidget(QWidget):
         self.order_btn.setIcon(self._icons.icon("list"))
         self.order_btn.setIconSize(self.order_btn.size())
         self.order_btn.setToolTip(f"Unlock {self._entity_name} Order")
-        self.order_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 4px;
-                color: white;
-                margin-right: 6px;
-            }
-            QPushButton:hover {
-                background-color: rgba(0, 0, 0, 0.05);
-                border-color: rgba(0, 0, 0, 0.12);
-            }
-            QPushButton:checked {
-                background-color: rgba(74, 144, 217, 0.2);
-                border-color: #4A90D9;
-            }
-        """)
+        self.order_btn.setStyleSheet(Styles.compact_icon_button_style())
         self.order_btn.toggled.connect(self._set_ordering_enabled)
         header_layout.addWidget(self.order_btn)
         layout.addLayout(header_layout)
@@ -87,6 +73,7 @@ class BaseListWidget(QWidget):
         self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_widget.customContextMenuRequested.connect(self._show_context_menu)
         self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.NoDragDrop)
+        self.list_widget.setSpacing(2)
         self.list_widget.model().rowsMoved.connect(self._on_rows_moved)
         layout.addWidget(self.list_widget)
 

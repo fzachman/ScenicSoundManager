@@ -13,6 +13,7 @@ from PyQt6.QtCore import pyqtSignal, Qt, QSize
 
 from .styles import Styles
 from .icons import IconLibrary
+from .layouts import clear_layout
 
 
 class FilePickerDialog(QFileDialog):
@@ -475,11 +476,7 @@ class AudioFileSearchDialog(QDialog):
 
     def _load_files(self, query: str = ""):
         """Load files from database"""
-        # Clear existing
-        while self.files_layout.count() > 1:  # Keep stretch
-            item = self.files_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        clear_layout(self.files_layout, keep_trailing_items=1)
 
         # Load files
         tag_ids = self.tag_manager.get_selected_tag_ids()

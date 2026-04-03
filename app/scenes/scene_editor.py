@@ -14,6 +14,7 @@ from ..audio import AudioEngine, SceneMixer, ScenePlaylistPlayer
 from ..shared.styles import Styles
 from ..shared.icons import IconLibrary
 from ..shared.dialogs import AudioFileSearchDialog
+from ..shared.layouts import clear_layout
 from .track_control import TrackControl
 from .playlist_entry_control import PlaylistEntryControl
 
@@ -42,13 +43,15 @@ class SceneEditor(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
 
         # Header with scene title and master controls
         header = QHBoxLayout()
+        header.setSpacing(12)
 
         self.title_label = QLabel("Select a scene")
-        self.title_label.setStyleSheet("font-weight: bold; font-size: 18px;")
+        self.title_label.setStyleSheet(Styles.title_style(size=28))
         header.addWidget(self.title_label)
 
         header.addStretch()
@@ -57,15 +60,7 @@ class SceneEditor(QWidget):
         self.play_toggle_btn = QPushButton("Play")
         self.play_toggle_btn.setIcon(self._icons.icon("play"))
         self.play_toggle_btn.setIconSize(QSize(16, 16))
-        self.play_toggle_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {Styles.SUCCESS};
-                padding: 10px 20px;
-            }}
-            QPushButton:hover {{
-                background-color: #218838;
-            }}
-        """)
+        self.play_toggle_btn.setStyleSheet(Styles.playback_button_style(is_active=False))
         self.play_toggle_btn.clicked.connect(self._toggle_scene_play)
         self.play_toggle_btn.setEnabled(False)
         header.addWidget(self.play_toggle_btn)
@@ -74,6 +69,7 @@ class SceneEditor(QWidget):
 
         # Add tracks / playlist buttons
         add_layout = QHBoxLayout()
+        add_layout.setSpacing(10)
         self.add_tracks_btn = QPushButton("+ Add Tracks")
         self.add_tracks_btn.clicked.connect(self._add_tracks)
         self.add_tracks_btn.setEnabled(False)
@@ -88,9 +84,9 @@ class SceneEditor(QWidget):
         layout.addLayout(add_layout)
 
         # Tracks scroll area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
         self.tracks_container = TrackListContainer()
         self.tracks_container.order_changed.connect(self._on_tracks_reordered)
@@ -98,13 +94,14 @@ class SceneEditor(QWidget):
         self.tracks_layout.setContentsMargins(0, 8, 0, 0)
         self.tracks_layout.setSpacing(8)
 
-        scroll.setWidget(self.tracks_container)
-        layout.addWidget(scroll)
+        self.scroll_area.setWidget(self.tracks_container)
+        layout.addWidget(self.scroll_area)
+        self.scroll_area.hide()
 
         # Empty state
         self.empty_label = QLabel("No tracks in this scene.\nClick '+ Add Tracks' or '+ Add Playlist' to get started.")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; padding: 40px;")
+        self.empty_label.setStyleSheet(Styles.empty_state_style())
         self.empty_label.hide()
         layout.addWidget(self.empty_label)
 
@@ -128,10 +125,7 @@ class SceneEditor(QWidget):
             return
 
         # Clear existing track controls and playlist entry controls
-        while self.tracks_layout.count() > 0:
-            item = self.tracks_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        clear_layout(self.tracks_layout)
         self.tracks_container.clear_registry()
         self._track_controls.clear()
         self._playlist_entry_controls.clear()
@@ -146,8 +140,10 @@ class SceneEditor(QWidget):
         has_content = bool(scene.tracks) or bool(scene.playlist_entries)
         if not has_content:
             self.empty_label.show()
+            self.scroll_area.hide()
         else:
             self.empty_label.hide()
+            self.scroll_area.show()
 
             is_active_scene = self._is_current_scene_active()
             for track in scene.tracks:
@@ -543,28 +539,10 @@ class SceneEditor(QWidget):
         if is_playing:
             self.play_toggle_btn.setText("Pause")
             self.play_toggle_btn.setIcon(self._icons.icon("pause"))
-            self.play_toggle_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.WARNING};
-                    color: #000;
-                    padding: 10px 20px;
-                }}
-                QPushButton:hover {{
-                    background-color: #E0A800;
-                }}
-            """)
         else:
             self.play_toggle_btn.setText("Play")
             self.play_toggle_btn.setIcon(self._icons.icon("play"))
-            self.play_toggle_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.SUCCESS};
-                    padding: 10px 20px;
-                }}
-                QPushButton:hover {{
-                    background-color: #218838;
-                }}
-            """)
+        self.play_toggle_btn.setStyleSheet(Styles.playback_button_style(is_active=is_playing))
 
     def stop_all(self):
         """Stop all playback immediately"""
@@ -582,12 +560,11 @@ class SceneEditor(QWidget):
         self.add_playlist_btn.setEnabled(False)
         self.play_toggle_btn.setEnabled(False)
         self._sync_scene_play_button()
+        self.empty_label.hide()
+        self.scroll_area.hide()
 
         # Clear track and playlist entry controls
-        while self.tracks_layout.count() > 0:
-            item = self.tracks_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        clear_layout(self.tracks_layout)
         self.tracks_container.clear_registry()
 
     def refresh(self):

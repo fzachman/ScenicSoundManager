@@ -14,6 +14,7 @@ from ..database import DatabaseConnection, Playlist, PlaylistTrack
 from ..audio import AudioEngine, TrackPlayer, SmartShuffle
 from ..shared.styles import Styles
 from ..shared.icons import IconLibrary
+from ..shared.layouts import clear_layout
 
 
 class PlaylistTrackItem(QFrame):
@@ -36,23 +37,16 @@ class PlaylistTrackItem(QFrame):
 
     def _apply_style(self):
         if self._now_playing:
-            self.setStyleSheet(f"""
-                PlaylistTrackItem {{
-                    background-color: {Styles.BACKGROUND_LIGHTER};
-                    border: 1px solid {Styles.PRIMARY};
-                    border-radius: 4px;
-                    padding: 8px;
-                }}
-            """)
+            self.setStyleSheet(
+                Styles.card_frame_style(
+                    "PlaylistTrackItem",
+                    accent_color=Styles.PRIMARY,
+                    border_color=Styles.PRIMARY,
+                    background_color=Styles.BACKGROUND_LIGHTER,
+                )
+            )
         else:
-            self.setStyleSheet(f"""
-                PlaylistTrackItem {{
-                    background-color: {Styles.BACKGROUND_LIGHT};
-                    border: 1px solid {Styles.BORDER};
-                    border-radius: 4px;
-                    padding: 8px;
-                }}
-            """)
+            self.setStyleSheet(Styles.card_frame_style("PlaylistTrackItem"))
 
     def set_now_playing(self, playing: bool):
         """Set now-playing highlight state"""
@@ -60,9 +54,9 @@ class PlaylistTrackItem(QFrame):
         self._apply_style()
         # Update position label color to indicate playing
         if playing:
-            self.position_label.setStyleSheet(f"color: {Styles.PRIMARY}; font-size: 13px; font-weight: bold;")
+            self.position_label.setStyleSheet(f"color: {Styles.PRIMARY}; font-size: 13px; font-weight: 700;")
         else:
-            self.position_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 13px; font-weight: bold;")
+            self.position_label.setStyleSheet(Styles.subtle_text_style(size=13, extra="font-weight: 700;"))
 
     def _setup_ui(self):
         layout = QHBoxLayout(self)
@@ -72,14 +66,14 @@ class PlaylistTrackItem(QFrame):
         self.position_label = QLabel(str(self.position + 1))
         self.position_label.setFixedWidth(28)
         self.position_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.position_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 13px; font-weight: bold;")
+        self.position_label.setStyleSheet(Styles.subtle_text_style(size=13, extra="font-weight: 700;"))
         layout.addWidget(self.position_label)
 
         # Track info
         info_layout = QVBoxLayout()
         if self.track.audio_file:
             title_label = QLabel(self.track.audio_file.display_title)
-            title_label.setStyleSheet("font-weight: bold; font-size: 13px;")
+            title_label.setStyleSheet(Styles.title_style(size=14))
             info_layout.addWidget(title_label)
 
             # Artist and tags row
@@ -88,7 +82,7 @@ class PlaylistTrackItem(QFrame):
 
             if self.track.audio_file.artist:
                 artist_label = QLabel(self.track.audio_file.artist)
-                artist_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px;")
+                artist_label.setStyleSheet(Styles.subtle_text_style(size=11))
                 detail_layout.addWidget(artist_label)
 
             # Tags
@@ -103,7 +97,7 @@ class PlaylistTrackItem(QFrame):
             info_layout.addLayout(detail_layout)
         else:
             title_label = QLabel("Unknown Track")
-            title_label.setStyleSheet("font-weight: bold; font-size: 13px;")
+            title_label.setStyleSheet(Styles.title_style(size=14))
             info_layout.addWidget(title_label)
 
         layout.addLayout(info_layout, 1)
@@ -111,25 +105,14 @@ class PlaylistTrackItem(QFrame):
         # Duration
         if self.track.audio_file:
             duration_label = QLabel(self.track.audio_file.duration_formatted)
-            duration_label.setStyleSheet(f"color: {Styles.TEXT_MUTED};")
+            duration_label.setStyleSheet(Styles.subtle_text_style(size=12))
             layout.addWidget(duration_label)
 
         # Remove button
         remove_btn = QPushButton("×")
         remove_btn.setFixedSize(24, 24)
         remove_btn.setToolTip("Remove from playlist")
-        remove_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {Styles.TEXT_MUTED};
-                border: none;
-                font-size: 18px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                color: {Styles.DANGER};
-            }}
-        """)
+        remove_btn.setStyleSheet(Styles.remove_button_style())
         remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.track.id))
         layout.addWidget(remove_btn)
 
@@ -277,18 +260,20 @@ class PlaylistEditor(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
 
         # Header with playlist title (clickable to edit)
         header = QHBoxLayout()
+        header.setSpacing(10)
 
         self.title_label = QLabel("Select a playlist")
-        self.title_label.setStyleSheet("font-weight: bold; font-size: 18px;")
+        self.title_label.setStyleSheet(Styles.title_style(size=28))
         self.title_label.mouseDoubleClickEvent = self._start_title_edit
         header.addWidget(self.title_label)
 
         self.title_edit = QLineEdit()
-        self.title_edit.setStyleSheet("font-weight: bold; font-size: 18px;")
+        self.title_edit.setStyleSheet(Styles.title_input_style(size=28))
         self.title_edit.editingFinished.connect(self._finish_title_edit)
         self.title_edit.hide()
         header.addWidget(self.title_edit)
@@ -305,25 +290,9 @@ class PlaylistEditor(QWidget):
         self._sync_shuffle_button()
         header.addWidget(self.shuffle_btn)
 
-        self.next_btn = QPushButton()
-        self.next_btn.setIcon(self._icons.icon("play"))
-        self.next_btn.setIconSize(QSize(12, 12))
+        self.next_btn = QPushButton("Next")
         self.next_btn.setToolTip("Next track")
-        self.next_btn.setFixedSize(32, 32)
-        self.next_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {Styles.BACKGROUND_LIGHTER};
-                border-radius: 4px;
-                padding: 4px;
-            }}
-            QPushButton:hover {{
-                background-color: {Styles.BORDER};
-            }}
-            QPushButton:disabled {{
-                background-color: {Styles.BACKGROUND_LIGHT};
-            }}
-        """)
-        self.next_btn.setText(">>")
+        self.next_btn.setStyleSheet(Styles.secondary_button_style(compact=True))
         self.next_btn.clicked.connect(self._next_track)
         self.next_btn.setEnabled(False)
         header.addWidget(self.next_btn)
@@ -331,15 +300,7 @@ class PlaylistEditor(QWidget):
         self.play_toggle_btn = QPushButton("Play")
         self.play_toggle_btn.setIcon(self._icons.icon("play"))
         self.play_toggle_btn.setIconSize(QSize(16, 16))
-        self.play_toggle_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {Styles.SUCCESS};
-                padding: 10px 20px;
-            }}
-            QPushButton:hover {{
-                background-color: #218838;
-            }}
-        """)
+        self.play_toggle_btn.setStyleSheet(Styles.playback_button_style(is_active=False))
         self.play_toggle_btn.clicked.connect(self._toggle_play)
         self.play_toggle_btn.setEnabled(False)
         header.addWidget(self.play_toggle_btn)
@@ -348,6 +309,7 @@ class PlaylistEditor(QWidget):
 
         # Add tracks button
         add_layout = QHBoxLayout()
+        add_layout.setSpacing(10)
         self.add_tracks_btn = QPushButton("+ Add Tracks")
         self.add_tracks_btn.clicked.connect(self._add_tracks)
         self.add_tracks_btn.setEnabled(False)
@@ -356,9 +318,9 @@ class PlaylistEditor(QWidget):
         layout.addLayout(add_layout)
 
         # Tracks scroll area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
         self.tracks_container = PlaylistTrackListContainer()
         self.tracks_container.order_changed.connect(self._on_tracks_reordered)
@@ -366,13 +328,14 @@ class PlaylistEditor(QWidget):
         self.tracks_layout.setContentsMargins(0, 8, 0, 0)
         self.tracks_layout.setSpacing(8)
 
-        scroll.setWidget(self.tracks_container)
-        layout.addWidget(scroll)
+        self.scroll_area.setWidget(self.tracks_container)
+        layout.addWidget(self.scroll_area)
+        self.scroll_area.hide()
 
         # Empty state
         self.empty_label = QLabel("No tracks in this playlist.\nClick '+ Add Tracks' to add audio files.")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; padding: 40px;")
+        self.empty_label.setStyleSheet(Styles.empty_state_style())
         self.empty_label.hide()
         layout.addWidget(self.empty_label)
 
@@ -431,10 +394,7 @@ class PlaylistEditor(QWidget):
             return
 
         # Clear existing track items
-        while self.tracks_layout.count() > 0:
-            item = self.tracks_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        clear_layout(self.tracks_layout)
         self.tracks_container.clear_registry()
         self._track_items.clear()
 
@@ -447,8 +407,10 @@ class PlaylistEditor(QWidget):
 
         if not playlist.tracks:
             self.empty_label.show()
+            self.scroll_area.hide()
         else:
             self.empty_label.hide()
+            self.scroll_area.show()
 
             for i, track in enumerate(playlist.tracks):
                 self._add_track_item(track, position=i)
@@ -742,51 +704,17 @@ class PlaylistEditor(QWidget):
         if is_active:
             self.play_toggle_btn.setText("Pause")
             self.play_toggle_btn.setIcon(self._icons.icon("pause"))
-            self.play_toggle_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.WARNING};
-                    color: #000;
-                    padding: 10px 20px;
-                }}
-                QPushButton:hover {{
-                    background-color: #E0A800;
-                }}
-            """)
         else:
             self.play_toggle_btn.setText("Play")
             self.play_toggle_btn.setIcon(self._icons.icon("play"))
-            self.play_toggle_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.SUCCESS};
-                    padding: 10px 20px;
-                }}
-                QPushButton:hover {{
-                    background-color: #218838;
-                }}
-            """)
+        self.play_toggle_btn.setStyleSheet(Styles.playback_button_style(is_active=is_active))
 
     def _sync_shuffle_button(self):
         """Sync shuffle button appearance with state"""
         if self._shuffle_enabled:
-            self.shuffle_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.PRIMARY};
-                    padding: 8px 16px;
-                }}
-                QPushButton:hover {{
-                    background-color: {Styles.PRIMARY_DARK};
-                }}
-            """)
+            self.shuffle_btn.setStyleSheet(Styles.toggle_on_style(radius=10, extra="padding: 8px 16px;"))
         else:
-            self.shuffle_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {Styles.BACKGROUND_LIGHTER};
-                    padding: 8px 16px;
-                }}
-                QPushButton:hover {{
-                    background-color: {Styles.BORDER};
-                }}
-            """)
+            self.shuffle_btn.setStyleSheet(Styles.toggle_off_style(radius=10, extra="padding: 8px 16px;"))
 
     def stop_all(self):
         """Stop all playback immediately (called by MainWindow on close)"""
@@ -809,12 +737,11 @@ class PlaylistEditor(QWidget):
         self.shuffle_btn.setEnabled(False)
         self.next_btn.setEnabled(False)
         self._sync_play_button()
+        self.empty_label.hide()
+        self.scroll_area.hide()
 
         # Clear track items
-        while self.tracks_layout.count() > 0:
-            item = self.tracks_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        clear_layout(self.tracks_layout)
         self.tracks_container.clear_registry()
 
     def refresh(self):

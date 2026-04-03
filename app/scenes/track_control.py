@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QSlider,
     QPushButton, QFrame, QMenu, QApplication
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QMimeData, QByteArray
+from PyQt6.QtCore import pyqtSignal, Qt, QMimeData, QByteArray, QSize
 from PyQt6.QtGui import QDrag
 
 from ..database import SceneAudioFile
@@ -35,14 +35,7 @@ class TrackControl(QFrame):
         self._repeat_mode = bool(track.is_repeat)
 
         self.setFrameStyle(QFrame.Shape.StyledPanel)
-        self._base_style = f"""
-            TrackControl {{
-                background-color: {Styles.BACKGROUND_LIGHT};
-                border: 1px solid {Styles.BORDER};
-                border-radius: 4px;
-                padding: 8px;
-            }}
-        """
+        self._base_style = Styles.card_frame_style("TrackControl")
         self.setStyleSheet(self._base_style)
         if self.track.audio_file:
             self.setToolTip(self.track.audio_file.file_path)
@@ -61,42 +54,23 @@ class TrackControl(QFrame):
         # Title
         title = self.track.audio_file.display_title if self.track.audio_file else "Unknown"
         self.title_label = QLabel(title)
-        self.title_label.setStyleSheet("font-weight: bold; font-size: 13px;")
+        self.title_label.setStyleSheet(Styles.title_style(size=14))
         self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         top_row.addWidget(self.title_label, 1)
 
         # File missing indicator
         if self.track.audio_file and not os.path.exists(self.track.audio_file.file_path):
             missing_label = QLabel("⚠️ File not found")
-            missing_label.setStyleSheet(f"color: {Styles.WARNING}; font-size: 11px;")
+            missing_label.setStyleSheet(f"color: {Styles.WARNING}; font-size: 11px; font-weight: 700;")
             top_row.addWidget(missing_label)
 
         # Play/Pause button
         self.play_btn = QPushButton()
-        self.play_btn.setFixedSize(36, 36)
-        self.play_btn.setIconSize(self.play_btn.size())
-        self.play_btn.setStyleSheet(Styles.play_button_style())
+        self.play_btn.setFixedSize(28, 28)
+        self.play_btn.setIconSize(QSize(12, 12))
+        self.play_btn.setStyleSheet(Styles.play_button_style(size=28))
         self.play_btn.clicked.connect(self._toggle_play)
         top_row.addWidget(self.play_btn)
-
-        # Remove button
-        remove_btn = QPushButton("×")
-        remove_btn.setFixedSize(24, 24)
-        remove_btn.setToolTip("Remove from scene")
-        remove_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {Styles.TEXT_MUTED};
-                border: none;
-                font-size: 18px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                color: {Styles.DANGER};
-            }}
-        """)
-        remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.track.id))
-        top_row.addWidget(remove_btn)
 
         layout.addLayout(top_row)
 
@@ -105,7 +79,7 @@ class TrackControl(QFrame):
 
         self.position_label = QLabel("0:00")
         self.position_label.setFixedWidth(45)
-        self.position_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px;")
+        self.position_label.setStyleSheet(Styles.subtle_text_style(size=11))
         self.position_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         position_row.addWidget(self.position_label)
 
@@ -119,7 +93,7 @@ class TrackControl(QFrame):
 
         self.duration_label = QLabel(self.track.audio_file.duration_formatted if self.track.audio_file else "--:--")
         self.duration_label.setFixedWidth(45)
-        self.duration_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px;")
+        self.duration_label.setStyleSheet(Styles.subtle_text_style(size=11))
         self.duration_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.duration_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         position_row.addWidget(self.duration_label)
@@ -131,7 +105,7 @@ class TrackControl(QFrame):
 
         # Volume label and slider
         volume_label = QLabel("Vol:")
-        volume_label.setStyleSheet(f"color: {Styles.TEXT_MUTED};")
+        volume_label.setStyleSheet(Styles.subtle_text_style(size=12))
         volume_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         bottom_row.addWidget(volume_label)
 
@@ -145,7 +119,7 @@ class TrackControl(QFrame):
 
         self.volume_value_label = QLabel(f"{int(self.track.volume * 100)}%")
         self.volume_value_label.setFixedWidth(40)
-        self.volume_value_label.setStyleSheet(f"color: {Styles.TEXT_MUTED};")
+        self.volume_value_label.setStyleSheet(Styles.subtle_text_style(size=12))
         self.volume_value_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         bottom_row.addWidget(self.volume_value_label)
 
@@ -153,9 +127,9 @@ class TrackControl(QFrame):
 
         # Repeat toggle button
         self.repeat_btn = QPushButton()
-        self.repeat_btn.setFixedSize(30, 24)
+        self.repeat_btn.setFixedSize(28, 28)
         self.repeat_btn.setIcon(self._icons.icon("repeat"))
-        self.repeat_btn.setIconSize(self.repeat_btn.size())
+        self.repeat_btn.setIconSize(QSize(14, 14))
         self.repeat_btn.clicked.connect(self._toggle_repeat)
         bottom_row.addWidget(self.repeat_btn)
 
@@ -236,17 +210,19 @@ class TrackControl(QFrame):
 
     def _update_play_mode_ui(self):
         """Update play button based on play mode state"""
-        self.play_btn.setIcon(self._icons.icon("play"))
+        self.play_btn.setIcon(self._icons.icon("play-solid"))
         if self._play_mode:
-            self.play_btn.setStyleSheet(Styles.play_button_style())
-            self.setStyleSheet(self._base_style + f"""
-                TrackControl {{
-                    border-left: 4px solid {Styles.SUCCESS};
-                    padding-left: 6px;
-                }}
-            """)
+            self.play_btn.setStyleSheet(Styles.play_button_style(size=28))
+            self.setStyleSheet(
+                Styles.card_frame_style(
+                    "TrackControl",
+                    accent_color=Styles.SUCCESS,
+                    border_color=Styles.SUCCESS,
+                    background_color=Styles.BACKGROUND_LIGHT,
+                )
+            )
         else:
-            self.play_btn.setStyleSheet(Styles.play_button_inactive_style())
+            self.play_btn.setStyleSheet(Styles.play_button_inactive_style(size=28))
             self.setStyleSheet(self._base_style)
 
         self._update_repeat_button()
@@ -262,10 +238,9 @@ class TrackControl(QFrame):
 
     def _update_repeat_button(self):
         """Update repeat button appearance"""
-        if self._repeat_mode:
-            self.repeat_btn.setStyleSheet(Styles.toggle_on_style())
-        else:
-            self.repeat_btn.setStyleSheet(Styles.toggle_off_style())
+        self.repeat_btn.setStyleSheet(
+            Styles.icon_toggle_button_style(self._repeat_mode, size=28)
+        )
 
     def contextMenuEvent(self, event):
         """Show context menu for track actions"""

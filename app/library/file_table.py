@@ -55,15 +55,15 @@ class FileTableWidget(QTableWidget):
         header.setSectionResizeMode(self.COL_PLAY, QHeaderView.ResizeMode.Fixed)
         header.resizeSection(self.COL_PLAY, 50)
         header.setSectionResizeMode(self.COL_TITLE, QHeaderView.ResizeMode.Interactive)
-        header.resizeSection(self.COL_TITLE, 180)
+        header.resizeSection(self.COL_TITLE, 260)
         header.setSectionResizeMode(self.COL_ARTIST, QHeaderView.ResizeMode.Interactive)
-        header.resizeSection(self.COL_ARTIST, 180)
+        header.resizeSection(self.COL_ARTIST, 220)
         header.setSectionResizeMode(self.COL_DURATION, QHeaderView.ResizeMode.Interactive)
-        header.resizeSection(self.COL_DURATION, 180)
+        header.resizeSection(self.COL_DURATION, 110)
         header.setSectionResizeMode(self.COL_TAGS, QHeaderView.ResizeMode.Interactive)
-        header.resizeSection(self.COL_TAGS, 180)
+        header.resizeSection(self.COL_TAGS, 240)
         header.setSectionResizeMode(self.COL_ADDED, QHeaderView.ResizeMode.Interactive)
-        header.resizeSection(self.COL_ADDED, 180)
+        header.resizeSection(self.COL_ADDED, 160)
         header.setStretchLastSection(True)
 
         self._restore_header_state()
@@ -72,6 +72,8 @@ class FileTableWidget(QTableWidget):
         # Selection behavior
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.setAlternatingRowColors(True)
+        self.setShowGrid(False)
         self.verticalHeader().setDefaultSectionSize(44)
         self.verticalHeader().setVisible(False)
 
@@ -115,7 +117,7 @@ class FileTableWidget(QTableWidget):
         # Play button
         play_widget = QWidget()
         play_layout = QHBoxLayout(play_widget)
-        play_layout.setContentsMargins(0, 0, 0, 0)
+        play_layout.setContentsMargins(6, 0, 6, 0)
         play_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         play_btn = QPushButton()
