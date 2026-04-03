@@ -14,6 +14,7 @@ from ..audio import AudioEngine
 from .file_table import FileTableWidget
 from .tag_manager import TagManager
 from .search_bar import SearchBar
+from .pagination_bar import PaginationBar
 from .metadata import MetadataExtractor
 from ..shared.dialogs import FilePickerDialog, DuplicateFilesDialog
 from ..shared.styles import Styles
@@ -59,14 +60,15 @@ class LibraryWidget(QWidget):
 
         layout.addLayout(top_bar)
 
-        # File count label
-        self.count_label = QLabel()
-        self.count_label.setStyleSheet(Styles.subtle_text_style(size=12))
-        layout.addWidget(self.count_label)
+        # Pagination bar
+        self.pagination_bar = PaginationBar()
+        self.pagination_bar.page_changed.connect(self._apply_page)
+        layout.addWidget(self.pagination_bar)
 
         # File table
         self.file_table = FileTableWidget(self.db, self.audio_engine)
         self.file_table.files_deleted.connect(self._on_files_deleted)
+        self.file_table.tags_bulk_assigned.connect(self._on_tags_modified)
         layout.addWidget(self.file_table, 1)
 
         # Drop hint
@@ -83,8 +85,7 @@ class LibraryWidget(QWidget):
 
     def _display_files(self, files: list[AudioFile]):
         """Display files in the table"""
-        self.file_table.set_files(files)
-        self._update_count_label(len(files))
+        self.pagination_bar.set_files(files)
 
         # Show/hide drop hint based on whether we have files
         if not files and not self.search_bar.get_text():
@@ -94,12 +95,10 @@ class LibraryWidget(QWidget):
             self.drop_hint.hide()
             self.file_table.show()
 
-    def _update_count_label(self, count: int):
-        """Update the file count label"""
-        if count == 1:
-            self.count_label.setText("1 file")
-        else:
-            self.count_label.setText(f"{count} files")
+    def _apply_page(self):
+        """Apply current pagination page to file table"""
+        page_files = self.pagination_bar.get_current_page_files()
+        self.file_table.set_files(page_files)
 
     def _on_search(self, query: str):
         """Handle search query change"""

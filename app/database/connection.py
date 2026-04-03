@@ -280,6 +280,16 @@ class DatabaseConnection:
         )
         self.connection.commit()
 
+    def bulk_add_tags_to_audio_files(self, audio_file_ids: list[int], tag_ids: list[int]) -> None:
+        """Add multiple tags to multiple audio files in a single transaction"""
+        for file_id in audio_file_ids:
+            for tag_id in tag_ids:
+                self.connection.execute(
+                    "INSERT OR IGNORE INTO audio_file_tags (audio_file_id, tag_id) VALUES (?, ?)",
+                    (file_id, tag_id)
+                )
+        self.connection.commit()
+
     def remove_tag_from_audio_file(self, audio_file_id: int, tag_id: int) -> None:
         """Remove a tag association from an audio file"""
         self.connection.execute(

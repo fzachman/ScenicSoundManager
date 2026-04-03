@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QWidget,
     QHBoxLayout, QPushButton, QAbstractItemView, QMenu
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QSize, QSettings, QByteArray
+from PyQt6.QtCore import pyqtSignal, Qt, QSize, QSettings, QByteArray, QEvent
 
 from ..database import DatabaseConnection, AudioFile
 from ..audio import AudioEngine, TrackPlayer
@@ -22,16 +22,32 @@ class FileTableWidget(QTableWidget):
     file_selected = pyqtSignal(AudioFile)
     file_double_clicked = pyqtSignal(AudioFile)
     files_deleted = pyqtSignal(list)  # List of deleted file IDs
+    tags_bulk_assigned = pyqtSignal()  # Emitted after bulk tag assignment
     SETTINGS_GROUP = "library/file_table"
     SETTINGS_HEADER_STATE = "header_state"
+    SETTINGS_COLUMN_VISIBILITY = "column_visibility"
+    SETTINGS_COLUMN_COUNT = "column_count"
 
-    COLUMNS = ["", "Title", "Artist", "Duration", "Tags", "Added"]
+    COLUMNS = ["", "Title", "Artist", "Duration", "Tags", "Added", "Filename", "Path"]
     COL_PLAY = 0
     COL_TITLE = 1
     COL_ARTIST = 2
     COL_DURATION = 3
     COL_TAGS = 4
     COL_ADDED = 5
+    COL_FILENAME = 6
+    COL_PATH = 7
+
+    # Columns the user can toggle on/off (Play and Title are always visible)
+    TOGGLEABLE_COLUMNS = {
+        COL_ARTIST: "Artist",
+        COL_DURATION: "Duration",
+        COL_TAGS: "Tags",
+        COL_ADDED: "Added",
+        COL_FILENAME: "Filename",
+        COL_PATH: "Path",
+    }
+    DEFAULT_VISIBLE = {COL_ARTIST, COL_DURATION, COL_TAGS, COL_ADDED}
 
     def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
         super().__init__(parent)
@@ -42,8 +58,10 @@ class FileTableWidget(QTableWidget):
         self._playing_row: int = -1
         self._playing_file_id: Optional[int] = None
         self._icons = IconLibrary()
+        self._visible_columns: set[int] = set(self.DEFAULT_VISIBLE)
 
         self._setup_table()
+        self._setup_column_button()
 
     def _setup_table(self):
         """Configure table settings"""
@@ -64,9 +82,18 @@ class FileTableWidget(QTableWidget):
         header.resizeSection(self.COL_TAGS, 240)
         header.setSectionResizeMode(self.COL_ADDED, QHeaderView.ResizeMode.Interactive)
         header.resizeSection(self.COL_ADDED, 160)
+        header.setSectionResizeMode(self.COL_FILENAME, QHeaderView.ResizeMode.Interactive)
+        header.resizeSection(self.COL_FILENAME, 200)
+        header.setSectionResizeMode(self.COL_PATH, QHeaderView.ResizeMode.Interactive)
+        header.resizeSection(self.COL_PATH, 300)
         header.setStretchLastSection(True)
 
+        # Enable drag reorder for columns
+        header.setSectionsMovable(True)
+        header.sectionMoved.connect(self._on_section_moved)
+
         self._restore_header_state()
+        self._restore_column_visibility()
         header.sectionResized.connect(self._save_header_state)
 
         # Selection behavior
@@ -134,10 +161,13 @@ class FileTableWidget(QTableWidget):
         # Title
         title_item = QTableWidgetItem(audio_file.display_title)
         title_item.setData(Qt.ItemDataRole.UserRole, audio_file.id)
+        title_item.setToolTip(audio_file.display_title)
         self.setItem(row, self.COL_TITLE, title_item)
 
         # Artist
-        artist_item = QTableWidgetItem(audio_file.artist or "")
+        artist_text = audio_file.artist or ""
+        artist_item = QTableWidgetItem(artist_text)
+        artist_item.setToolTip(artist_text)
         self.setItem(row, self.COL_ARTIST, artist_item)
 
         # Duration
@@ -150,10 +180,22 @@ class FileTableWidget(QTableWidget):
         self.setCellWidget(row, self.COL_TAGS, tag_widget)
 
         # Added date
-        created_at = audio_file.created_at or ""
-        added_item = QTableWidgetItem(str(created_at))
+        added_text = str(audio_file.created_at or "")
+        added_item = QTableWidgetItem(added_text)
         added_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        added_item.setToolTip(added_text)
         self.setItem(row, self.COL_ADDED, added_item)
+
+        # Filename
+        filename_text = os.path.basename(audio_file.file_path)
+        filename_item = QTableWidgetItem(filename_text)
+        filename_item.setToolTip(filename_text)
+        self.setItem(row, self.COL_FILENAME, filename_item)
+
+        # Path
+        path_item = QTableWidgetItem(audio_file.file_path)
+        path_item.setToolTip(audio_file.file_path)
+        self.setItem(row, self.COL_PATH, path_item)
 
     def _toggle_play_for_button(self):
         """Toggle play/stop based on the clicked play button"""
@@ -278,6 +320,9 @@ class FileTableWidget(QTableWidget):
                     lambda checked=False, fid=audio_file.id: self._toggle_play_by_file_id(fid)
                 )
 
+        tag_action = menu.addAction(f"Add Tags to Selected ({len(rows)})")
+        tag_action.triggered.connect(self._bulk_add_tags)
+
         delete_action = menu.addAction(f"Remove ({len(rows)} files)")
         delete_action.triggered.connect(self._delete_selected)
 
@@ -295,6 +340,37 @@ class FileTableWidget(QTableWidget):
                 self.db.delete_audio_file(audio_file.id)
 
         self.files_deleted.emit(file_ids)
+
+    def _bulk_add_tags(self):
+        """Open tag selection dialog and apply selected tags to all selected files"""
+        from .tag_selection_dialog import TagSelectionDialog
+
+        dialog = TagSelectionDialog(self.db, parent=self)
+        if not dialog.exec():
+            return
+
+        tag_ids = dialog.get_selected_tag_ids()
+        if not tag_ids:
+            return
+
+        rows = self.selectionModel().selectedRows()
+        file_ids = []
+        for row in rows:
+            audio_file = self._get_file_at_row(row.row())
+            if audio_file:
+                file_ids.append(audio_file.id)
+
+        if file_ids:
+            self.db.bulk_add_tags_to_audio_files(file_ids, tag_ids)
+            self._refresh_tag_widgets()
+            self.tags_bulk_assigned.emit()
+
+    def _refresh_tag_widgets(self):
+        """Refresh TagAssigner widgets for all visible rows"""
+        for row in range(self.rowCount()):
+            tag_widget = self.cellWidget(row, self.COL_TAGS)
+            if isinstance(tag_widget, TagAssigner):
+                tag_widget.refresh_tags()
 
     def get_selected_files(self) -> list[AudioFile]:
         """Get currently selected audio files"""
@@ -342,13 +418,83 @@ class FileTableWidget(QTableWidget):
         if self._playing_row >= 0:
             self._update_play_button(self._playing_row, True)
 
+    # --- Column customization ---
+
+    def _setup_column_button(self):
+        """Create column customization button overlaid on the header"""
+        header = self.horizontalHeader()
+        self._column_btn = QPushButton(header)
+        self._column_btn.setFixedSize(24, 24)
+        self._column_btn.setIcon(self._icons.icon("list"))
+        self._column_btn.setIconSize(QSize(14, 14))
+        self._column_btn.setToolTip("Customize columns")
+        self._column_btn.setStyleSheet(self._column_button_style())
+        self._column_btn.clicked.connect(self._show_column_menu)
+        header.installEventFilter(self)
+        self._reposition_column_button()
+
+    def eventFilter(self, obj, event):
+        if obj == self.horizontalHeader() and event.type() == QEvent.Type.Resize:
+            self._reposition_column_button()
+        return super().eventFilter(obj, event)
+
+    def _reposition_column_button(self):
+        header = self.horizontalHeader()
+        btn = self._column_btn
+        x = header.width() - btn.width() - 4
+        y = (header.height() - btn.height()) // 2
+        btn.move(x, y)
+
+    def _show_column_menu(self):
+        menu = QMenu(self)
+        for col_idx in sorted(self.TOGGLEABLE_COLUMNS):
+            col_name = self.TOGGLEABLE_COLUMNS[col_idx]
+            action = menu.addAction(col_name)
+            action.setCheckable(True)
+            action.setChecked(col_idx in self._visible_columns)
+            action.triggered.connect(lambda checked, c=col_idx: self._toggle_column(c))
+        menu.exec(self._column_btn.mapToGlobal(self._column_btn.rect().bottomRight()))
+
+    def _toggle_column(self, col_index: int):
+        if col_index in self._visible_columns:
+            self._visible_columns.discard(col_index)
+        else:
+            self._visible_columns.add(col_index)
+        self._apply_column_visibility()
+        self._save_column_visibility()
+
+    def _apply_column_visibility(self):
+        for col_idx in self.TOGGLEABLE_COLUMNS:
+            self.setColumnHidden(col_idx, col_idx not in self._visible_columns)
+
+    def _on_section_moved(self, logical_index: int, old_visual: int, new_visual: int):
+        """Enforce Play (visual 0) and Title (visual 1) stay locked"""
+        header = self.horizontalHeader()
+        play_visual = header.visualIndex(self.COL_PLAY)
+        title_visual = header.visualIndex(self.COL_TITLE)
+
+        if play_visual != 0 or title_visual != 1:
+            header.blockSignals(True)
+            header.moveSection(new_visual, old_visual)
+            header.blockSignals(False)
+        else:
+            self._save_header_state()
+
+    # --- Settings persistence ---
+
     def _restore_header_state(self):
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_GROUP)
+        saved_count = settings.value(self.SETTINGS_COLUMN_COUNT, type=int)
         state = settings.value(self.SETTINGS_HEADER_STATE)
         settings.endGroup()
+
         if not state:
             return
+        # Discard saved state if column count changed (e.g. new columns added)
+        if saved_count and saved_count != len(self.COLUMNS):
+            return
+
         header = self.horizontalHeader()
         header.blockSignals(True)
         if isinstance(state, QByteArray):
@@ -361,4 +507,38 @@ class FileTableWidget(QTableWidget):
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_GROUP)
         settings.setValue(self.SETTINGS_HEADER_STATE, self.horizontalHeader().saveState())
+        settings.setValue(self.SETTINGS_COLUMN_COUNT, len(self.COLUMNS))
         settings.endGroup()
+
+    def _restore_column_visibility(self):
+        settings = QSettings()
+        settings.beginGroup(self.SETTINGS_GROUP)
+        saved = settings.value(self.SETTINGS_COLUMN_VISIBILITY)
+        settings.endGroup()
+
+        if saved is not None:
+            try:
+                self._visible_columns = {int(c) for c in saved}
+            except (TypeError, ValueError):
+                self._visible_columns = set(self.DEFAULT_VISIBLE)
+        self._apply_column_visibility()
+
+    def _save_column_visibility(self):
+        settings = QSettings()
+        settings.beginGroup(self.SETTINGS_GROUP)
+        settings.setValue(self.SETTINGS_COLUMN_VISIBILITY, list(self._visible_columns))
+        settings.endGroup()
+
+    @staticmethod
+    def _column_button_style() -> str:
+        return f"""
+            QPushButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 4px;
+                padding: 0;
+            }}
+            QPushButton:hover {{
+                background-color: {Styles.BACKGROUND_HOVER};
+            }}
+        """
