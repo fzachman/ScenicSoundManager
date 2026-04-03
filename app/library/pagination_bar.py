@@ -84,10 +84,22 @@ class PaginationBar(QWidget):
         btn.setStyleSheet(self._nav_button_style())
         return btn
 
-    def set_files(self, files: list):
-        """Store full file list and reset to page 0"""
+    def set_files(self, files: list, preserve_page: bool = False):
+        """Store full file list and optionally reset to page 0"""
         self._all_files = files
-        self._current_page = 0
+        if not preserve_page:
+            self._current_page = 0
+        # Clamp current page to valid range
+        max_page = max(0, self._total_pages - 1)
+        self._current_page = min(self._current_page, max_page)
+        self._update_display()
+        self.page_changed.emit()
+
+    def sort_files(self, key_func, reverse: bool = False):
+        """Sort the full file list and re-paginate, preserving current page"""
+        self._all_files.sort(key=key_func, reverse=reverse)
+        max_page = max(0, self._total_pages - 1)
+        self._current_page = min(self._current_page, max_page)
         self._update_display()
         self.page_changed.emit()
 

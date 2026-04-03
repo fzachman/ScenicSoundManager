@@ -68,7 +68,8 @@ class LibraryWidget(QWidget):
         # File table
         self.file_table = FileTableWidget(self.db, self.audio_engine)
         self.file_table.files_deleted.connect(self._on_files_deleted)
-        self.file_table.tags_bulk_assigned.connect(self._on_tags_modified)
+        self.file_table.tags_bulk_assigned.connect(self._on_bulk_tags_assigned)
+        self.file_table.sort_requested.connect(self._on_sort_requested)
         layout.addWidget(self.file_table, 1)
 
         # Drop hint
@@ -115,6 +116,45 @@ class LibraryWidget(QWidget):
     def _on_tags_modified(self):
         """Handle tag creation/deletion"""
         self._load_files()
+
+    def _on_bulk_tags_assigned(self):
+        """Handle bulk tag assignment — re-run current search/filter, preserve page"""
+        self._refresh_current_view(preserve_page=True)
+
+    def _refresh_current_view(self, preserve_page: bool = False):
+        """Re-run the active search/filter query and update display"""
+        query = self.search_bar.get_text()
+        tag_ids = self.tag_manager.get_selected_tag_ids()
+        files = self.db.search_audio_files(query, tag_ids if tag_ids else None)
+        self.pagination_bar.set_files(files, preserve_page=preserve_page)
+
+        if not files and not query:
+            self.drop_hint.show()
+            self.file_table.hide()
+        else:
+            self.drop_hint.hide()
+            self.file_table.show()
+
+    def _on_sort_requested(self, column: int, order: Qt.SortOrder):
+        """Handle sort request from file table — sort full dataset then re-paginate"""
+        sort_key = self._get_sort_key(column)
+        if sort_key is None:
+            return
+        reverse = order == Qt.SortOrder.DescendingOrder
+        self.pagination_bar.sort_files(sort_key, reverse)
+
+    @staticmethod
+    def _get_sort_key(column: int):
+        """Return a sort key function for the given column index"""
+        keys = {
+            FileTableWidget.COL_TITLE: lambda f: (f.display_title or "").lower(),
+            FileTableWidget.COL_ARTIST: lambda f: (f.artist or "").lower(),
+            FileTableWidget.COL_DURATION: lambda f: f.duration_seconds or 0,
+            FileTableWidget.COL_ADDED: lambda f: f.created_at or "",
+            FileTableWidget.COL_FILENAME: lambda f: os.path.basename(f.file_path).lower(),
+            FileTableWidget.COL_PATH: lambda f: f.file_path.lower(),
+        }
+        return keys.get(column)
 
     def _on_files_deleted(self, file_ids: list[int]):
         """Handle files deleted from table"""

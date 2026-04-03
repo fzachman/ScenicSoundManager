@@ -23,6 +23,7 @@ class FileTableWidget(QTableWidget):
     file_double_clicked = pyqtSignal(AudioFile)
     files_deleted = pyqtSignal(list)  # List of deleted file IDs
     tags_bulk_assigned = pyqtSignal()  # Emitted after bulk tag assignment
+    sort_requested = pyqtSignal(int, Qt.SortOrder)  # column index, sort order
     SETTINGS_GROUP = "library/file_table"
     SETTINGS_HEADER_STATE = "header_state"
     SETTINGS_COLUMN_VISIBILITY = "column_visibility"
@@ -59,6 +60,8 @@ class FileTableWidget(QTableWidget):
         self._playing_file_id: Optional[int] = None
         self._icons = IconLibrary()
         self._visible_columns: set[int] = set(self.DEFAULT_VISIBLE)
+        self._sort_column: int = -1
+        self._sort_order: Qt.SortOrder = Qt.SortOrder.AscendingOrder
 
         self._setup_table()
         self._setup_column_button()
@@ -104,10 +107,12 @@ class FileTableWidget(QTableWidget):
         self.verticalHeader().setDefaultSectionSize(44)
         self.verticalHeader().setVisible(False)
 
-        # Sorting
-        self.setSortingEnabled(True)
+        # Sorting — disabled at the table level; sorting is handled globally
+        # via sort_requested signal so pagination works across the full dataset
+        self.setSortingEnabled(False)
         self.horizontalHeader().setSortIndicatorShown(True)
-        self.horizontalHeader().sortIndicatorChanged.connect(self._on_sort_changed)
+        self.horizontalHeader().setSectionsClickable(True)
+        self.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
 
         # Context menu
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -130,13 +135,11 @@ class FileTableWidget(QTableWidget):
 
     def _refresh_table(self):
         """Refresh table contents"""
-        self.setSortingEnabled(False)
         self.setRowCount(len(self._files))
 
         for row, audio_file in enumerate(self._files):
             self._populate_row(row, audio_file)
 
-        self.setSortingEnabled(True)
         self._apply_playback_state()
 
     def _populate_row(self, row: int, audio_file: AudioFile):
@@ -408,15 +411,21 @@ class FileTableWidget(QTableWidget):
         if self._playing_row >= 0:
             self._update_play_button(self._playing_row, True)
 
-    def _on_sort_changed(self, logical_index: int, order: Qt.SortOrder):
-        """Handle sort changes"""
-        if self._playing_file_id is None:
-            return
-        if self._playing_row >= 0:
-            self._update_play_button(self._playing_row, False)
-        self._playing_row = self._find_row_for_file_id(self._playing_file_id)
-        if self._playing_row >= 0:
-            self._update_play_button(self._playing_row, True)
+    def _on_header_clicked(self, logical_index: int):
+        """Handle header click for sorting — toggle sort indicator and emit signal"""
+        if logical_index == self._sort_column:
+            # Toggle direction
+            self._sort_order = (
+                Qt.SortOrder.DescendingOrder
+                if self._sort_order == Qt.SortOrder.AscendingOrder
+                else Qt.SortOrder.AscendingOrder
+            )
+        else:
+            self._sort_column = logical_index
+            self._sort_order = Qt.SortOrder.AscendingOrder
+
+        self.horizontalHeader().setSortIndicator(self._sort_column, self._sort_order)
+        self.sort_requested.emit(self._sort_column, self._sort_order)
 
     # --- Column customization ---
 
@@ -491,8 +500,8 @@ class FileTableWidget(QTableWidget):
 
         if not state:
             return
-        # Discard saved state if column count changed (e.g. new columns added)
-        if saved_count and saved_count != len(self.COLUMNS):
+        # Only restore if column count was saved and matches current layout
+        if not saved_count or saved_count != len(self.COLUMNS):
             return
 
         header = self.horizontalHeader()
