@@ -148,6 +148,13 @@ class Styles:
             border: none;
         }}
 
+        QTableWidget QLineEdit {{
+            padding: 0px 8px;
+            border-radius: 0px;
+            border: 1px solid {PRIMARY};
+            background-color: {BACKGROUND_LIGHT};
+        }}
+
         QTableWidget::item:selected {{
             background-color: {BACKGROUND_HOVER};
             color: {TEXT};

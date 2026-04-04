@@ -23,6 +23,7 @@ class FileTableWidget(QTableWidget):
     file_double_clicked = pyqtSignal(AudioFile)
     files_deleted = pyqtSignal(list)  # List of deleted file IDs
     tags_bulk_assigned = pyqtSignal()  # Emitted after bulk tag assignment
+    file_metadata_changed = pyqtSignal()  # Emitted after inline title/artist edit
     sort_requested = pyqtSignal(int, Qt.SortOrder)  # column index, sort order
     SETTINGS_GROUP = "library/file_table"
     SETTINGS_HEADER_STATE = "header_state"
@@ -169,8 +170,9 @@ class FileTableWidget(QTableWidget):
 
         self.setCellWidget(row, self.COL_PLAY, play_widget)
 
-        # Title
-        title_item = QTableWidgetItem(audio_file.display_title)
+        # Title (editable — show raw title, not display_title which falls back to filename)
+        title_text = audio_file.title or ""
+        title_item = QTableWidgetItem(title_text)
         title_item.setData(Qt.ItemDataRole.UserRole, audio_file.id)
         title_item.setToolTip(audio_file.display_title)
         self.setItem(row, self.COL_TITLE, title_item)
@@ -326,6 +328,7 @@ class FileTableWidget(QTableWidget):
                 return
             audio_file.artist = new_value
         self.db.update_audio_file(audio_file)
+        self.file_metadata_changed.emit()
 
     def _on_double_click(self, row: int, col: int):
         """Handle double-click on a row"""

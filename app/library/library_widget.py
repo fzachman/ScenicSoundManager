@@ -74,6 +74,9 @@ class LibraryWidget(QWidget):
         self.file_table = FileTableWidget(self.db, self.audio_engine)
         self.file_table.files_deleted.connect(self._on_files_deleted)
         self.file_table.tags_bulk_assigned.connect(self._on_bulk_tags_assigned)
+        self.file_table.file_metadata_changed.connect(
+            lambda: self._refresh_current_view(preserve_page=True)
+        )
         self.file_table.sort_requested.connect(self._on_sort_requested)
         layout.addWidget(self.file_table, 1)
 
