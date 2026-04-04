@@ -373,9 +373,10 @@ class Styles:
         """
 
     @staticmethod
-    def tag_badge_style(color: str, border_color: Optional[str] = None) -> str:
+    def tag_badge_style(color: str, border_color: Optional[str] = None, border_style: str = "solid") -> str:
         """Generate stylesheet for a tag badge."""
         border = border_color or "transparent"
+        width = "2px" if border_color else "1px"
         return f"""
             background-color: {color};
             color: white;
@@ -384,7 +385,7 @@ class Styles:
             min-height: 18px;
             font-size: 11px;
             font-weight: 700;
-            border: 1px solid {border};
+            border: {width} {border_style} {border};
         """
 
     @staticmethod

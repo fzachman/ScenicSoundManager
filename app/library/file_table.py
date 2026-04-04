@@ -124,6 +124,9 @@ class FileTableWidget(QTableWidget):
         # Double-click
         self.cellDoubleClicked.connect(self._on_double_click)
 
+        # Inline editing
+        self.cellChanged.connect(self._on_cell_changed)
+
         # Selection change
         self.itemSelectionChanged.connect(self._on_selection_changed)
 
@@ -138,11 +141,13 @@ class FileTableWidget(QTableWidget):
 
     def _refresh_table(self):
         """Refresh table contents"""
+        self.blockSignals(True)
         self.setRowCount(len(self._files))
 
         for row, audio_file in enumerate(self._files):
             self._populate_row(row, audio_file)
 
+        self.blockSignals(False)
         self._apply_playback_state()
 
     def _populate_row(self, row: int, audio_file: AudioFile):
@@ -176,31 +181,36 @@ class FileTableWidget(QTableWidget):
         artist_item.setToolTip(artist_text)
         self.setItem(row, self.COL_ARTIST, artist_item)
 
-        # Duration
+        # Duration (read-only)
         duration_item = QTableWidgetItem(audio_file.duration_formatted)
         duration_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        duration_item.setFlags(duration_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.setItem(row, self.COL_DURATION, duration_item)
 
         # Tags
         tag_widget = TagAssigner(self.db, audio_file.id)
+        tag_widget.tags_changed.connect(self.tags_bulk_assigned.emit)
         self.setCellWidget(row, self.COL_TAGS, tag_widget)
 
-        # Added date
+        # Added date (read-only)
         added_text = str(audio_file.created_at or "")
         added_item = QTableWidgetItem(added_text)
         added_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         added_item.setToolTip(added_text)
+        added_item.setFlags(added_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.setItem(row, self.COL_ADDED, added_item)
 
-        # Filename
+        # Filename (read-only)
         filename_text = os.path.basename(audio_file.file_path)
         filename_item = QTableWidgetItem(filename_text)
         filename_item.setToolTip(filename_text)
+        filename_item.setFlags(filename_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.setItem(row, self.COL_FILENAME, filename_item)
 
-        # Path
+        # Path (read-only)
         path_item = QTableWidgetItem(audio_file.file_path)
         path_item.setToolTip(audio_file.file_path)
+        path_item.setFlags(path_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.setItem(row, self.COL_PATH, path_item)
 
     def _toggle_play_for_button(self):
@@ -296,6 +306,27 @@ class FileTableWidget(QTableWidget):
                 return row
         return -1
 
+    def _on_cell_changed(self, row: int, col: int):
+        """Persist inline edits for Title and Artist columns"""
+        if col not in (self.COL_TITLE, self.COL_ARTIST):
+            return
+        audio_file = self._get_file_at_row(row)
+        if not audio_file:
+            return
+        item = self.item(row, col)
+        if not item:
+            return
+        new_value = item.text().strip() or None
+        if col == self.COL_TITLE:
+            if new_value == audio_file.title:
+                return
+            audio_file.title = new_value
+        else:
+            if new_value == audio_file.artist:
+                return
+            audio_file.artist = new_value
+        self.db.update_audio_file(audio_file)
+
     def _on_double_click(self, row: int, col: int):
         """Handle double-click on a row"""
         audio_file = self._get_file_at_row(row)
@@ -326,8 +357,8 @@ class FileTableWidget(QTableWidget):
                     lambda checked=False, fid=audio_file.id: self._toggle_play_by_file_id(fid)
                 )
 
-        tag_action = menu.addAction(f"Add Tags to Selected ({len(rows)})")
-        tag_action.triggered.connect(self._bulk_add_tags)
+        tag_action = menu.addAction(f"Info ({len(rows)})")
+        tag_action.triggered.connect(self._open_get_info)
 
         delete_action = menu.addAction(f"Remove ({len(rows)} files)")
         delete_action.triggered.connect(self._delete_selected)
@@ -347,27 +378,46 @@ class FileTableWidget(QTableWidget):
 
         self.files_deleted.emit(file_ids)
 
-    def _bulk_add_tags(self):
-        """Open tag selection dialog and apply selected tags to all selected files"""
-        from .tag_selection_dialog import TagSelectionDialog
-
-        dialog = TagSelectionDialog(self.db, parent=self)
-        if not dialog.exec():
-            return
-
-        tag_ids = dialog.get_selected_tag_ids()
-        if not tag_ids:
-            return
+    def _open_get_info(self):
+        """Open Get Info dialog for viewing/editing metadata of selected files"""
+        from .tag_selection_dialog import GetInfoDialog
 
         rows = self.selectionModel().selectedRows()
-        file_ids = []
+        audio_files = []
         for row in rows:
             audio_file = self._get_file_at_row(row.row())
             if audio_file:
-                file_ids.append(audio_file.id)
+                audio_files.append(audio_file)
 
-        if file_ids:
-            self.db.bulk_add_tags_to_audio_files(file_ids, tag_ids)
+        if not audio_files:
+            return
+
+        dialog = GetInfoDialog(self.db, audio_files, parent=self)
+        if not dialog.exec():
+            return
+
+        file_ids = [f.id for f in audio_files]
+        changed = False
+
+        # Apply artist changes
+        artist = dialog.get_artist_value()
+        if artist is not None or dialog.get_artist_should_clear():
+            self.db.bulk_update_artist(file_ids, artist)
+            changed = True
+
+        # Apply tag additions
+        tags_to_add = dialog.get_tags_to_add()
+        if tags_to_add:
+            self.db.bulk_add_tags_to_audio_files(file_ids, tags_to_add)
+            changed = True
+
+        # Apply tag removals
+        tags_to_remove = dialog.get_tags_to_remove()
+        if tags_to_remove:
+            self.db.bulk_remove_tags_from_audio_files(file_ids, tags_to_remove)
+            changed = True
+
+        if changed:
             self.tags_bulk_assigned.emit()
 
     def _refresh_tag_widgets(self):

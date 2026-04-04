@@ -123,7 +123,8 @@ class LibraryWidget(QWidget):
         self._load_files()
 
     def _on_bulk_tags_assigned(self):
-        """Handle bulk tag assignment — re-run current search/filter, preserve page"""
+        """Handle bulk tag assignment — refresh tag filter sidebar and file list"""
+        self.tag_manager.refresh_tags()
         self._refresh_current_view(preserve_page=True)
 
     def _refresh_current_view(self, preserve_page: bool = False):

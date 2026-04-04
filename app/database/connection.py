@@ -290,6 +290,37 @@ class DatabaseConnection:
                 )
         self.connection.commit()
 
+    def bulk_update_artist(self, audio_file_ids: list[int], artist: str | None) -> None:
+        """Update artist for multiple audio files in a single transaction"""
+        if not audio_file_ids:
+            return
+        placeholders = ",".join("?" * len(audio_file_ids))
+        self.connection.execute(
+            f"""
+            UPDATE audio_files
+            SET artist = ?, updated_at = datetime('now')
+            WHERE id IN ({placeholders})
+            """,
+            [artist] + audio_file_ids
+        )
+        self.connection.commit()
+
+    def bulk_remove_tags_from_audio_files(self, audio_file_ids: list[int], tag_ids: list[int]) -> None:
+        """Remove specified tags from multiple audio files in a single transaction"""
+        if not audio_file_ids or not tag_ids:
+            return
+        file_placeholders = ",".join("?" * len(audio_file_ids))
+        tag_placeholders = ",".join("?" * len(tag_ids))
+        self.connection.execute(
+            f"""
+            DELETE FROM audio_file_tags
+            WHERE audio_file_id IN ({file_placeholders})
+            AND tag_id IN ({tag_placeholders})
+            """,
+            audio_file_ids + tag_ids
+        )
+        self.connection.commit()
+
     def remove_tag_from_audio_file(self, audio_file_id: int, tag_id: int) -> None:
         """Remove a tag association from an audio file"""
         self.connection.execute(
