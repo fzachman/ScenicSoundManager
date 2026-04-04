@@ -50,6 +50,9 @@ class FileTableWidget(QTableWidget):
     }
     DEFAULT_VISIBLE = {COL_ARTIST, COL_DURATION, COL_TAGS, COL_ADDED}
 
+    # Columns that cannot be sorted (no meaningful sort key)
+    UNSORTABLE_COLUMNS = {COL_PLAY, COL_TAGS}
+
     def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
         super().__init__(parent)
         self.db = db
@@ -365,7 +368,6 @@ class FileTableWidget(QTableWidget):
 
         if file_ids:
             self.db.bulk_add_tags_to_audio_files(file_ids, tag_ids)
-            self._refresh_tag_widgets()
             self.tags_bulk_assigned.emit()
 
     def _refresh_tag_widgets(self):
@@ -413,6 +415,9 @@ class FileTableWidget(QTableWidget):
 
     def _on_header_clicked(self, logical_index: int):
         """Handle header click for sorting — toggle sort indicator and emit signal"""
+        if logical_index in self.UNSORTABLE_COLUMNS:
+            return
+
         if logical_index == self._sort_column:
             # Toggle direction
             self._sort_order = (

@@ -27,6 +27,8 @@ class PaginationBar(QWidget):
         self._current_page = 0
         self._page_size = 50  # 0 means "All"
         self._page_buttons = []
+        self._sort_key = None
+        self._sort_reverse = False
 
         self._setup_ui()
         self._restore_page_size()
@@ -87,6 +89,9 @@ class PaginationBar(QWidget):
     def set_files(self, files: list, preserve_page: bool = False):
         """Store full file list and optionally reset to page 0"""
         self._all_files = files
+        # Reapply active sort if one exists
+        if self._sort_key is not None:
+            self._all_files.sort(key=self._sort_key, reverse=self._sort_reverse)
         if not preserve_page:
             self._current_page = 0
         # Clamp current page to valid range
@@ -97,6 +102,8 @@ class PaginationBar(QWidget):
 
     def sort_files(self, key_func, reverse: bool = False):
         """Sort the full file list and re-paginate, preserving current page"""
+        self._sort_key = key_func
+        self._sort_reverse = reverse
         self._all_files.sort(key=key_func, reverse=reverse)
         max_page = max(0, self._total_pages - 1)
         self._current_page = min(self._current_page, max_page)
