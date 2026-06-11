@@ -113,6 +113,23 @@ class DatabaseConnection:
         self.connection.commit()
         return cursor.lastrowid
 
+    def bulk_add_audio_files(self, audio_files: list[AudioFile]) -> list[int]:
+        """Add multiple audio files in a single transaction, return their IDs"""
+        if not audio_files:
+            return []
+        ids = []
+        for audio_file in audio_files:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO audio_files (file_path, title, artist, duration_seconds)
+                VALUES (?, ?, ?, ?)
+                """,
+                (audio_file.file_path, audio_file.title, audio_file.artist, audio_file.duration_seconds)
+            )
+            ids.append(cursor.lastrowid)
+        self.connection.commit()
+        return ids
+
     def get_audio_file(self, file_id: int) -> Optional[AudioFile]:
         """Get an audio file by ID"""
         cursor = self.connection.execute(
@@ -136,6 +153,11 @@ class DatabaseConnection:
             audio_file.tags = self.get_tags_for_audio_file(audio_file.id)
             return audio_file
         return None
+
+    def get_all_audio_file_paths(self) -> set[str]:
+        """Get the set of all file paths currently in the library"""
+        cursor = self.connection.execute("SELECT file_path FROM audio_files")
+        return {row["file_path"] for row in cursor.fetchall()}
 
     def get_all_audio_files(self) -> list[AudioFile]:
         """Get all audio files in the library"""

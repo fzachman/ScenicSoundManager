@@ -194,10 +194,12 @@ class LibraryWidget(QWidget):
 
     def _import_files(self, file_paths: list[str]):
         """Import files into the library"""
-        added_count = 0
         skipped_count = 0
         duplicate_paths: list[str] = []
         seen_duplicates: set[str] = set()
+        new_files: list[AudioFile] = []
+
+        existing_paths = self.db.get_all_audio_file_paths()
 
         for file_path in file_paths:
             if not MetadataExtractor.is_supported_format(file_path):
@@ -205,13 +207,15 @@ class LibraryWidget(QWidget):
                 continue
 
             # Check if file already exists in library
-            existing = self.db.get_audio_file_by_path(file_path)
-            if existing:
+            if file_path in existing_paths:
                 skipped_count += 1
                 if file_path not in seen_duplicates:
                     duplicate_paths.append(file_path)
                     seen_duplicates.add(file_path)
                 continue
+
+            # Track this path to deduplicate repeated entries within the incoming list
+            existing_paths.add(file_path)
 
             # Extract metadata
             metadata = MetadataExtractor.extract(file_path)
@@ -224,8 +228,10 @@ class LibraryWidget(QWidget):
                 duration_seconds=metadata["duration_seconds"]
             )
 
-            self.db.add_audio_file(audio_file)
-            added_count += 1
+            new_files.append(audio_file)
+
+        self.db.bulk_add_audio_files(new_files)
+        added_count = len(new_files)
 
         # Refresh display
         self._load_files()

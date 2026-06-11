@@ -459,3 +459,37 @@ class TestScenePlaylistEntries:
 
         entries = db.get_scene_playlist_entries(scene_id)
         assert len(entries) == 0
+
+
+class TestBulkAudioFileMethods:
+    def test_bulk_add_audio_files_returns_ids_and_persists(self, db):
+        files = [
+            AudioFile(file_path="/bulk/a.mp3", title="Alpha", artist="Artist A", duration_seconds=60.0),
+            AudioFile(file_path="/bulk/b.mp3", title="Beta", artist="Artist B", duration_seconds=90.0),
+            AudioFile(file_path="/bulk/c.mp3", title="Gamma", artist="Artist C", duration_seconds=120.0),
+        ]
+        ids = db.bulk_add_audio_files(files)
+
+        assert len(ids) == 3
+        assert len(set(ids)) == 3  # all distinct
+
+        for file_id, original in zip(ids, files):
+            retrieved = db.get_audio_file(file_id)
+            assert retrieved is not None
+            assert retrieved.file_path == original.file_path
+            assert retrieved.title == original.title
+
+    def test_bulk_add_audio_files_empty_list(self, db):
+        result = db.bulk_add_audio_files([])
+        assert result == []
+
+    def test_get_all_audio_file_paths(self, db):
+        # Empty DB returns empty set
+        assert db.get_all_audio_file_paths() == set()
+
+        # Add one file via add_audio_file and one via bulk_add_audio_files
+        db.add_audio_file(AudioFile(file_path="/paths/single.mp3", title="Single"))
+        db.bulk_add_audio_files([AudioFile(file_path="/paths/bulk.mp3", title="Bulk")])
+
+        paths = db.get_all_audio_file_paths()
+        assert paths == {"/paths/single.mp3", "/paths/bulk.mp3"}
