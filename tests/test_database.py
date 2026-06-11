@@ -460,6 +460,74 @@ class TestScenePlaylistEntries:
         entries = db.get_scene_playlist_entries(scene_id)
         assert len(entries) == 0
 
+    def test_scene_playlist_entries_load_tracks_for_multiple_playlists(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        pl_a_id = db.add_playlist(Playlist(name="Playlist A"))
+        pl_b_id = db.add_playlist(Playlist(name="Playlist B"))
+
+        f1 = db.add_audio_file(AudioFile(file_path="/a1.mp3", title="A Track 1"))
+        f2 = db.add_audio_file(AudioFile(file_path="/a2.mp3", title="A Track 2"))
+        f3 = db.add_audio_file(AudioFile(file_path="/b1.mp3", title="B Track 1"))
+        f4 = db.add_audio_file(AudioFile(file_path="/b2.mp3", title="B Track 2"))
+        f5 = db.add_audio_file(AudioFile(file_path="/b3.mp3", title="B Track 3"))
+
+        db.add_track_to_playlist(pl_a_id, f1)
+        db.add_track_to_playlist(pl_a_id, f2)
+        db.add_track_to_playlist(pl_b_id, f3)
+        db.add_track_to_playlist(pl_b_id, f4)
+        db.add_track_to_playlist(pl_b_id, f5)
+
+        db.add_playlist_to_scene(scene_id, pl_a_id, position=0)
+        db.add_playlist_to_scene(scene_id, pl_b_id, position=1)
+
+        entries = db.get_scene_playlist_entries(scene_id)
+
+        assert len(entries) == 2
+        entry_a = next(e for e in entries if e.playlist_id == pl_a_id)
+        entry_b = next(e for e in entries if e.playlist_id == pl_b_id)
+
+        assert len(entry_a.playlist.tracks) == 2
+        titles_a = [t.audio_file.title for t in entry_a.playlist.tracks]
+        assert titles_a == ["A Track 1", "A Track 2"]
+
+        assert len(entry_b.playlist.tracks) == 3
+        titles_b = [t.audio_file.title for t in entry_b.playlist.tracks]
+        assert titles_b == ["B Track 1", "B Track 2", "B Track 3"]
+
+    def test_scene_playlist_entries_with_empty_playlist(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        pl_id = db.add_playlist(Playlist(name="Empty Playlist"))
+
+        db.add_playlist_to_scene(scene_id, pl_id, position=0)
+
+        entries = db.get_scene_playlist_entries(scene_id)
+
+        assert len(entries) == 1
+        assert entries[0].playlist.tracks == []
+
+    def test_same_playlist_in_two_scenes_unaffected(self, db):
+        scene_a_id = db.add_scene(Scene(title="Scene A"))
+        scene_b_id = db.add_scene(Scene(title="Scene B"))
+        pl_id = db.add_playlist(Playlist(name="Shared Playlist"))
+
+        f1 = db.add_audio_file(AudioFile(file_path="/s1.mp3", title="Shared Track 1"))
+        f2 = db.add_audio_file(AudioFile(file_path="/s2.mp3", title="Shared Track 2"))
+        db.add_track_to_playlist(pl_id, f1)
+        db.add_track_to_playlist(pl_id, f2)
+
+        db.add_playlist_to_scene(scene_a_id, pl_id, position=0)
+        db.add_playlist_to_scene(scene_b_id, pl_id, position=0)
+
+        entries_a = db.get_scene_playlist_entries(scene_a_id)
+        entries_b = db.get_scene_playlist_entries(scene_b_id)
+
+        assert len(entries_a) == 1
+        assert len(entries_a[0].playlist.tracks) == 2
+        assert len(entries_b) == 1
+        assert len(entries_b[0].playlist.tracks) == 2
+        assert entries_a[0].playlist.tracks[0].audio_file.title == "Shared Track 1"
+        assert entries_b[0].playlist.tracks[0].audio_file.title == "Shared Track 1"
+
 
 class TestBulkAudioFileMethods:
     def test_bulk_add_audio_files_returns_ids_and_persists(self, db):

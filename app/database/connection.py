@@ -591,8 +591,12 @@ class DatabaseConnection:
             """,
             (scene_id,)
         )
+        rows = cursor.fetchall()
+        playlist_ids = [row["playlist_id"] for row in rows]
+        tracks_by_playlist = self._batch_load_playlist_tracks(playlist_ids)
+
         entries = []
-        for row in cursor.fetchall():
+        for row in rows:
             playlist = Playlist(
                 id=row["playlist_id"],
                 name=row["name"],
@@ -600,7 +604,7 @@ class DatabaseConnection:
                 created_at=row["playlist_created_at"],
                 updated_at=row["playlist_updated_at"]
             )
-            playlist.tracks = self.get_playlist_tracks(row["playlist_id"])
+            playlist.tracks = tracks_by_playlist.get(row["playlist_id"], [])
             entry = ScenePlaylistEntry(
                 id=row["id"],
                 scene_id=row["scene_id"],
@@ -767,6 +771,50 @@ class DatabaseConnection:
             )
             tracks.append(track)
         return tracks
+
+    def _batch_load_playlist_tracks(self, playlist_ids: list[int]) -> dict[int, list[PlaylistTrack]]:
+        """Load tracks for multiple playlists in a single query.
+
+        Returns a dict mapping playlist_id -> list of PlaylistTracks
+        (ordered by position).
+        """
+        if not playlist_ids:
+            return {}
+
+        placeholders = ",".join("?" * len(playlist_ids))
+        cursor = self.connection.execute(
+            f"""
+            SELECT pt.*, af.file_path, af.title, af.artist, af.duration_seconds
+            FROM playlist_tracks pt
+            JOIN audio_files af ON pt.audio_file_id = af.id
+            WHERE pt.playlist_id IN ({placeholders})
+            ORDER BY pt.playlist_id, pt.position
+            """,
+            playlist_ids,
+        )
+        rows = cursor.fetchall()
+        audio_file_ids = list(dict.fromkeys(row["audio_file_id"] for row in rows))
+        tags_by_file = self._batch_load_tags(audio_file_ids)
+
+        tracks_by_playlist: dict[int, list[PlaylistTrack]] = {pid: [] for pid in playlist_ids}
+        for row in rows:
+            audio_file = AudioFile(
+                id=row["audio_file_id"],
+                file_path=row["file_path"],
+                title=row["title"],
+                artist=row["artist"],
+                duration_seconds=row["duration_seconds"]
+            )
+            audio_file.tags = tags_by_file.get(audio_file.id, [])
+            track = PlaylistTrack(
+                id=row["id"],
+                playlist_id=row["playlist_id"],
+                audio_file_id=row["audio_file_id"],
+                position=row["position"],
+                audio_file=audio_file
+            )
+            tracks_by_playlist[row["playlist_id"]].append(track)
+        return tracks_by_playlist
 
     def remove_track_from_playlist(self, track_id: int) -> None:
         """Remove a track from a playlist"""
