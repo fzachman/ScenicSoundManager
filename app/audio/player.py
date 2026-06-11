@@ -236,6 +236,12 @@ class TrackPlayer(QObject):
         self._stop_fade()
         self._position_timer.stop()
         if self.media_player:
+            if vlc is not None:
+                events = self.media_player.event_manager()
+                events.event_detach(vlc.EventType.MediaPlayerEndReached)
+                events.event_detach(vlc.EventType.MediaPlayerPlaying)
+                events.event_detach(vlc.EventType.MediaPlayerPaused)
+                events.event_detach(vlc.EventType.MediaPlayerStopped)
             self.media_player.stop()
             self.media_player.release()
             self.media_player = None
