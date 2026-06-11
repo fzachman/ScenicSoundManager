@@ -198,7 +198,10 @@ class TestRepeatBehavior:
 
         # Patch _play_file to capture what gets played
         played_ids = []
-        player._play_file = lambda afid, fade_ms=500: played_ids.append(afid)
+        def _fake_play(afid, fade_ms=500):
+            played_ids.append(afid)
+            return True
+        player._play_file = _fake_play
 
         player._restart()
         assert played_ids == [file_ids[0]]  # Should restart from first track
@@ -211,7 +214,10 @@ class TestRepeatBehavior:
         player._is_playing = True
 
         played_ids = []
-        player._play_file = lambda afid, fade_ms=500: played_ids.append(afid)
+        def _fake_play(afid, fade_ms=500):
+            played_ids.append(afid)
+            return True
+        player._play_file = _fake_play
 
         player._restart()
         assert len(played_ids) == 1
@@ -227,7 +233,10 @@ class TestTrackEndHandling:
         player._current_index = 0
 
         played_ids = []
-        player._play_file = lambda afid, fade_ms=500: played_ids.append(afid)
+        def _fake_play(afid, fade_ms=500):
+            played_ids.append(afid)
+            return True
+        player._play_file = _fake_play
 
         player._on_track_ended()
         assert played_ids == [file_ids[1]]
@@ -254,7 +263,10 @@ class TestTrackEndHandling:
         player._current_index = len(file_ids) - 1
 
         played_ids = []
-        player._play_file = lambda afid, fade_ms=500: played_ids.append(afid)
+        def _fake_play(afid, fade_ms=500):
+            played_ids.append(afid)
+            return True
+        player._play_file = _fake_play
 
         player._on_track_ended()
         assert len(played_ids) == 1
@@ -288,7 +300,10 @@ class TestStartStop:
         player = _make_player(playlist_id, db, mock_engine)
 
         played_ids = []
-        player._play_file = lambda afid, fade_ms=500: played_ids.append(afid)
+        def _fake_play(afid, fade_ms=500):
+            played_ids.append(afid)
+            return True
+        player._play_file = _fake_play
 
         player.start()
         assert player.is_playing
@@ -299,7 +314,10 @@ class TestStartStop:
         player = _make_player(playlist_id, db, mock_engine, is_shuffle=True)
 
         played_ids = []
-        player._play_file = lambda afid, fade_ms=500: played_ids.append(afid)
+        def _fake_play(afid, fade_ms=500):
+            played_ids.append(afid)
+            return True
+        player._play_file = _fake_play
 
         player.start()
         assert player.is_playing
@@ -310,7 +328,9 @@ class TestStartStop:
         playlist_id, file_ids = playlist_with_tracks
         player = _make_player(playlist_id, db, mock_engine)
 
-        player._play_file = lambda afid, fade_ms=500: None
+        def _fake_play(afid, fade_ms=500):
+            return True
+        player._play_file = _fake_play
         player.start()
         assert player.is_playing
 
@@ -322,7 +342,9 @@ class TestStartStop:
         playlist_id, _ = playlist_with_tracks
         player = _make_player(playlist_id, db, mock_engine)
 
-        player._play_file = lambda afid, fade_ms=500: None
+        def _fake_play(afid, fade_ms=500):
+            return True
+        player._play_file = _fake_play
         player.start()
         assert player.is_playing
 
@@ -331,3 +353,43 @@ class TestStartStop:
 
         player.resume()
         assert player.is_playing
+
+
+class TestMissingFiles:
+    def test_skips_missing_track_on_advance(self, db, playlist_with_tracks, mock_engine):
+        playlist_id, file_ids = playlist_with_tracks
+        missing_path = "/fake/path/track_1.mp3"
+        with patch(
+            "app.audio.scene_playlist_player.os.path.exists",
+            side_effect=lambda p: p != missing_path,
+        ):
+            player = _make_player(playlist_id, db, mock_engine)
+            player.start()
+            assert player.current_audio_file_id == file_ids[0]
+            player._on_track_ended()  # track_1 is missing -> skip to track_2
+            assert player.current_audio_file_id == file_ids[2]
+            assert player.is_playing
+
+    def test_start_skips_missing_first_track(self, db, playlist_with_tracks, mock_engine):
+        playlist_id, file_ids = playlist_with_tracks
+        with patch(
+            "app.audio.scene_playlist_player.os.path.exists",
+            side_effect=lambda p: p != "/fake/path/track_0.mp3",
+        ):
+            player = _make_player(playlist_id, db, mock_engine)
+            player.start()
+            assert player.current_audio_file_id == file_ids[1]
+
+    def test_all_missing_finishes_cleanly(self, db, playlist_with_tracks, mock_engine):
+        playlist_id, file_ids = playlist_with_tracks
+        finished = []
+        with patch(
+            "app.audio.scene_playlist_player.os.path.exists",
+            return_value=False,
+        ):
+            player = _make_player(playlist_id, db, mock_engine)
+            player.playback_finished.connect(lambda: finished.append(True))
+            player.start()
+            assert not player.is_playing
+            assert player.current_audio_file_id is None
+            assert finished == [True]

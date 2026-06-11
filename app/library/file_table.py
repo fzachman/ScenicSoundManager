@@ -3,6 +3,7 @@
 import os
 from typing import Optional, List
 
+from app.shared.logging import get_logger
 from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QWidget,
     QHBoxLayout, QPushButton, QAbstractItemView, QMenu
@@ -14,6 +15,8 @@ from ..audio import AudioEngine, TrackPlayer
 from ..shared.styles import Styles
 from ..shared.icons import IconLibrary
 from .tag_manager import TagAssigner
+
+_log = get_logger(__name__)
 
 
 class FileTableWidget(QTableWidget):
@@ -241,7 +244,10 @@ class FileTableWidget(QTableWidget):
 
         # Start new playback
         audio_file = self._get_file_by_id(file_id)
-        if audio_file and os.path.exists(audio_file.file_path):
+        if audio_file and not os.path.exists(audio_file.file_path):
+            _log.warning("audio_file_missing", audio_file_id=file_id, file_path=audio_file.file_path)
+            return
+        if audio_file:
             self._current_player = TrackPlayer(audio_file.file_path, self.audio_engine)
             self._current_player.end_reached.connect(
                 lambda: self._on_playback_ended(file_id)
