@@ -17,7 +17,7 @@ passed in ~0.8s. There is no lint/typecheck/CI tooling in this repo.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 001 | Detach VLC event handlers before MediaPlayer release | P1 | S | — | DONE (reviewed 2026-06-11; commit `2a9b249` on branch `advisor/001-detach-vlc-events`, awaiting merge) |
-| 002 | Log + skip missing audio files instead of silently stalling | P1 | M | — | TODO |
+| 002 | Log + skip missing audio files instead of silently stalling | P1 | M | — | DONE (reviewed 2026-06-11; commit `6279a57` on branch `advisor/002-surface-missing-audio-files`, awaiting merge) |
 | 003 | Batch duplicate-check and inserts in library import | P1 | S | — | TODO |
 | 004 | Batch-load playlist tracks in get_scene_playlist_entries | P2 | S | — | TODO |
 | 005 | Characterization tests for MainWindow mutual exclusivity | P1 | M | — | TODO |
