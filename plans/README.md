@@ -12,15 +12,19 @@ your row when done.
 Verification baseline at planning time: `venv/bin/pytest tests/ -q` → 82
 passed in ~0.8s. There is no lint/typecheck/CI tooling in this repo.
 
+**Round 1 complete (2026-06-11):** all five plans executed by dispatched
+subagents, reviewed, and merged into `experimental-improvements`. Suite went
+from 82 → 100 tests. Current baseline for future plans: 100 passed at `6e7caa6`.
+
 ## Execution order & status
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Detach VLC event handlers before MediaPlayer release | P1 | S | — | DONE (reviewed 2026-06-11; commit `2a9b249` on branch `advisor/001-detach-vlc-events`, awaiting merge) |
-| 002 | Log + skip missing audio files instead of silently stalling | P1 | M | — | DONE (reviewed 2026-06-11; commit `6279a57` on branch `advisor/002-surface-missing-audio-files`, awaiting merge) |
-| 003 | Batch duplicate-check and inserts in library import | P1 | S | — | TODO |
-| 004 | Batch-load playlist tracks in get_scene_playlist_entries | P2 | S | — | TODO |
-| 005 | Characterization tests for MainWindow mutual exclusivity | P1 | M | — | TODO |
+| 001 | Detach VLC event handlers before MediaPlayer release | P1 | S | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `2a9b249`) |
+| 002 | Log + skip missing audio files instead of silently stalling | P1 | M | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` via `28d93de`) |
+| 003 | Batch duplicate-check and inserts in library import | P1 | S | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `7678bb0`) |
+| 004 | Batch-load playlist tracks in get_scene_playlist_entries | P2 | S | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `259ea4f`) |
+| 005 | Characterization tests for MainWindow mutual exclusivity | P1 | M | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `6e7caa6`) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
