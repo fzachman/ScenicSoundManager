@@ -3,6 +3,8 @@
 import os
 from typing import Optional
 
+from app.shared.logging import get_logger
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QFrame
@@ -17,6 +19,8 @@ from ..shared.dialogs import AudioFileSearchDialog
 from ..shared.layouts import clear_layout
 from .track_control import TrackControl
 from .playlist_entry_control import PlaylistEntryControl
+
+_log = get_logger(__name__)
 
 
 class SceneEditor(QWidget):
@@ -485,6 +489,11 @@ class SceneEditor(QWidget):
             return
         import os
         if not os.path.exists(track.audio_file.file_path):
+            _log.warning(
+                "audio_file_missing",
+                audio_file_id=track.audio_file.id,
+                file_path=track.audio_file.file_path,
+            )
             return
 
         player = self.mixer.get_player(track.id)

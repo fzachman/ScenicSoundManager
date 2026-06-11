@@ -3,6 +3,7 @@
 import os
 from typing import Optional
 
+from app.shared.logging import get_logger
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QLineEdit
@@ -15,6 +16,8 @@ from ..audio import AudioEngine, TrackPlayer, SmartShuffle
 from ..shared.styles import Styles
 from ..shared.icons import IconLibrary
 from ..shared.layouts import clear_layout
+
+_log = get_logger(__name__)
 
 
 class PlaylistTrackItem(QFrame):
@@ -586,8 +589,8 @@ class PlaylistEditor(QWidget):
         if was_playing:
             self.playback_state_changed.emit(old_playlist_id, None, False)
 
-    def _play_audio_file(self, audio_file_id: int):
-        """Play a specific audio file from the playlist"""
+    def _play_audio_file(self, audio_file_id: int) -> bool:
+        """Play a specific audio file from the playlist. Returns True if playback started."""
         # Find the track in the current playlist
         track = None
         for t in self._current_playlist.tracks:
@@ -595,10 +598,16 @@ class PlaylistEditor(QWidget):
                 track = t
                 break
         if not track or not track.audio_file:
-            return
+            _log.warning("playlist_track_missing_data", audio_file_id=audio_file_id)
+            return False
 
         if not os.path.exists(track.audio_file.file_path):
-            return
+            _log.warning(
+                "audio_file_missing",
+                audio_file_id=audio_file_id,
+                file_path=track.audio_file.file_path,
+            )
+            return False
 
         # Release previous player
         self._release_player()
@@ -616,6 +625,23 @@ class PlaylistEditor(QWidget):
                 break
 
         self._update_now_playing_highlight()
+        return True
+
+    def _advance_to_next_playable(self) -> None:
+        """Advance to the next playable track, skipping missing files.
+
+        Bounded by track count to avoid infinite loops when sequential mode
+        wraps around.
+        """
+        attempts = 0
+        max_attempts = len(self._current_playlist.tracks) if self._current_playlist else 0
+        audio_file_id = self._get_next_audio_file_id()
+        while audio_file_id is not None and attempts < max_attempts:
+            if self._play_audio_file(audio_file_id):
+                return
+            attempts += 1
+            audio_file_id = self._get_next_audio_file_id()
+        self._stop_playback()
 
     def _next_track(self):
         """Advance to the next track"""
@@ -624,12 +650,7 @@ class PlaylistEditor(QWidget):
         if not self._is_playing_this_playlist(self._current_playlist.id):
             return
 
-        audio_file_id = self._get_next_audio_file_id()
-        if audio_file_id is not None:
-            self._play_audio_file(audio_file_id)
-        else:
-            # End of playlist, stop
-            self._stop_playback()
+        self._advance_to_next_playable()
 
     def _get_next_audio_file_id(self) -> Optional[int]:
         """Get the next audio_file_id to play"""
@@ -651,11 +672,7 @@ class PlaylistEditor(QWidget):
         """Handle track end - auto-advance to next"""
         if not self._is_playing:
             return
-        audio_file_id = self._get_next_audio_file_id()
-        if audio_file_id is not None:
-            self._play_audio_file(audio_file_id)
-        else:
-            self._stop_playback()
+        self._advance_to_next_playable()
 
     def _toggle_shuffle(self):
         """Toggle shuffle mode"""

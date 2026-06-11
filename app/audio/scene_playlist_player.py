@@ -10,10 +10,13 @@ from typing import Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from app.shared.logging import get_logger
 from .engine import AudioEngine
 from .player import TrackPlayer
 from .shuffle import SmartShuffle
 from ..database import DatabaseConnection, PlaylistTrack
+
+_log = get_logger(__name__)
 
 
 class ScenePlaylistPlayer(QObject):
@@ -108,7 +111,7 @@ class ScenePlaylistPlayer(QObject):
             audio_file_id = self._audio_file_ids[0]
 
         if audio_file_id is not None:
-            self._play_file(audio_file_id, fade_ms)
+            self._play_file_or_advance(audio_file_id, fade_ms)
 
     def pause(self, fade_ms: int = 500) -> None:
         """Pause current playback."""
@@ -133,13 +136,19 @@ class ScenePlaylistPlayer(QObject):
         """Release all resources."""
         self.stop()
 
-    def _play_file(self, audio_file_id: int, fade_ms: int = 500) -> None:
-        """Play a specific audio file by its ID."""
+    def _play_file(self, audio_file_id: int, fade_ms: int = 500) -> bool:
+        """Play a specific audio file by its ID. Returns True if playback started."""
         track = self._find_track(audio_file_id)
         if not track or not track.audio_file:
-            return
+            _log.warning("playlist_track_missing_data", audio_file_id=audio_file_id)
+            return False
         if not os.path.exists(track.audio_file.file_path):
-            return
+            _log.warning(
+                "audio_file_missing",
+                audio_file_id=audio_file_id,
+                file_path=track.audio_file.file_path,
+            )
+            return False
 
         self._release_player()
 
@@ -157,6 +166,23 @@ class ScenePlaylistPlayer(QObject):
                 break
 
         self.track_changed.emit(audio_file_id)
+        return True
+
+    def _play_file_or_advance(self, audio_file_id: Optional[int], fade_ms: int = 500) -> None:
+        """Try to play the given file; on failure (e.g. missing file), advance
+        through the playlist until something plays or all tracks were tried."""
+        attempts = 0
+        max_attempts = len(self._audio_file_ids)
+        next_id = audio_file_id
+        while next_id is not None and attempts < max_attempts:
+            if self._play_file(next_id, fade_ms):
+                return
+            attempts += 1
+            next_id = self._get_next_audio_file_id()
+        # Nothing playable
+        self._is_playing = False
+        self._current_audio_file_id = None
+        self.playback_finished.emit()
 
     def _on_track_ended(self) -> None:
         """Handle track end - advance to next or finish."""
@@ -165,7 +191,7 @@ class ScenePlaylistPlayer(QObject):
 
         next_id = self._get_next_audio_file_id()
         if next_id is not None:
-            self._play_file(next_id)
+            self._play_file_or_advance(next_id)
         else:
             # Playlist exhausted
             if self._is_repeat:
@@ -204,7 +230,7 @@ class ScenePlaylistPlayer(QObject):
             audio_file_id = self._audio_file_ids[0] if self._audio_file_ids else None
 
         if audio_file_id is not None:
-            self._play_file(audio_file_id)
+            self._play_file_or_advance(audio_file_id)
         else:
             self._is_playing = False
             self.playback_finished.emit()
