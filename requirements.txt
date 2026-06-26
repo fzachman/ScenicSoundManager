@@ -1,14 +1,18 @@
-# Core dependencies
-PyQt6>=6.6.0
-python-vlc>=3.0.18
-mutagen>=1.47.0
-structlog>=24.1.0
+# Dependencies pinned to exact versions for reproducible installs and
+# deliberate (not automatic) upgrades. These are the versions the test suite
+# is verified against. Bump intentionally — ideally via Dependabot PRs, which
+# CI then validates. Note: this pins direct deps only; transitive deps (e.g.
+# PyQt6-Qt6) still resolve freshly. A full lockfile (pip-tools/uv) would close
+# that gap if needed later.
 
-# Development
-py2app>=0.28.0
-pytest>=7.0.0
-# Linting/formatting: ruff is exact-pinned because `ruff format --check` is a
-# blocking CI gate and formatter output can change between releases. Bump
-# deliberately in its own commit. mypy is advisory-only, so a floor is fine.
+# Core (runtime)
+PyQt6==6.10.2
+python-vlc==3.0.21203
+mutagen==1.47.0
+structlog==25.5.0
+
+# Development / CI
+py2app==0.28.9
+pytest==9.0.2
 ruff==0.15.20
-mypy>=1.13
+mypy==2.1.0

@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # Python dependencies (requirements.txt). Majors included — every bump is a
+  # CI-tested PR you review and can reject, so a breaking major surfaces as a
+  # red PR to handle deliberately rather than landing silently.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    # Batch all eligible bumps into a single weekly PR to minimize review churn.
+    groups:
+      python-deps:
+        patterns: ["*"]
+
+  # GitHub Actions (.github/workflows/*). Majors are intentionally NOT ignored
+  # here: action major bumps are how runtime deprecations (e.g. Node 20 -> 24)
+  # ship, and our usage is trivial. Each bump is a CI-tested PR you can reject.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
