@@ -75,15 +75,32 @@ Ordered by leverage; ask for plans for any of these in a future `improve` run.
   `docs/`. Effort S.
 - **[DEBT-01] `TrackControl` vs `PlaylistEntryControl` duplication** —
   `app/scenes/track_control.py` (276 lines) and `playlist_entry_control.py`
-  (256 lines) share most of their card UI. Effort M, MED risk.
+  (256 lines) share most of their card UI. Effort M, MED risk. NOTE: PERF-02
+  (2026-06-25) added to this surface — the volume commit-on-release behavior
+  (`volume_committed` signal + `isSliderDown`/`sliderReleased` logic) is now
+  duplicated in both controls. A shared base control or a small reusable
+  `VolumeSlider` that owns commit-on-release would resolve both the broad UI
+  duplication and that specific strand.
 - **[DEBT-05] Full-list rebuilds on single-item mutations** — e.g.
   `tag_manager.refresh_tags()` rebuilds all badges on one rename;
   `BaseListWidget.refresh()` reloads everything. Effort M, mild UX cost today.
-- **[PERF-02] Per-event fetch-all in scene track setting changes** —
-  `scene_editor.py:395/408/420` fetch ALL scene tracks from the DB to update
-  one on every volume/repeat/play-mode change. (Audit originally claimed a
-  full UI rebuild per slider tick — vetting showed it's a DB fetch-all, not a
-  rebuild; downgraded.) Effort S.
+- **[PERF-02] Per-event fetch-all in scene track setting changes** — ✅ DONE
+  (2026-06-25). Added targeted `update_scene_track_setting` (single-row UPDATE,
+  no fetch-all); volume now persists on slider *release* (and on discrete
+  keyboard/wheel changes) instead of every drag tick, via a new
+  `volume_committed` signal on `TrackControl`. Extended the same fix to the
+  sibling `PlaylistEntryControl` volume slider for consistency. Adversarially
+  reviewed (Codex); the review caught a pre-existing in-memory staleness bug
+  (playback read `_current_scene.tracks[].volume` which the volume path never
+  refreshed → stopped track played at the loaded volume, not the set one) —
+  fixed by keeping each control's model object fresh. 197 tests pass.
+  FOLLOW-UPS (noted, not done): (a) `update_scene_playlist_entry` still does a
+  full-row rewrite — a symmetric targeted entry updater would close a
+  theoretical lost-update; (b) a `volume_committed` value could be lost if a
+  control is torn down mid-drag (low realism — can't teardown while a pointer
+  drag is held); (c) the new two-signal volume API was copy-pasted into both
+  controls — this is a strand of **DEBT-01** (see below), not a separate item;
+  a shared base/`VolumeSlider` would absorb it.
 - **[TESTS-03] Metadata extraction error path untested** — the broad
   `except Exception` in `app/library/metadata.py:55-58`. Effort S; could ride
   along with any library-area plan.

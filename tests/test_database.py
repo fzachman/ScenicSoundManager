@@ -181,6 +181,64 @@ class TestScenes:
         assert scene.tracks[0].is_repeat is True
         assert scene.tracks[0].play_mode is False
 
+    def test_update_scene_track_setting_volume_only(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        file_id = db.add_audio_file(AudioFile(file_path="/track.mp3", title="Track"))
+        track_id = db.add_track_to_scene(scene_id, file_id, position=3)
+
+        db.update_scene_track_setting(track_id, volume=0.42)
+
+        track = db.get_scene(scene_id).tracks[0]
+        assert track.volume == 0.42
+        # Other fields untouched (defaults: is_repeat False, play_mode True, pos 3)
+        assert track.is_repeat is False
+        assert track.play_mode is True
+        assert track.position == 3
+
+    def test_update_scene_track_setting_persists_falsy_values(self, db):
+        # 0.0 / False must be written, not skipped as "no value given".
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        file_id = db.add_audio_file(AudioFile(file_path="/track.mp3", title="Track"))
+        track_id = db.add_track_to_scene(scene_id, file_id)
+        # Start from non-default values so the falsy writes are observable.
+        db.update_scene_track_setting(
+            track_id, volume=1.0, is_repeat=True, play_mode=True
+        )
+
+        db.update_scene_track_setting(
+            track_id, volume=0.0, is_repeat=False, play_mode=False
+        )
+
+        track = db.get_scene(scene_id).tracks[0]
+        assert track.volume == 0.0
+        assert track.is_repeat is False
+        assert track.play_mode is False
+
+    def test_update_scene_track_setting_no_kwargs_is_noop(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        file_id = db.add_audio_file(AudioFile(file_path="/track.mp3", title="Track"))
+        track_id = db.add_track_to_scene(scene_id, file_id)
+
+        db.update_scene_track_setting(track_id)  # must not raise
+
+        track = db.get_scene(scene_id).tracks[0]
+        assert track.volume == 1.0  # default, unchanged
+
+    def test_update_scene_track_setting_targets_one_row(self, db):
+        scene_id = db.add_scene(Scene(title="Test Scene"))
+        f1 = db.add_audio_file(AudioFile(file_path="/a.mp3", title="A"))
+        f2 = db.add_audio_file(AudioFile(file_path="/b.mp3", title="B"))
+        t1 = db.add_track_to_scene(scene_id, f1, position=0)
+        db.add_track_to_scene(scene_id, f2, position=1)
+
+        db.update_scene_track_setting(t1, volume=0.1)
+
+        tracks = {t.id: t for t in db.get_scene(scene_id).tracks}
+        assert tracks[t1].volume == 0.1
+        # The other track is untouched (still default volume).
+        other = next(t for tid, t in tracks.items() if tid != t1)
+        assert other.volume == 1.0
+
     def test_delete_scene_cascades(self, db):
         scene_id = db.add_scene(Scene(title="Test Scene"))
         file_id = db.add_audio_file(AudioFile(file_path="/track.mp3", title="Track"))

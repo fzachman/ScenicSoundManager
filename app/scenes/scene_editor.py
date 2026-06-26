@@ -190,6 +190,7 @@ class SceneEditor(QWidget):
         # Create control widget
         control = TrackControl(track, player)
         control.volume_changed.connect(self._on_track_volume_changed)
+        control.volume_committed.connect(self._on_track_volume_committed)
         control.repeat_changed.connect(self._on_track_repeat_changed)
         control.play_mode_changed.connect(self._on_track_play_mode_changed)
         control.remove_requested.connect(self._remove_track)
@@ -223,6 +224,7 @@ class SceneEditor(QWidget):
         """Add a playlist entry control widget"""
         control = PlaylistEntryControl(entry)
         control.volume_changed.connect(self._on_playlist_entry_volume_changed)
+        control.volume_committed.connect(self._on_playlist_entry_volume_committed)
         control.shuffle_changed.connect(self._on_playlist_entry_shuffle_changed)
         control.repeat_changed.connect(self._on_playlist_entry_repeat_changed)
         control.play_mode_changed.connect(self._on_playlist_entry_play_mode_changed)
@@ -274,7 +276,24 @@ class SceneEditor(QWidget):
         self.scene_modified.emit()
 
     def _on_playlist_entry_volume_changed(self, entry_id: int, volume: float):
-        """Handle playlist entry volume change"""
+        """Live playlist-entry volume update during slider movement.
+
+        Forwards to the running player and keeps the in-memory entry fresh.
+        Persistence is deferred to _on_playlist_entry_volume_committed (slider
+        release / discrete change) so a drag is one DB write, not one per tick.
+        """
+        if self._current_scene:
+            for entry in self._current_scene.playlist_entries:
+                if entry.id == entry_id:
+                    entry.volume = volume
+                    break
+        # Forward to running player if active
+        player = self._playlist_players.get(entry_id)
+        if player:
+            player.set_volume(int(volume * 100))
+
+    def _on_playlist_entry_volume_committed(self, entry_id: int, volume: float):
+        """Persist a playlist entry's volume once the user settles."""
         if not self._current_scene:
             return
         for entry in self._current_scene.playlist_entries:
@@ -282,10 +301,6 @@ class SceneEditor(QWidget):
                 entry.volume = volume
                 self.db.update_scene_playlist_entry(entry)
                 break
-        # Forward to running player if active
-        player = self._playlist_players.get(entry_id)
-        if player:
-            player.set_volume(int(volume * 100))
 
     def _on_playlist_entry_shuffle_changed(self, entry_id: int, is_shuffle: bool):
         """Handle playlist entry shuffle toggle change"""
@@ -414,42 +429,29 @@ class SceneEditor(QWidget):
         self.scene_modified.emit()
 
     def _on_track_volume_changed(self, track_id: int, volume: float):
-        """Handle track volume change"""
-        # Update in mixer
+        """Live volume update during slider movement.
+
+        Updates the running audio only. Persistence is deferred to
+        _on_track_volume_committed (slider release / discrete change) so a drag
+        is a single DB write rather than one per tick.
+        """
         self.mixer.set_track_volume(track_id, int(volume * 100))
 
-        # Save to database
-        tracks = self.db.get_scene_tracks(self._current_scene.id)
-        for track in tracks:
-            if track.id == track_id:
-                track.volume = volume
-                self.db.update_track_settings(track)
-                break
+    def _on_track_volume_committed(self, track_id: int, volume: float):
+        """Persist a track's volume once the user settles."""
+        self.db.update_scene_track_setting(track_id, volume=volume)
 
     def _on_track_repeat_changed(self, track_id: int, is_repeat: bool):
         """Handle track repeat change"""
-        # Update in mixer
         self.mixer.set_track_repeat(track_id, is_repeat)
-
-        # Save to database
-        tracks = self.db.get_scene_tracks(self._current_scene.id)
-        for track in tracks:
-            if track.id == track_id:
-                track.is_repeat = is_repeat
-                self.db.update_track_settings(track)
-                break
+        self.db.update_scene_track_setting(track_id, is_repeat=is_repeat)
 
     def _on_track_play_mode_changed(self, track_id: int, play_mode: bool):
         """Handle track play mode change"""
         if not self._current_scene:
             return
 
-        tracks = self.db.get_scene_tracks(self._current_scene.id)
-        for track in tracks:
-            if track.id == track_id:
-                track.play_mode = play_mode
-                self.db.update_track_settings(track)
-                break
+        self.db.update_scene_track_setting(track_id, play_mode=play_mode)
 
         if self._is_current_scene_active() and self._scene_playing:
             self._apply_track_play_mode(track_id, play_mode)

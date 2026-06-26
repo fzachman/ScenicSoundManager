@@ -21,7 +21,10 @@ from ..shared.styles import Styles
 class PlaylistEntryControl(QFrame):
     """Widget for controlling a playlist entry in a scene"""
 
-    volume_changed = pyqtSignal(int, float)  # entry_id, volume (0-1)
+    volume_changed = pyqtSignal(int, float)  # entry_id, volume (0-1) — live, per-tick
+    # Fired when the volume settles (slider release / discrete change) so
+    # listeners can persist once instead of on every drag tick.
+    volume_committed = pyqtSignal(int, float)  # entry_id, volume (0-1)
     shuffle_changed = pyqtSignal(int, bool)  # entry_id, is_shuffle
     repeat_changed = pyqtSignal(int, bool)  # entry_id, is_repeat
     play_mode_changed = pyqtSignal(int, bool)  # entry_id, play_mode
@@ -115,6 +118,7 @@ class PlaylistEntryControl(QFrame):
         self.volume_slider.setValue(int(self.entry.volume * 100))
         self.volume_slider.setFixedWidth(120)
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
+        self.volume_slider.sliderReleased.connect(self._on_volume_released)
         volume_row.addWidget(self.volume_slider)
 
         self.volume_value_label = QLabel(f"{int(self.entry.volume * 100)}%")
@@ -170,10 +174,22 @@ class PlaylistEntryControl(QFrame):
         layout.addLayout(bottom_row)
 
     def _on_volume_changed(self, value: int):
-        """Handle volume slider change"""
+        """Handle volume slider change (fires on every tick while dragging)."""
         volume = value / 100.0
+        # Keep the in-memory model fresh (matches TrackControl) so later
+        # playback setup reads the current volume, not the loaded one.
+        self.entry.volume = volume
         self.volume_value_label.setText(f"{value}%")
+        # Live update every tick so the audio responds immediately.
         self.volume_changed.emit(self.entry.id, volume)
+        # Persist only for discrete changes; drags persist on release below.
+        if not self.volume_slider.isSliderDown():
+            self.volume_committed.emit(self.entry.id, volume)
+
+    def _on_volume_released(self):
+        """Persist the final volume once a drag finishes."""
+        volume = self.volume_slider.value() / 100.0
+        self.volume_committed.emit(self.entry.id, volume)
 
     def set_current_track(self, title: str):
         """Update the now-playing display with the current track title"""

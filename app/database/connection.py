@@ -576,6 +576,42 @@ class DatabaseConnection:
         )
         self.connection.commit()
 
+    def update_scene_track_setting(
+        self,
+        track_id: int,
+        *,
+        volume: float | None = None,
+        is_repeat: bool | None = None,
+        play_mode: bool | None = None,
+    ) -> None:
+        """Update individual settings for one scene track, by id.
+
+        Targeted single-row UPDATE that only writes the fields passed (a value
+        of ``None`` means "leave unchanged"). Avoids fetching/rewriting the
+        whole track when a single setting changes. Column names are hard-coded
+        literals; all values are parameterized.
+        """
+        assignments = []
+        params: list[object] = []
+        if volume is not None:
+            assignments.append("volume = ?")
+            params.append(volume)
+        if is_repeat is not None:
+            assignments.append("is_repeat = ?")
+            params.append(int(is_repeat))
+        if play_mode is not None:
+            assignments.append("play_mode = ?")
+            params.append(int(play_mode))
+        if not assignments:
+            return  # nothing to update
+
+        params.append(track_id)
+        self.connection.execute(
+            f"UPDATE scene_audio_files SET {', '.join(assignments)} WHERE id = ?",
+            params,
+        )
+        self.connection.commit()
+
     def remove_track_from_scene(self, track_id: int) -> None:
         """Remove a track from a scene"""
         self.connection.execute(

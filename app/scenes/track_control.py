@@ -24,7 +24,10 @@ from ..shared.styles import Styles
 class TrackControl(QFrame):
     """Widget for controlling a single track in a scene"""
 
-    volume_changed = pyqtSignal(int, float)  # track_id, volume (0-1)
+    volume_changed = pyqtSignal(int, float)  # track_id, volume (0-1) — live, per-tick
+    # Fired when the volume settles (slider release, or a discrete keyboard/wheel
+    # change), so listeners can persist once instead of on every drag tick.
+    volume_committed = pyqtSignal(int, float)  # track_id, volume (0-1)
     repeat_changed = pyqtSignal(int, bool)  # track_id, is_repeat
     remove_requested = pyqtSignal(int)  # track_id
     play_mode_changed = pyqtSignal(int, bool)  # track_id, play_mode
@@ -138,6 +141,7 @@ class TrackControl(QFrame):
         self.volume_slider.setValue(int(self.track.volume * 100))
         self.volume_slider.setFixedWidth(120)
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
+        self.volume_slider.sliderReleased.connect(self._on_volume_released)
         bottom_row.addWidget(self.volume_slider)
 
         self.volume_value_label = QLabel(f"{int(self.track.volume * 100)}%")
@@ -183,14 +187,30 @@ class TrackControl(QFrame):
         self.play_mode_changed.emit(self.track.id, self._play_mode)
 
     def _on_volume_changed(self, value: int):
-        """Handle volume slider change"""
+        """Handle volume slider change (fires on every tick while dragging)."""
         volume = value / 100.0
+        # Keep the in-memory model fresh so later playback setup
+        # (_start_scene_playback -> _play_track reads track.volume) uses the
+        # current value, not the value the scene was loaded with.
+        self.track.volume = volume
         self.volume_value_label.setText(f"{value}%")
 
         if self.player:
             self.player.target_volume = value
 
+        # Live update every tick so the audio responds immediately.
         self.volume_changed.emit(self.track.id, volume)
+
+        # Persist only for discrete changes (keyboard, wheel, programmatic).
+        # While the handle is being dragged, defer persistence to the release
+        # (see _on_volume_released) so a drag is one DB write, not dozens.
+        if not self.volume_slider.isSliderDown():
+            self.volume_committed.emit(self.track.id, volume)
+
+    def _on_volume_released(self):
+        """Persist the final volume once a drag finishes."""
+        volume = self.volume_slider.value() / 100.0
+        self.volume_committed.emit(self.track.id, volume)
 
     def _update_position(self, position_ms: int):
         """Update position display"""
