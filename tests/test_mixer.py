@@ -5,7 +5,7 @@ from real audio/VLC. Each patched instantiation returns a fresh MagicMock,
 letting us assert delegation and control is_playing() return values.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -59,7 +59,9 @@ def mixer(mock_engine, patched_track_player):
 
 
 class TestAddTrack:
-    def test_instantiates_player_with_path_and_engine(self, mixer, mock_engine, patched_track_player):
+    def test_instantiates_player_with_path_and_engine(
+        self, mixer, mock_engine, patched_track_player
+    ):
         player = mixer.add_track(1, "/fake/a.mp3")
 
         patched_track_player.assert_called_once_with("/fake/a.mp3", mock_engine)

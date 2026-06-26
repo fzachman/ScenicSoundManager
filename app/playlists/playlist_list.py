@@ -58,7 +58,9 @@ class PlaylistListWidget(BaseListWidget):
 
         tracks = self.db.get_playlist_tracks(playlist.id)
         for track in tracks:
-            self.db.add_track_to_playlist(new_playlist.id, track.audio_file_id, track.position)
+            self.db.add_track_to_playlist(
+                new_playlist.id, track.audio_file_id, track.position
+            )
 
         return new_playlist
 

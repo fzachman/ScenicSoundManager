@@ -1,7 +1,5 @@
 """Scene mixer for managing multiple track players"""
 
-from typing import Optional
-
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from .engine import AudioEngine
@@ -16,7 +14,7 @@ class SceneMixer(QObject):
     track_removed = pyqtSignal(int)  # track_id
     all_stopped = pyqtSignal()
 
-    def __init__(self, engine: Optional[AudioEngine] = None):
+    def __init__(self, engine: AudioEngine | None = None):
         super().__init__()
         self.engine = engine or AudioEngine.get_instance()
         self._players: dict[int, TrackPlayer] = {}  # track_id -> player
@@ -49,7 +47,7 @@ class SceneMixer(QObject):
             player.release()
             self.track_removed.emit(track_id)
 
-    def get_player(self, track_id: int) -> Optional[TrackPlayer]:
+    def get_player(self, track_id: int) -> TrackPlayer | None:
         """Get the player for a track"""
         return self._players.get(track_id)
 

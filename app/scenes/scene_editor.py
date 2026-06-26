@@ -1,24 +1,28 @@
 """Scene editor for managing tracks in a scene"""
 
 import os
-from typing import Optional
+
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.shared.logging import get_logger
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QFrame
-)
-from PyQt6.QtCore import pyqtSignal, Qt, QSize
-
-from ..database import DatabaseConnection, Scene, SceneAudioFile, ScenePlaylistEntry
 from ..audio import AudioEngine, SceneMixer, ScenePlaylistPlayer
-from ..shared.styles import Styles
-from ..shared.icons import IconLibrary
+from ..database import DatabaseConnection, Scene, SceneAudioFile, ScenePlaylistEntry
 from ..shared.dialogs import AudioFileSearchDialog
+from ..shared.icons import IconLibrary
 from ..shared.layouts import clear_layout
-from .track_control import TrackControl
+from ..shared.styles import Styles
 from .playlist_entry_control import PlaylistEntryControl
+from .track_control import TrackControl
 
 _log = get_logger(__name__)
 
@@ -27,20 +31,24 @@ class SceneEditor(QWidget):
     """Editor for a single scene's tracks"""
 
     scene_modified = pyqtSignal()
-    playback_state_changed = pyqtSignal(object, object, bool)  # scene_id, scene_title, is_playing
+    playback_state_changed = pyqtSignal(
+        object, object, bool
+    )  # scene_id, scene_title, is_playing
 
     def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
         super().__init__(parent)
         self.db = db
         self.audio_engine = audio_engine
         self.mixer = SceneMixer(audio_engine)
-        self._active_scene_id: Optional[int] = None
-        self._active_scene_title: Optional[str] = None
+        self._active_scene_id: int | None = None
+        self._active_scene_title: str | None = None
         self._scene_playing = False
-        self._current_scene: Optional[Scene] = None
+        self._current_scene: Scene | None = None
         self._track_controls: dict[int, TrackControl] = {}
         self._playlist_entry_controls: dict[int, PlaylistEntryControl] = {}
-        self._playlist_players: dict[int, ScenePlaylistPlayer] = {}  # entry_id -> player
+        self._playlist_players: dict[
+            int, ScenePlaylistPlayer
+        ] = {}  # entry_id -> player
         self._icons = IconLibrary()
 
         self._setup_ui()
@@ -64,7 +72,9 @@ class SceneEditor(QWidget):
         self.play_toggle_btn = QPushButton("Play")
         self.play_toggle_btn.setIcon(self._icons.icon("play"))
         self.play_toggle_btn.setIconSize(QSize(16, 16))
-        self.play_toggle_btn.setStyleSheet(Styles.playback_button_style(is_active=False))
+        self.play_toggle_btn.setStyleSheet(
+            Styles.playback_button_style(is_active=False)
+        )
         self.play_toggle_btn.clicked.connect(self._toggle_scene_play)
         self.play_toggle_btn.setEnabled(False)
         header.addWidget(self.play_toggle_btn)
@@ -103,7 +113,9 @@ class SceneEditor(QWidget):
         self.scroll_area.hide()
 
         # Empty state
-        self.empty_label = QLabel("No tracks in this scene.\nClick '+ Add Tracks' or '+ Add Playlist' to get started.")
+        self.empty_label = QLabel(
+            "No tracks in this scene.\nClick '+ Add Tracks' or '+ Add Playlist' to get started."
+        )
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_label.setStyleSheet(Styles.empty_state_style())
         self.empty_label.hide()
@@ -163,6 +175,7 @@ class SceneEditor(QWidget):
         created_player = False
         if use_active_players and track.audio_file:
             import os
+
             if os.path.exists(track.audio_file.file_path):
                 player = self.mixer.get_player(track.id)
                 if not player and self._scene_playing:
@@ -192,8 +205,10 @@ class SceneEditor(QWidget):
 
         existing_ids = {t.audio_file_id for t in self._current_scene.tracks}
         dialog = AudioFileSearchDialog(
-            self.db, self.audio_engine,
-            disabled_track_ids=existing_ids, parent=self,
+            self.db,
+            self.audio_engine,
+            disabled_track_ids=existing_ids,
+            parent=self,
         )
         if dialog.exec():
             files = dialog.get_selected_files()
@@ -216,7 +231,9 @@ class SceneEditor(QWidget):
         # Update now-playing if player already active
         player = self._playlist_players.get(entry.id)
         if player and player.current_audio_file_id:
-            self._update_playlist_entry_now_playing(entry.id, player.current_audio_file_id)
+            self._update_playlist_entry_now_playing(
+                entry.id, player.current_audio_file_id
+            )
 
         self._playlist_entry_controls[entry.id] = control
         self.tracks_layout.addWidget(control)
@@ -228,7 +245,9 @@ class SceneEditor(QWidget):
 
         from .playlist_picker_dialog import PlaylistPickerDialog
 
-        existing_playlist_ids = {e.playlist_id for e in self._current_scene.playlist_entries}
+        existing_playlist_ids = {
+            e.playlist_id for e in self._current_scene.playlist_entries
+        }
         dialog = PlaylistPickerDialog(
             self.db,
             disabled_playlist_ids=existing_playlist_ids,
@@ -238,7 +257,9 @@ class SceneEditor(QWidget):
             playlist = dialog.get_selected_playlist()
             if playlist:
                 position = len(self._current_scene.playlist_entries)
-                self.db.add_playlist_to_scene(self._current_scene.id, playlist.id, position)
+                self.db.add_playlist_to_scene(
+                    self._current_scene.id, playlist.id, position
+                )
                 self._refresh_tracks()
                 self.scene_modified.emit()
 
@@ -337,7 +358,9 @@ class SceneEditor(QWidget):
             volume=int(entry.volume * 100),
         )
         player.track_changed.connect(
-            lambda audio_file_id, eid=entry.id: self._update_playlist_entry_now_playing(eid, audio_file_id)
+            lambda audio_file_id, eid=entry.id: self._update_playlist_entry_now_playing(
+                eid, audio_file_id
+            )
         )
         player.playback_finished.connect(
             lambda eid=entry.id: self._on_playlist_entry_finished(eid)
@@ -472,7 +495,9 @@ class SceneEditor(QWidget):
 
         self._scene_playing = True
         self._sync_scene_play_button()
-        self.playback_state_changed.emit(self._active_scene_id, self._active_scene_title, True)
+        self.playback_state_changed.emit(
+            self._active_scene_id, self._active_scene_title, True
+        )
 
     def _pause_scene_playback(self):
         """Pause all currently playing tracks and playlist entries"""
@@ -481,13 +506,14 @@ class SceneEditor(QWidget):
             player.pause(1000)
         self._scene_playing = False
         self._sync_scene_play_button()
-        self.playback_state_changed.emit(self._active_scene_id, self._active_scene_title, False)
+        self.playback_state_changed.emit(
+            self._active_scene_id, self._active_scene_title, False
+        )
 
     def _play_track(self, track: SceneAudioFile):
         """Ensure a track has a player and start playback"""
         if not track.audio_file:
             return
-        import os
         if not os.path.exists(track.audio_file.file_path):
             _log.warning(
                 "audio_file_missing",
@@ -540,7 +566,9 @@ class SceneEditor(QWidget):
         self._sync_scene_play_button()
 
     def _is_current_scene_active(self) -> bool:
-        return bool(self._current_scene and self._current_scene.id == self._active_scene_id)
+        return bool(
+            self._current_scene and self._current_scene.id == self._active_scene_id
+        )
 
     def _sync_scene_play_button(self):
         """Sync play button with current scene playback state"""
@@ -551,7 +579,9 @@ class SceneEditor(QWidget):
         else:
             self.play_toggle_btn.setText("Play")
             self.play_toggle_btn.setIcon(self._icons.icon("play"))
-        self.play_toggle_btn.setStyleSheet(Styles.playback_button_style(is_active=is_playing))
+        self.play_toggle_btn.setStyleSheet(
+            Styles.playback_button_style(is_active=is_playing)
+        )
 
     def stop_all(self):
         """Stop all playback immediately"""
@@ -583,7 +613,7 @@ class SceneEditor(QWidget):
             if scene:
                 self.load_scene(scene)
 
-    def _persist_track_order(self, track_ids: Optional[list[int]] = None):
+    def _persist_track_order(self, track_ids: list[int] | None = None):
         if not self._current_scene:
             return
         if track_ids is None:

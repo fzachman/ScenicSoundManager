@@ -1,19 +1,24 @@
 """Individual track control widget"""
 
 import os
-from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QSlider,
-    QPushButton, QFrame, QMenu, QApplication
-)
-from PyQt6.QtCore import pyqtSignal, Qt, QMimeData, QByteArray, QSize
+from PyQt6.QtCore import QByteArray, QMimeData, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QDrag
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+)
 
-from ..database import SceneAudioFile
 from ..audio import TrackPlayer
-from ..shared.styles import Styles
+from ..database import SceneAudioFile
 from ..shared.icons import IconLibrary
+from ..shared.styles import Styles
 
 
 class TrackControl(QFrame):
@@ -24,7 +29,9 @@ class TrackControl(QFrame):
     remove_requested = pyqtSignal(int)  # track_id
     play_mode_changed = pyqtSignal(int, bool)  # track_id, play_mode
 
-    def __init__(self, track: SceneAudioFile, player: Optional[TrackPlayer] = None, parent=None):
+    def __init__(
+        self, track: SceneAudioFile, player: TrackPlayer | None = None, parent=None
+    ):
         super().__init__(parent)
         self.track = track
         self.player = player
@@ -52,16 +59,24 @@ class TrackControl(QFrame):
         top_row = QHBoxLayout()
 
         # Title
-        title = self.track.audio_file.display_title if self.track.audio_file else "Unknown"
+        title = (
+            self.track.audio_file.display_title if self.track.audio_file else "Unknown"
+        )
         self.title_label = QLabel(title)
         self.title_label.setStyleSheet(Styles.title_style(size=14))
-        self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.title_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         top_row.addWidget(self.title_label, 1)
 
         # File missing indicator
-        if self.track.audio_file and not os.path.exists(self.track.audio_file.file_path):
+        if self.track.audio_file and not os.path.exists(
+            self.track.audio_file.file_path
+        ):
             missing_label = QLabel("⚠️ File not found")
-            missing_label.setStyleSheet(f"color: {Styles.WARNING}; font-size: 11px; font-weight: 700;")
+            missing_label.setStyleSheet(
+                f"color: {Styles.WARNING}; font-size: 11px; font-weight: 700;"
+            )
             top_row.addWidget(missing_label)
 
         # Play/Pause button
@@ -80,7 +95,9 @@ class TrackControl(QFrame):
         self.position_label = QLabel("0:00")
         self.position_label.setFixedWidth(45)
         self.position_label.setStyleSheet(Styles.subtle_text_style(size=11))
-        self.position_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.position_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         position_row.addWidget(self.position_label)
 
         self.position_slider = QSlider(Qt.Orientation.Horizontal)
@@ -91,11 +108,17 @@ class TrackControl(QFrame):
         self.position_slider.sliderReleased.connect(self._on_position_released)
         position_row.addWidget(self.position_slider, 1)
 
-        self.duration_label = QLabel(self.track.audio_file.duration_formatted if self.track.audio_file else "--:--")
+        self.duration_label = QLabel(
+            self.track.audio_file.duration_formatted
+            if self.track.audio_file
+            else "--:--"
+        )
         self.duration_label.setFixedWidth(45)
         self.duration_label.setStyleSheet(Styles.subtle_text_style(size=11))
         self.duration_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.duration_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.duration_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         position_row.addWidget(self.duration_label)
 
         layout.addLayout(position_row)
@@ -120,7 +143,9 @@ class TrackControl(QFrame):
         self.volume_value_label = QLabel(f"{int(self.track.volume * 100)}%")
         self.volume_value_label.setFixedWidth(40)
         self.volume_value_label.setStyleSheet(Styles.subtle_text_style(size=12))
-        self.volume_value_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.volume_value_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         bottom_row.addWidget(self.volume_value_label)
 
         bottom_row.addStretch()
@@ -246,7 +271,9 @@ class TrackControl(QFrame):
         """Show context menu for track actions"""
         menu = QMenu(self)
         remove_action = menu.addAction("Remove from scene")
-        remove_action.triggered.connect(lambda: self.remove_requested.emit(self.track.id))
+        remove_action.triggered.connect(
+            lambda: self.remove_requested.emit(self.track.id)
+        )
         menu.exec(event.globalPos())
 
     def mousePressEvent(self, event):
@@ -259,12 +286,16 @@ class TrackControl(QFrame):
             return
         if self._drag_start_pos is None:
             return
-        if (event.position().toPoint() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+        if (
+            event.position().toPoint() - self._drag_start_pos
+        ).manhattanLength() < QApplication.startDragDistance():
             return
 
         drag = QDrag(self)
         mime = QMimeData()
-        mime.setData("application/x-soundmanager-track", QByteArray(str(self.track.id).encode()))
+        mime.setData(
+            "application/x-soundmanager-track", QByteArray(str(self.track.id).encode())
+        )
         drag.setMimeData(mime)
         drag.setPixmap(self.grab())
         drag.setHotSpot(event.position().toPoint())

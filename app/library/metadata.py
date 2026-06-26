@@ -1,10 +1,8 @@
 """Metadata extraction using mutagen"""
 
 import os
-from typing import Optional
 
 from mutagen import File
-from mutagen.easyid3 import EasyID3
 
 from app.shared.logging import get_logger
 
@@ -22,11 +20,7 @@ class MetadataExtractor:
         Returns:
             dict with keys: title, artist, duration_seconds
         """
-        result = {
-            "title": None,
-            "artist": None,
-            "duration_seconds": None
-        }
+        result = {"title": None, "artist": None, "duration_seconds": None}
 
         try:
             audio = File(file_path, easy=True)
@@ -63,7 +57,14 @@ class MetadataExtractor:
     def is_supported_format(file_path: str) -> bool:
         """Check if a file is a supported audio format"""
         supported_extensions = {
-            ".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma", ".opus"
+            ".mp3",
+            ".wav",
+            ".flac",
+            ".ogg",
+            ".m4a",
+            ".aac",
+            ".wma",
+            ".opus",
         }
         _, ext = os.path.splitext(file_path.lower())
         return ext in supported_extensions

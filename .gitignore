@@ -2,3 +2,6 @@ loop.sh
 .DS_Store
 __pycache__/
 docs/localtasks
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/

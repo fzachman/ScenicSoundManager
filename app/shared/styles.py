@@ -1,7 +1,5 @@
 """Application styling constants and reusable stylesheets."""
 
-from typing import Optional
-
 
 class Styles:
     """Application-wide style constants and stylesheets."""
@@ -345,7 +343,7 @@ class Styles:
         return f"color: {Styles.TEXT_MUTED}; font-size: {size}px; {extra}"
 
     @staticmethod
-    def widget_panel_style(selector: Optional[str] = None) -> str:
+    def widget_panel_style(selector: str | None = None) -> str:
         """Surface treatment for standalone panels."""
         body = f"""
             background-color: {Styles.BACKGROUND_ELEVATED};
@@ -359,9 +357,9 @@ class Styles:
     @staticmethod
     def card_frame_style(
         selector: str,
-        accent_color: Optional[str] = None,
-        border_color: Optional[str] = None,
-        background_color: Optional[str] = None,
+        accent_color: str | None = None,
+        border_color: str | None = None,
+        background_color: str | None = None,
     ) -> str:
         """Surface treatment for card-like frames."""
         border = border_color or accent_color or Styles.BORDER
@@ -380,7 +378,9 @@ class Styles:
         """
 
     @staticmethod
-    def tag_badge_style(color: str, border_color: Optional[str] = None, border_style: str = "solid") -> str:
+    def tag_badge_style(
+        color: str, border_color: str | None = None, border_style: str = "solid"
+    ) -> str:
         """Generate stylesheet for a tag badge."""
         border = border_color or "transparent"
         width = "2px" if border_color else "1px"
@@ -628,7 +628,9 @@ class Styles:
         """Style for empty and drop target states."""
         border = Styles.PRIMARY if active else Styles.BORDER
         text = Styles.PRIMARY if active else Styles.TEXT_MUTED
-        background = "rgba(92, 164, 255, 0.12)" if active else Styles.BACKGROUND_ELEVATED
+        background = (
+            "rgba(92, 164, 255, 0.12)" if active else Styles.BACKGROUND_ELEVATED
+        )
         return f"""
             color: {text};
             font-size: 13px;

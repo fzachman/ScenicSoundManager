@@ -1,16 +1,22 @@
 """Main application window with tab navigation"""
 
+from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtWidgets import (
-    QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QSlider, QPushButton
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QSlider,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, QSettings
 
-from .database import DatabaseConnection
 from .audio import AudioEngine
+from .database import DatabaseConnection
 from .library import LibraryWidget
-from .scenes import ScenesWidget
 from .playlists import PlaylistsWidget
+from .scenes import ScenesWidget
 from .shared.styles import Styles
 
 
@@ -130,10 +136,18 @@ class MainWindow(QMainWindow):
         self.library_widget.library_updated.connect(
             self.scenes_widget.refresh_current_scene
         )
-        self.scenes_widget.playback_state_changed.connect(self._on_scene_playback_changed)
-        self.scenes_widget.scene_selection_changed.connect(self._on_scene_selection_changed)
-        self.playlists_widget.playlist_selection_changed.connect(self._on_playlist_selection_changed)
-        self.playlists_widget.playback_state_changed.connect(self._on_playlist_playback_changed)
+        self.scenes_widget.playback_state_changed.connect(
+            self._on_scene_playback_changed
+        )
+        self.scenes_widget.scene_selection_changed.connect(
+            self._on_scene_selection_changed
+        )
+        self.playlists_widget.playlist_selection_changed.connect(
+            self._on_playlist_selection_changed
+        )
+        self.playlists_widget.playback_state_changed.connect(
+            self._on_playlist_playback_changed
+        )
         self.current_scene_btn.clicked.connect(self._on_current_playing_clicked)
 
     def _on_master_volume_changed(self, value: int):
@@ -223,14 +237,18 @@ class MainWindow(QMainWindow):
                 self._current_playing_type = None
                 self.currently_playing_widget.hide()
 
-    def _on_playlist_playback_changed(self, playlist_id, playlist_name, is_playing: bool):
+    def _on_playlist_playback_changed(
+        self, playlist_id, playlist_name, is_playing: bool
+    ):
         if is_playing and playlist_id:
             # Mutual exclusivity: stop any active scene before activating playlist
             if self._current_playing_type == "scene":
                 self.scenes_widget.stop_all_playback()
             self._current_playlist_playing_id = playlist_id
             self._current_playing_type = "playlist"
-            self.current_scene_btn.setText(f"Playlist: {playlist_name or 'Untitled Playlist'}")
+            self.current_scene_btn.setText(
+                f"Playlist: {playlist_name or 'Untitled Playlist'}"
+            )
             self.currently_playing_widget.show()
         else:
             if self._current_playing_type == "playlist":
@@ -244,7 +262,10 @@ class MainWindow(QMainWindow):
             if scenes_index != -1:
                 self.tab_widget.setCurrentIndex(scenes_index)
             self.scenes_widget.select_scene(self._current_scene_id)
-        elif self._current_playing_type == "playlist" and self._current_playlist_playing_id:
+        elif (
+            self._current_playing_type == "playlist"
+            and self._current_playlist_playing_id
+        ):
             playlists_index = self.tab_widget.indexOf(self.playlists_widget)
             if playlists_index != -1:
                 self.tab_widget.setCurrentIndex(playlists_index)

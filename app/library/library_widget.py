@@ -1,24 +1,28 @@
 """Main library view widget"""
 
 import os
-from typing import List
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSizePolicy,
-    QFileDialog
-)
-from PyQt6.QtCore import pyqtSignal, Qt, QMimeData
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
+from PyQt6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
-from ..database import DatabaseConnection, AudioFile
 from ..audio import AudioEngine
-from .file_table import FileTableWidget
-from .tag_manager import TagManager
-from .search_bar import SearchBar
-from .pagination_bar import PaginationBar
-from .metadata import MetadataExtractor
-from ..shared.dialogs import FilePickerDialog, DuplicateFilesDialog
+from ..database import AudioFile, DatabaseConnection
+from ..shared.dialogs import DuplicateFilesDialog, FilePickerDialog
 from ..shared.styles import Styles
+from .file_table import FileTableWidget
+from .metadata import MetadataExtractor
+from .pagination_bar import PaginationBar
+from .search_bar import SearchBar
+from .tag_manager import TagManager
 
 
 class LibraryWidget(QWidget):
@@ -44,7 +48,9 @@ class LibraryWidget(QWidget):
         self.tag_manager = TagManager(self.db, header_text="Filter by tags")
         self.tag_manager.tag_filter_changed.connect(self._on_tag_filter)
         self.tag_manager.tags_modified.connect(self._on_tags_modified)
-        self.tag_manager.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.tag_manager.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        )
         layout.addWidget(self.tag_manager)
 
         # Search and add button
@@ -160,7 +166,9 @@ class LibraryWidget(QWidget):
             FileTableWidget.COL_ARTIST: lambda f: (f.artist or "").lower(),
             FileTableWidget.COL_DURATION: lambda f: f.duration_seconds or 0,
             FileTableWidget.COL_ADDED: lambda f: f.created_at or "",
-            FileTableWidget.COL_FILENAME: lambda f: os.path.basename(f.file_path).lower(),
+            FileTableWidget.COL_FILENAME: lambda f: os.path.basename(
+                f.file_path
+            ).lower(),
             FileTableWidget.COL_PATH: lambda f: f.file_path.lower(),
         }
         return keys.get(column)
@@ -184,7 +192,7 @@ class LibraryWidget(QWidget):
         if not dir_path:
             return
         file_paths = []
-        for root, dirs, files in os.walk(dir_path):
+        for root, _dirs, files in os.walk(dir_path):
             for f in files:
                 file_path = os.path.join(root, f)
                 if MetadataExtractor.is_supported_format(file_path):
@@ -225,13 +233,12 @@ class LibraryWidget(QWidget):
                 file_path=file_path,
                 title=metadata["title"],
                 artist=metadata["artist"],
-                duration_seconds=metadata["duration_seconds"]
+                duration_seconds=metadata["duration_seconds"],
             )
 
             new_files.append(audio_file)
 
         self.db.bulk_add_audio_files(new_files)
-        added_count = len(new_files)
 
         # Refresh display
         self._load_files()
@@ -263,7 +270,7 @@ class LibraryWidget(QWidget):
                 file_paths.append(path)
             elif os.path.isdir(path):
                 # Recursively find audio files in directory
-                for root, dirs, files in os.walk(path):
+                for root, _dirs, files in os.walk(path):
                     for f in files:
                         file_path = os.path.join(root, f)
                         if MetadataExtractor.is_supported_format(file_path):

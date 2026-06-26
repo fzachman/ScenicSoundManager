@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.audio import engine as engine_mod
-from app.audio.engine import AudioEngine, VLC_AVAILABLE
+from app.audio.engine import VLC_AVAILABLE, AudioEngine
 
 
 @pytest.fixture

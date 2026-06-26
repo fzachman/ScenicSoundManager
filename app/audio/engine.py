@@ -3,7 +3,7 @@
 import os
 import sys
 import weakref
-from typing import Optional, Any
+from typing import Any, Optional
 
 from app.shared.logging import get_logger
 
@@ -15,6 +15,7 @@ vlc = None
 
 try:
     import vlc as _vlc
+
     vlc = _vlc
     VLC_AVAILABLE = True
 except (OSError, ImportError) as e:
@@ -31,7 +32,7 @@ class AudioEngine:
         self.vlc_instance = None
         self.available = False
         self._master_volume = 100  # 0-100
-        self._players: "weakref.WeakSet[Any]" = weakref.WeakSet()
+        self._players: weakref.WeakSet[Any] = weakref.WeakSet()
 
         if not VLC_AVAILABLE:
             return
@@ -71,13 +72,13 @@ class AudioEngine:
             if os.path.exists(vlc_plugin_path):
                 os.environ["VLC_PLUGIN_PATH"] = vlc_plugin_path
 
-    def create_media(self, file_path: str) -> Optional[Any]:
+    def create_media(self, file_path: str) -> Any | None:
         """Create a VLC Media object from a file path"""
         if not self.available or not self.vlc_instance:
             return None
         return self.vlc_instance.media_new(file_path)
 
-    def create_player(self) -> Optional[Any]:
+    def create_player(self) -> Any | None:
         """Create a new VLC MediaPlayer instance"""
         if not self.available or not self.vlc_instance:
             return None

@@ -1,19 +1,25 @@
 """Sortable file list table for library"""
 
 import os
-from typing import Optional, List
+
+from PyQt6.QtCore import QByteArray, QEvent, QSettings, QSize, Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QHBoxLayout,
+    QHeaderView,
+    QMenu,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QWidget,
+)
 
 from app.shared.logging import get_logger
-from PyQt6.QtWidgets import (
-    QTableWidget, QTableWidgetItem, QHeaderView, QWidget,
-    QHBoxLayout, QPushButton, QAbstractItemView, QMenu
-)
-from PyQt6.QtCore import pyqtSignal, Qt, QSize, QSettings, QByteArray, QEvent
 
-from ..database import DatabaseConnection, AudioFile
 from ..audio import AudioEngine, TrackPlayer
-from ..shared.styles import Styles
+from ..database import AudioFile, DatabaseConnection
 from ..shared.icons import IconLibrary
+from ..shared.styles import Styles
 from .tag_manager import TagAssigner
 
 _log = get_logger(__name__)
@@ -62,9 +68,9 @@ class FileTableWidget(QTableWidget):
         self.db = db
         self.audio_engine = audio_engine
         self._files: list[AudioFile] = []
-        self._current_player: Optional[TrackPlayer] = None
+        self._current_player: TrackPlayer | None = None
         self._playing_row: int = -1
-        self._playing_file_id: Optional[int] = None
+        self._playing_file_id: int | None = None
         self._icons = IconLibrary()
         self._visible_columns: set[int] = set(self.DEFAULT_VISIBLE)
         self._sort_column: int = -1
@@ -86,13 +92,17 @@ class FileTableWidget(QTableWidget):
         header.resizeSection(self.COL_TITLE, 260)
         header.setSectionResizeMode(self.COL_ARTIST, QHeaderView.ResizeMode.Interactive)
         header.resizeSection(self.COL_ARTIST, 220)
-        header.setSectionResizeMode(self.COL_DURATION, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(
+            self.COL_DURATION, QHeaderView.ResizeMode.Interactive
+        )
         header.resizeSection(self.COL_DURATION, 110)
         header.setSectionResizeMode(self.COL_TAGS, QHeaderView.ResizeMode.Interactive)
         header.resizeSection(self.COL_TAGS, 240)
         header.setSectionResizeMode(self.COL_ADDED, QHeaderView.ResizeMode.Interactive)
         header.resizeSection(self.COL_ADDED, 160)
-        header.setSectionResizeMode(self.COL_FILENAME, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(
+            self.COL_FILENAME, QHeaderView.ResizeMode.Interactive
+        )
         header.resizeSection(self.COL_FILENAME, 200)
         header.setSectionResizeMode(self.COL_PATH, QHeaderView.ResizeMode.Interactive)
         header.resizeSection(self.COL_PATH, 300)
@@ -245,7 +255,11 @@ class FileTableWidget(QTableWidget):
         # Start new playback
         audio_file = self._get_file_by_id(file_id)
         if audio_file and not os.path.exists(audio_file.file_path):
-            _log.warning("audio_file_missing", audio_file_id=file_id, file_path=audio_file.file_path)
+            _log.warning(
+                "audio_file_missing",
+                audio_file_id=file_id,
+                file_path=audio_file.file_path,
+            )
             return
         if audio_file:
             self._current_player = TrackPlayer(audio_file.file_path, self.audio_engine)
@@ -289,7 +303,7 @@ class FileTableWidget(QTableWidget):
         self._playing_row = -1
         self._playing_file_id = None
 
-    def _get_file_at_row(self, row: int) -> Optional[AudioFile]:
+    def _get_file_at_row(self, row: int) -> AudioFile | None:
         """Get audio file for a row"""
         item = self.item(row, self.COL_TITLE)
         if item:
@@ -299,7 +313,7 @@ class FileTableWidget(QTableWidget):
                     return f
         return None
 
-    def _get_file_by_id(self, file_id: int) -> Optional[AudioFile]:
+    def _get_file_by_id(self, file_id: int) -> AudioFile | None:
         """Get audio file for a file ID"""
         for audio_file in self._files:
             if audio_file.id == file_id:
@@ -363,7 +377,9 @@ class FileTableWidget(QTableWidget):
             audio_file = self._get_file_at_row(rows[0].row())
             if audio_file:
                 play_action.triggered.connect(
-                    lambda checked=False, fid=audio_file.id: self._toggle_play_by_file_id(fid)
+                    lambda checked=False, fid=audio_file.id: (
+                        self._toggle_play_by_file_id(fid)
+                    )
                 )
 
         tag_action = menu.addAction(f"Info ({len(rows)})")
@@ -579,7 +595,9 @@ class FileTableWidget(QTableWidget):
     def _save_header_state(self):
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_GROUP)
-        settings.setValue(self.SETTINGS_HEADER_STATE, self.horizontalHeader().saveState())
+        settings.setValue(
+            self.SETTINGS_HEADER_STATE, self.horizontalHeader().saveState()
+        )
         settings.setValue(self.SETTINGS_COLUMN_COUNT, len(self.COLUMNS))
         settings.endGroup()
 

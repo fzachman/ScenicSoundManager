@@ -1,25 +1,33 @@
 """SQLite database connection management"""
 
-import os
 import sqlite3
 from pathlib import Path
-from typing import Optional
 
-from .models import AudioFile, Tag, Scene, SceneAudioFile, ScenePlaylistEntry, Playlist, PlaylistTrack
+from .models import (
+    AudioFile,
+    Playlist,
+    PlaylistTrack,
+    Scene,
+    SceneAudioFile,
+    ScenePlaylistEntry,
+    Tag,
+)
 
 
 class DatabaseConnection:
     """Manages SQLite database connection and operations"""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         if db_path is None:
             # Default to user's application support directory
-            app_support = Path.home() / "Library" / "Application Support" / "SoundManager"
+            app_support = (
+                Path.home() / "Library" / "Application Support" / "SoundManager"
+            )
             app_support.mkdir(parents=True, exist_ok=True)
             db_path = str(app_support / "soundmanager.db")
 
         self.db_path = db_path
-        self.connection: Optional[sqlite3.Connection] = None
+        self.connection: sqlite3.Connection | None = None
 
     def connect(self) -> None:
         """Establish database connection and initialize schema"""
@@ -31,7 +39,7 @@ class DatabaseConnection:
     def _initialize_schema(self) -> None:
         """Create database tables if they don't exist"""
         schema_path = Path(__file__).parent / "schema.sql"
-        with open(schema_path, "r") as f:
+        with open(schema_path) as f:
             schema = f.read()
         self.connection.executescript(schema)
         self._ensure_scene_positions()
@@ -57,8 +65,7 @@ class DatabaseConnection:
         if rows and not has_nonzero:
             for index, row in enumerate(rows):
                 self.connection.execute(
-                    "UPDATE scenes SET position = ? WHERE id = ?",
-                    (index, row["id"])
+                    "UPDATE scenes SET position = ? WHERE id = ?", (index, row["id"])
                 )
 
     def _ensure_scene_track_play_mode(self) -> None:
@@ -108,7 +115,12 @@ class DatabaseConnection:
             INSERT INTO audio_files (file_path, title, artist, duration_seconds)
             VALUES (?, ?, ?, ?)
             """,
-            (audio_file.file_path, audio_file.title, audio_file.artist, audio_file.duration_seconds)
+            (
+                audio_file.file_path,
+                audio_file.title,
+                audio_file.artist,
+                audio_file.duration_seconds,
+            ),
         )
         self.connection.commit()
         return cursor.lastrowid
@@ -124,13 +136,18 @@ class DatabaseConnection:
                 INSERT INTO audio_files (file_path, title, artist, duration_seconds)
                 VALUES (?, ?, ?, ?)
                 """,
-                (audio_file.file_path, audio_file.title, audio_file.artist, audio_file.duration_seconds)
+                (
+                    audio_file.file_path,
+                    audio_file.title,
+                    audio_file.artist,
+                    audio_file.duration_seconds,
+                ),
             )
             ids.append(cursor.lastrowid)
         self.connection.commit()
         return ids
 
-    def get_audio_file(self, file_id: int) -> Optional[AudioFile]:
+    def get_audio_file(self, file_id: int) -> AudioFile | None:
         """Get an audio file by ID"""
         cursor = self.connection.execute(
             "SELECT * FROM audio_files WHERE id = ?", (file_id,)
@@ -142,7 +159,7 @@ class DatabaseConnection:
             return audio_file
         return None
 
-    def get_audio_file_by_path(self, file_path: str) -> Optional[AudioFile]:
+    def get_audio_file_by_path(self, file_path: str) -> AudioFile | None:
         """Get an audio file by path"""
         cursor = self.connection.execute(
             "SELECT * FROM audio_files WHERE file_path = ?", (file_path,)
@@ -170,7 +187,9 @@ class DatabaseConnection:
             audio_file.tags = tags_by_file.get(audio_file.id, [])
         return files
 
-    def search_audio_files(self, query: str, tag_ids: Optional[list[int]] = None) -> list[AudioFile]:
+    def search_audio_files(
+        self, query: str, tag_ids: list[int] | None = None
+    ) -> list[AudioFile]:
         """Search audio files by title, artist, or tags"""
         query_pattern = f"%{query}%"
 
@@ -227,7 +246,12 @@ class DatabaseConnection:
             SET title = ?, artist = ?, duration_seconds = ?, updated_at = datetime('now')
             WHERE id = ?
             """,
-            (audio_file.title, audio_file.artist, audio_file.duration_seconds, audio_file.id)
+            (
+                audio_file.title,
+                audio_file.artist,
+                audio_file.duration_seconds,
+                audio_file.id,
+            ),
         )
         self.connection.commit()
 
@@ -245,25 +269,26 @@ class DatabaseConnection:
             artist=row["artist"],
             duration_seconds=row["duration_seconds"],
             created_at=row["created_at"],
-            updated_at=row["updated_at"]
+            updated_at=row["updated_at"],
         )
 
     # Tag operations
     def add_tag(self, tag: Tag) -> int:
         """Add a new tag, return its ID"""
         cursor = self.connection.execute(
-            "INSERT INTO tags (name, color) VALUES (?, ?)",
-            (tag.name, tag.color)
+            "INSERT INTO tags (name, color) VALUES (?, ?)", (tag.name, tag.color)
         )
         self.connection.commit()
         return cursor.lastrowid
 
     def get_all_tags(self) -> list[Tag]:
         """Get all tags"""
-        cursor = self.connection.execute("SELECT * FROM tags ORDER BY name COLLATE NOCASE")
+        cursor = self.connection.execute(
+            "SELECT * FROM tags ORDER BY name COLLATE NOCASE"
+        )
         return [self._row_to_tag(row) for row in cursor.fetchall()]
 
-    def get_tag_by_name(self, name: str) -> Optional[Tag]:
+    def get_tag_by_name(self, name: str) -> Tag | None:
         """Get a tag by name (case-insensitive)"""
         cursor = self.connection.execute(
             "SELECT * FROM tags WHERE name = ? COLLATE NOCASE", (name,)
@@ -275,7 +300,7 @@ class DatabaseConnection:
         """Update a tag"""
         self.connection.execute(
             "UPDATE tags SET name = ?, color = ? WHERE id = ?",
-            (tag.name, tag.color, tag.id)
+            (tag.name, tag.color, tag.id),
         )
         self.connection.commit()
 
@@ -290,7 +315,7 @@ class DatabaseConnection:
             id=row["id"],
             name=row["name"],
             color=row["color"],
-            created_at=row["created_at"]
+            created_at=row["created_at"],
         )
 
     # Audio file <-> Tag associations
@@ -298,17 +323,19 @@ class DatabaseConnection:
         """Associate a tag with an audio file"""
         self.connection.execute(
             "INSERT OR IGNORE INTO audio_file_tags (audio_file_id, tag_id) VALUES (?, ?)",
-            (audio_file_id, tag_id)
+            (audio_file_id, tag_id),
         )
         self.connection.commit()
 
-    def bulk_add_tags_to_audio_files(self, audio_file_ids: list[int], tag_ids: list[int]) -> None:
+    def bulk_add_tags_to_audio_files(
+        self, audio_file_ids: list[int], tag_ids: list[int]
+    ) -> None:
         """Add multiple tags to multiple audio files in a single transaction"""
         for file_id in audio_file_ids:
             for tag_id in tag_ids:
                 self.connection.execute(
                     "INSERT OR IGNORE INTO audio_file_tags (audio_file_id, tag_id) VALUES (?, ?)",
-                    (file_id, tag_id)
+                    (file_id, tag_id),
                 )
         self.connection.commit()
 
@@ -323,11 +350,13 @@ class DatabaseConnection:
             SET artist = ?, updated_at = datetime('now')
             WHERE id IN ({placeholders})
             """,
-            [artist] + audio_file_ids
+            [artist] + audio_file_ids,
         )
         self.connection.commit()
 
-    def bulk_remove_tags_from_audio_files(self, audio_file_ids: list[int], tag_ids: list[int]) -> None:
+    def bulk_remove_tags_from_audio_files(
+        self, audio_file_ids: list[int], tag_ids: list[int]
+    ) -> None:
         """Remove specified tags from multiple audio files in a single transaction"""
         if not audio_file_ids or not tag_ids:
             return
@@ -339,7 +368,7 @@ class DatabaseConnection:
             WHERE audio_file_id IN ({file_placeholders})
             AND tag_id IN ({tag_placeholders})
             """,
-            audio_file_ids + tag_ids
+            audio_file_ids + tag_ids,
         )
         self.connection.commit()
 
@@ -347,7 +376,7 @@ class DatabaseConnection:
         """Remove a tag association from an audio file"""
         self.connection.execute(
             "DELETE FROM audio_file_tags WHERE audio_file_id = ? AND tag_id = ?",
-            (audio_file_id, tag_id)
+            (audio_file_id, tag_id),
         )
         self.connection.commit()
 
@@ -360,7 +389,7 @@ class DatabaseConnection:
             WHERE aft.audio_file_id = ?
             ORDER BY t.name COLLATE NOCASE
             """,
-            (audio_file_id,)
+            (audio_file_id,),
         )
         return [self._row_to_tag(row) for row in cursor.fetchall()]
 
@@ -397,7 +426,7 @@ class DatabaseConnection:
             WHERE aft.tag_id = ?
             ORDER BY af.title COLLATE NOCASE
             """,
-            (tag_id,)
+            (tag_id,),
         )
         files = [self._row_to_audio_file(row) for row in cursor.fetchall()]
         tags_by_file = self._batch_load_tags([f.id for f in files])
@@ -412,12 +441,12 @@ class DatabaseConnection:
         next_position = 0
         cursor = self.connection.execute(
             "INSERT INTO scenes (title, position) VALUES (?, ?)",
-            (scene.title, next_position)
+            (scene.title, next_position),
         )
         self.connection.commit()
         return cursor.lastrowid
 
-    def get_scene(self, scene_id: int) -> Optional[Scene]:
+    def get_scene(self, scene_id: int) -> Scene | None:
         """Get a scene by ID with all its tracks and playlist entries"""
         cursor = self.connection.execute(
             "SELECT * FROM scenes WHERE id = ?", (scene_id,)
@@ -441,7 +470,7 @@ class DatabaseConnection:
         """Search scenes by title"""
         cursor = self.connection.execute(
             "SELECT * FROM scenes WHERE title LIKE ? ORDER BY position, title COLLATE NOCASE",
-            (f"%{query}%",)
+            (f"%{query}%",),
         )
         return [self._row_to_scene(row) for row in cursor.fetchall()]
 
@@ -449,7 +478,7 @@ class DatabaseConnection:
         """Update a scene's title"""
         self.connection.execute(
             "UPDATE scenes SET title = ?, updated_at = datetime('now') WHERE id = ?",
-            (scene.title, scene.id)
+            (scene.title, scene.id),
         )
         self.connection.commit()
 
@@ -465,15 +494,14 @@ class DatabaseConnection:
             title=row["title"],
             position=row["position"],
             created_at=row["created_at"],
-            updated_at=row["updated_at"]
+            updated_at=row["updated_at"],
         )
 
     def reorder_scenes(self, scene_ids: list[int]) -> None:
         """Reorder scenes by updating their positions"""
         for position, scene_id in enumerate(scene_ids):
             self.connection.execute(
-                "UPDATE scenes SET position = ? WHERE id = ?",
-                (position, scene_id)
+                "UPDATE scenes SET position = ? WHERE id = ?", (position, scene_id)
             )
         self.connection.commit()
 
@@ -491,7 +519,7 @@ class DatabaseConnection:
             INSERT INTO scene_audio_files (scene_id, audio_file_id, position, play_mode)
             VALUES (?, ?, ?, ?)
             """,
-            (scene_id, audio_file_id, position, int(play_mode))
+            (scene_id, audio_file_id, position, int(play_mode)),
         )
         self.connection.commit()
         return cursor.lastrowid
@@ -506,7 +534,7 @@ class DatabaseConnection:
             WHERE saf.scene_id = ?
             ORDER BY saf.position
             """,
-            (scene_id,)
+            (scene_id,),
         )
         tracks = []
         for row in cursor.fetchall():
@@ -515,7 +543,7 @@ class DatabaseConnection:
                 file_path=row["file_path"],
                 title=row["title"],
                 artist=row["artist"],
-                duration_seconds=row["duration_seconds"]
+                duration_seconds=row["duration_seconds"],
             )
             track = SceneAudioFile(
                 id=row["id"],
@@ -525,7 +553,7 @@ class DatabaseConnection:
                 volume=row["volume"],
                 is_repeat=bool(row["is_repeat"]),
                 play_mode=bool(row["play_mode"]),
-                audio_file=audio_file
+                audio_file=audio_file,
             )
             tracks.append(track)
         return tracks
@@ -538,13 +566,21 @@ class DatabaseConnection:
             SET volume = ?, is_repeat = ?, position = ?, play_mode = ?
             WHERE id = ?
             """,
-            (track.volume, int(track.is_repeat), track.position, int(track.play_mode), track.id)
+            (
+                track.volume,
+                int(track.is_repeat),
+                track.position,
+                int(track.play_mode),
+                track.id,
+            ),
         )
         self.connection.commit()
 
     def remove_track_from_scene(self, track_id: int) -> None:
         """Remove a track from a scene"""
-        self.connection.execute("DELETE FROM scene_audio_files WHERE id = ?", (track_id,))
+        self.connection.execute(
+            "DELETE FROM scene_audio_files WHERE id = ?", (track_id,)
+        )
         self.connection.commit()
 
     def reorder_tracks(self, scene_id: int, track_ids: list[int]) -> None:
@@ -552,7 +588,7 @@ class DatabaseConnection:
         for position, track_id in enumerate(track_ids):
             self.connection.execute(
                 "UPDATE scene_audio_files SET position = ? WHERE id = ? AND scene_id = ?",
-                (position, track_id, scene_id)
+                (position, track_id, scene_id),
             )
         self.connection.commit()
 
@@ -573,7 +609,15 @@ class DatabaseConnection:
             INSERT INTO scene_playlist_entries (scene_id, playlist_id, position, volume, is_shuffle, is_repeat, play_mode)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (scene_id, playlist_id, position, volume, int(is_shuffle), int(is_repeat), int(play_mode))
+            (
+                scene_id,
+                playlist_id,
+                position,
+                volume,
+                int(is_shuffle),
+                int(is_repeat),
+                int(play_mode),
+            ),
         )
         self.connection.commit()
         return cursor.lastrowid
@@ -589,7 +633,7 @@ class DatabaseConnection:
             WHERE spe.scene_id = ?
             ORDER BY spe.position
             """,
-            (scene_id,)
+            (scene_id,),
         )
         rows = cursor.fetchall()
         playlist_ids = [row["playlist_id"] for row in rows]
@@ -602,7 +646,7 @@ class DatabaseConnection:
                 name=row["name"],
                 position=row["playlist_position"],
                 created_at=row["playlist_created_at"],
-                updated_at=row["playlist_updated_at"]
+                updated_at=row["playlist_updated_at"],
             )
             playlist.tracks = tracks_by_playlist.get(row["playlist_id"], [])
             entry = ScenePlaylistEntry(
@@ -614,7 +658,7 @@ class DatabaseConnection:
                 is_shuffle=bool(row["is_shuffle"]),
                 is_repeat=bool(row["is_repeat"]),
                 play_mode=bool(row["play_mode"]),
-                playlist=playlist
+                playlist=playlist,
             )
             entries.append(entry)
         return entries
@@ -627,21 +671,32 @@ class DatabaseConnection:
             SET volume = ?, is_shuffle = ?, is_repeat = ?, position = ?, play_mode = ?
             WHERE id = ?
             """,
-            (entry.volume, int(entry.is_shuffle), int(entry.is_repeat), entry.position, int(entry.play_mode), entry.id)
+            (
+                entry.volume,
+                int(entry.is_shuffle),
+                int(entry.is_repeat),
+                entry.position,
+                int(entry.play_mode),
+                entry.id,
+            ),
         )
         self.connection.commit()
 
     def remove_playlist_from_scene(self, entry_id: int) -> None:
         """Remove a playlist entry from a scene"""
-        self.connection.execute("DELETE FROM scene_playlist_entries WHERE id = ?", (entry_id,))
+        self.connection.execute(
+            "DELETE FROM scene_playlist_entries WHERE id = ?", (entry_id,)
+        )
         self.connection.commit()
 
-    def reorder_scene_playlist_entries(self, scene_id: int, entry_ids: list[int]) -> None:
+    def reorder_scene_playlist_entries(
+        self, scene_id: int, entry_ids: list[int]
+    ) -> None:
         """Reorder playlist entries in a scene by updating their positions"""
         for position, entry_id in enumerate(entry_ids):
             self.connection.execute(
                 "UPDATE scene_playlist_entries SET position = ? WHERE id = ? AND scene_id = ?",
-                (position, entry_id, scene_id)
+                (position, entry_id, scene_id),
             )
         self.connection.commit()
 
@@ -650,13 +705,12 @@ class DatabaseConnection:
         """Add a new playlist, return its ID"""
         self.connection.execute("UPDATE playlists SET position = position + 1")
         cursor = self.connection.execute(
-            "INSERT INTO playlists (name, position) VALUES (?, ?)",
-            (playlist.name, 0)
+            "INSERT INTO playlists (name, position) VALUES (?, ?)", (playlist.name, 0)
         )
         self.connection.commit()
         return cursor.lastrowid
 
-    def get_playlist(self, playlist_id: int) -> Optional[Playlist]:
+    def get_playlist(self, playlist_id: int) -> Playlist | None:
         """Get a playlist by ID with all its tracks"""
         cursor = self.connection.execute(
             "SELECT * FROM playlists WHERE id = ?", (playlist_id,)
@@ -679,7 +733,7 @@ class DatabaseConnection:
         """Search playlists by name"""
         cursor = self.connection.execute(
             "SELECT * FROM playlists WHERE name LIKE ? ORDER BY position, name COLLATE NOCASE",
-            (f"%{query}%",)
+            (f"%{query}%",),
         )
         return [self._row_to_playlist(row) for row in cursor.fetchall()]
 
@@ -687,7 +741,7 @@ class DatabaseConnection:
         """Update a playlist's name"""
         self.connection.execute(
             "UPDATE playlists SET name = ?, updated_at = datetime('now') WHERE id = ?",
-            (playlist.name, playlist.id)
+            (playlist.name, playlist.id),
         )
         self.connection.commit()
 
@@ -701,7 +755,7 @@ class DatabaseConnection:
         for position, playlist_id in enumerate(playlist_ids):
             self.connection.execute(
                 "UPDATE playlists SET position = ? WHERE id = ?",
-                (position, playlist_id)
+                (position, playlist_id),
             )
         self.connection.commit()
 
@@ -712,7 +766,7 @@ class DatabaseConnection:
             name=row["name"],
             position=row["position"],
             created_at=row["created_at"],
-            updated_at=row["updated_at"]
+            updated_at=row["updated_at"],
         )
 
     # Playlist track operations
@@ -720,18 +774,18 @@ class DatabaseConnection:
         self,
         playlist_id: int,
         audio_file_id: int,
-        position: Optional[int] = None,
+        position: int | None = None,
     ) -> int:
         """Add an audio file to a playlist, return the playlist_track ID"""
         if position is None:
             cursor = self.connection.execute(
                 "SELECT COALESCE(MAX(position), -1) + 1 AS next_pos FROM playlist_tracks WHERE playlist_id = ?",
-                (playlist_id,)
+                (playlist_id,),
             )
             position = cursor.fetchone()["next_pos"]
         cursor = self.connection.execute(
             "INSERT INTO playlist_tracks (playlist_id, audio_file_id, position) VALUES (?, ?, ?)",
-            (playlist_id, audio_file_id, position)
+            (playlist_id, audio_file_id, position),
         )
         self.connection.commit()
         return cursor.lastrowid
@@ -746,7 +800,7 @@ class DatabaseConnection:
             WHERE pt.playlist_id = ?
             ORDER BY pt.position
             """,
-            (playlist_id,)
+            (playlist_id,),
         )
         rows = cursor.fetchall()
         audio_file_ids = [row["audio_file_id"] for row in rows]
@@ -759,7 +813,7 @@ class DatabaseConnection:
                 file_path=row["file_path"],
                 title=row["title"],
                 artist=row["artist"],
-                duration_seconds=row["duration_seconds"]
+                duration_seconds=row["duration_seconds"],
             )
             audio_file.tags = tags_by_file.get(audio_file.id, [])
             track = PlaylistTrack(
@@ -767,12 +821,14 @@ class DatabaseConnection:
                 playlist_id=row["playlist_id"],
                 audio_file_id=row["audio_file_id"],
                 position=row["position"],
-                audio_file=audio_file
+                audio_file=audio_file,
             )
             tracks.append(track)
         return tracks
 
-    def _batch_load_playlist_tracks(self, playlist_ids: list[int]) -> dict[int, list[PlaylistTrack]]:
+    def _batch_load_playlist_tracks(
+        self, playlist_ids: list[int]
+    ) -> dict[int, list[PlaylistTrack]]:
         """Load tracks for multiple playlists in a single query.
 
         Returns a dict mapping playlist_id -> list of PlaylistTracks
@@ -796,14 +852,16 @@ class DatabaseConnection:
         audio_file_ids = list(dict.fromkeys(row["audio_file_id"] for row in rows))
         tags_by_file = self._batch_load_tags(audio_file_ids)
 
-        tracks_by_playlist: dict[int, list[PlaylistTrack]] = {pid: [] for pid in playlist_ids}
+        tracks_by_playlist: dict[int, list[PlaylistTrack]] = {
+            pid: [] for pid in playlist_ids
+        }
         for row in rows:
             audio_file = AudioFile(
                 id=row["audio_file_id"],
                 file_path=row["file_path"],
                 title=row["title"],
                 artist=row["artist"],
-                duration_seconds=row["duration_seconds"]
+                duration_seconds=row["duration_seconds"],
             )
             audio_file.tags = tags_by_file.get(audio_file.id, [])
             track = PlaylistTrack(
@@ -811,7 +869,7 @@ class DatabaseConnection:
                 playlist_id=row["playlist_id"],
                 audio_file_id=row["audio_file_id"],
                 position=row["position"],
-                audio_file=audio_file
+                audio_file=audio_file,
             )
             tracks_by_playlist[row["playlist_id"]].append(track)
         return tracks_by_playlist
@@ -826,6 +884,6 @@ class DatabaseConnection:
         for position, track_id in enumerate(track_ids):
             self.connection.execute(
                 "UPDATE playlist_tracks SET position = ? WHERE id = ? AND playlist_id = ?",
-                (position, track_id, playlist_id)
+                (position, track_id, playlist_id),
             )
         self.connection.commit()

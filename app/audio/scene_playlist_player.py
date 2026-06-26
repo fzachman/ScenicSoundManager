@@ -6,15 +6,15 @@ at a time, auto-advancing when a track ends.
 """
 
 import os
-from typing import Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from app.shared.logging import get_logger
+
+from ..database import DatabaseConnection, PlaylistTrack
 from .engine import AudioEngine
 from .player import TrackPlayer
 from .shuffle import SmartShuffle
-from ..database import DatabaseConnection, PlaylistTrack
 
 _log = get_logger(__name__)
 
@@ -47,12 +47,12 @@ class ScenePlaylistPlayer(QObject):
         self._is_repeat = is_repeat
         self._volume = volume  # 0-100
 
-        self._player: Optional[TrackPlayer] = None
+        self._player: TrackPlayer | None = None
         self._shuffle = SmartShuffle()
         self._tracks: list[PlaylistTrack] = []
         self._audio_file_ids: list[int] = []
         self._current_index: int = 0
-        self._current_audio_file_id: Optional[int] = None
+        self._current_audio_file_id: int | None = None
         self._is_playing = False
         self._tracks_played_count = 0
 
@@ -67,7 +67,7 @@ class ScenePlaylistPlayer(QObject):
         return self._is_playing
 
     @property
-    def current_audio_file_id(self) -> Optional[int]:
+    def current_audio_file_id(self) -> int | None:
         return self._current_audio_file_id
 
     def set_volume(self, volume: int) -> None:
@@ -168,7 +168,9 @@ class ScenePlaylistPlayer(QObject):
         self.track_changed.emit(audio_file_id)
         return True
 
-    def _play_file_or_advance(self, audio_file_id: Optional[int], fade_ms: int = 500) -> None:
+    def _play_file_or_advance(
+        self, audio_file_id: int | None, fade_ms: int = 500
+    ) -> None:
         """Try to play the given file; on failure (e.g. missing file), advance
         through the playlist until something plays or all tracks were tried."""
         attempts = 0
@@ -201,7 +203,7 @@ class ScenePlaylistPlayer(QObject):
                 self._current_audio_file_id = None
                 self.playback_finished.emit()
 
-    def _get_next_audio_file_id(self) -> Optional[int]:
+    def _get_next_audio_file_id(self) -> int | None:
         """Get the next audio file ID to play."""
         if not self._audio_file_ids:
             return None
@@ -235,7 +237,7 @@ class ScenePlaylistPlayer(QObject):
             self._is_playing = False
             self.playback_finished.emit()
 
-    def _find_track(self, audio_file_id: int) -> Optional[PlaylistTrack]:
+    def _find_track(self, audio_file_id: int) -> PlaylistTrack | None:
         """Find a PlaylistTrack by audio_file_id."""
         for t in self._tracks:
             if t.audio_file_id == audio_file_id:

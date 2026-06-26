@@ -1,18 +1,20 @@
 """Main scenes view widget"""
 
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QSplitter
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QHBoxLayout, QSplitter, QWidget
 
-from ..database import DatabaseConnection, Scene
 from ..audio import AudioEngine
-from .scene_list import SceneListWidget
+from ..database import DatabaseConnection, Scene
 from .scene_editor import SceneEditor
+from .scene_list import SceneListWidget
 
 
 class ScenesWidget(QWidget):
     """Main scenes view with list and editor"""
 
-    playback_state_changed = pyqtSignal(object, object, bool)  # scene_id, scene_title, is_playing
+    playback_state_changed = pyqtSignal(
+        object, object, bool
+    )  # scene_id, scene_title, is_playing
     scene_selection_changed = pyqtSignal(int)  # scene_id
 
     def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
@@ -48,7 +50,9 @@ class ScenesWidget(QWidget):
         self.scene_list.scene_selected.connect(self._on_scene_selected)
         self.scene_list.scene_created.connect(self._on_scene_created)
         self.scene_list.scene_deleted.connect(self._on_scene_deleted)
-        self.scene_editor.playback_state_changed.connect(self.playback_state_changed.emit)
+        self.scene_editor.playback_state_changed.connect(
+            self.playback_state_changed.emit
+        )
 
     def _on_scene_selected(self, scene: Scene):
         """Handle scene selection"""

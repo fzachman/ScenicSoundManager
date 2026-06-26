@@ -1,7 +1,6 @@
 """Characterization tests for MainWindow playback mutual exclusivity."""
 
 import os
-import tempfile
 
 import pytest
 
@@ -10,8 +9,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import QCoreApplication
 from PyQt6.QtWidgets import QApplication
 
-from app.database import DatabaseConnection
 import app.main_window as main_window_module
+from app.database import DatabaseConnection
 
 
 @pytest.fixture(scope="session")

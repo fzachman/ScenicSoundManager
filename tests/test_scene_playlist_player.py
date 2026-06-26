@@ -2,12 +2,12 @@
 
 import os
 import tempfile
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.database import DatabaseConnection, AudioFile, Playlist, PlaylistTrack
 from app.audio.scene_playlist_player import ScenePlaylistPlayer
+from app.database import AudioFile, DatabaseConnection, Playlist
 
 
 @pytest.fixture
@@ -117,7 +117,9 @@ class TestSequentialPlayback:
         next_id = player._get_next_audio_file_id()
         assert next_id is None  # end of playlist
 
-    def test_sequential_all_tracks_in_order(self, db, playlist_with_tracks, mock_engine):
+    def test_sequential_all_tracks_in_order(
+        self, db, playlist_with_tracks, mock_engine
+    ):
         playlist_id, file_ids = playlist_with_tracks
         player = _make_player(playlist_id, db, mock_engine)
         player._current_index = 0
@@ -132,7 +134,9 @@ class TestSequentialPlayback:
 
 
 class TestShufflePlayback:
-    def test_shuffle_initializes_smart_shuffle(self, db, playlist_with_tracks, mock_engine):
+    def test_shuffle_initializes_smart_shuffle(
+        self, db, playlist_with_tracks, mock_engine
+    ):
         playlist_id, file_ids = playlist_with_tracks
         player = _make_player(playlist_id, db, mock_engine, is_shuffle=True)
 
@@ -140,7 +144,9 @@ class TestShufflePlayback:
         # SmartShuffle should have all track IDs
         assert sorted(player._shuffle.track_ids) == sorted(file_ids)
 
-    def test_shuffle_no_repeats_until_all_played(self, db, playlist_with_tracks, mock_engine):
+    def test_shuffle_no_repeats_until_all_played(
+        self, db, playlist_with_tracks, mock_engine
+    ):
         playlist_id, file_ids = playlist_with_tracks
         player = _make_player(playlist_id, db, mock_engine, is_shuffle=True)
 
@@ -154,7 +160,9 @@ class TestShufflePlayback:
 
         assert played == set(file_ids)
 
-    def test_shuffle_returns_none_when_cycle_complete(self, db, playlist_with_tracks, mock_engine):
+    def test_shuffle_returns_none_when_cycle_complete(
+        self, db, playlist_with_tracks, mock_engine
+    ):
         playlist_id, file_ids = playlist_with_tracks
         player = _make_player(playlist_id, db, mock_engine, is_shuffle=True)
 
@@ -198,9 +206,11 @@ class TestRepeatBehavior:
 
         # Patch _play_file to capture what gets played
         played_ids = []
+
         def _fake_play(afid, fade_ms=500):
             played_ids.append(afid)
             return True
+
         player._play_file = _fake_play
 
         player._restart()
@@ -209,14 +219,18 @@ class TestRepeatBehavior:
     def test_restart_shuffle(self, db, playlist_with_tracks, mock_engine):
         """Test that _restart reshuffles in shuffle mode."""
         playlist_id, file_ids = playlist_with_tracks
-        player = _make_player(playlist_id, db, mock_engine, is_shuffle=True, is_repeat=True)
+        player = _make_player(
+            playlist_id, db, mock_engine, is_shuffle=True, is_repeat=True
+        )
 
         player._is_playing = True
 
         played_ids = []
+
         def _fake_play(afid, fade_ms=500):
             played_ids.append(afid)
             return True
+
         player._play_file = _fake_play
 
         player._restart()
@@ -233,15 +247,19 @@ class TestTrackEndHandling:
         player._current_index = 0
 
         played_ids = []
+
         def _fake_play(afid, fade_ms=500):
             played_ids.append(afid)
             return True
+
         player._play_file = _fake_play
 
         player._on_track_ended()
         assert played_ids == [file_ids[1]]
 
-    def test_on_track_ended_stops_at_end_no_repeat(self, db, playlist_with_tracks, mock_engine):
+    def test_on_track_ended_stops_at_end_no_repeat(
+        self, db, playlist_with_tracks, mock_engine
+    ):
         """Test that playback stops at end without repeat."""
         playlist_id, file_ids = playlist_with_tracks
         player = _make_player(playlist_id, db, mock_engine, is_repeat=False)
@@ -255,7 +273,9 @@ class TestTrackEndHandling:
         assert not player._is_playing
         assert len(finished_signals) == 1
 
-    def test_on_track_ended_restarts_with_repeat(self, db, playlist_with_tracks, mock_engine):
+    def test_on_track_ended_restarts_with_repeat(
+        self, db, playlist_with_tracks, mock_engine
+    ):
         """Test that playback restarts at end with repeat."""
         playlist_id, file_ids = playlist_with_tracks
         player = _make_player(playlist_id, db, mock_engine, is_repeat=True)
@@ -263,16 +283,20 @@ class TestTrackEndHandling:
         player._current_index = len(file_ids) - 1
 
         played_ids = []
+
         def _fake_play(afid, fade_ms=500):
             played_ids.append(afid)
             return True
+
         player._play_file = _fake_play
 
         player._on_track_ended()
         assert len(played_ids) == 1
         assert played_ids[0] == file_ids[0]  # Sequential restart goes to first track
 
-    def test_on_track_ended_no_op_when_not_playing(self, db, playlist_with_tracks, mock_engine):
+    def test_on_track_ended_no_op_when_not_playing(
+        self, db, playlist_with_tracks, mock_engine
+    ):
         """Test that _on_track_ended does nothing if not playing."""
         playlist_id, file_ids = playlist_with_tracks
         player = _make_player(playlist_id, db, mock_engine)
@@ -300,9 +324,11 @@ class TestStartStop:
         player = _make_player(playlist_id, db, mock_engine)
 
         played_ids = []
+
         def _fake_play(afid, fade_ms=500):
             played_ids.append(afid)
             return True
+
         player._play_file = _fake_play
 
         player.start()
@@ -314,9 +340,11 @@ class TestStartStop:
         player = _make_player(playlist_id, db, mock_engine, is_shuffle=True)
 
         played_ids = []
+
         def _fake_play(afid, fade_ms=500):
             played_ids.append(afid)
             return True
+
         player._play_file = _fake_play
 
         player.start()
@@ -330,6 +358,7 @@ class TestStartStop:
 
         def _fake_play(afid, fade_ms=500):
             return True
+
         player._play_file = _fake_play
         player.start()
         assert player.is_playing
@@ -344,6 +373,7 @@ class TestStartStop:
 
         def _fake_play(afid, fade_ms=500):
             return True
+
         player._play_file = _fake_play
         player.start()
         assert player.is_playing
@@ -356,7 +386,9 @@ class TestStartStop:
 
 
 class TestMissingFiles:
-    def test_skips_missing_track_on_advance(self, db, playlist_with_tracks, mock_engine):
+    def test_skips_missing_track_on_advance(
+        self, db, playlist_with_tracks, mock_engine
+    ):
         playlist_id, file_ids = playlist_with_tracks
         missing_path = "/fake/path/track_1.mp3"
         with patch(
@@ -370,7 +402,9 @@ class TestMissingFiles:
             assert player.current_audio_file_id == file_ids[2]
             assert player.is_playing
 
-    def test_start_skips_missing_first_track(self, db, playlist_with_tracks, mock_engine):
+    def test_start_skips_missing_first_track(
+        self, db, playlist_with_tracks, mock_engine
+    ):
         playlist_id, file_ids = playlist_with_tracks
         with patch(
             "app.audio.scene_playlist_player.os.path.exists",

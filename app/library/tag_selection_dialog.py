@@ -2,17 +2,24 @@
 
 from enum import Enum
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QScrollArea, QWidget, QFrame, QComboBox
-)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPalette
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
-from ..database import DatabaseConnection, AudioFile, Tag
-from ..shared.styles import Styles
+from ..database import AudioFile, DatabaseConnection, Tag
 from ..shared.logging import get_logger
-from .tag_manager import TagBadge, FlowLayout
+from ..shared.styles import Styles
+from .tag_manager import FlowLayout, TagBadge
 
 log = get_logger(__name__)
 
@@ -26,7 +33,9 @@ class TagState(Enum):
 class GetInfoDialog(QDialog):
     """Dialog for viewing and bulk-editing metadata of multiple audio files"""
 
-    def __init__(self, db: DatabaseConnection, audio_files: list[AudioFile], parent=None):
+    def __init__(
+        self, db: DatabaseConnection, audio_files: list[AudioFile], parent=None
+    ):
         super().__init__(parent)
         self.db = db
         self._audio_files = audio_files
@@ -110,7 +119,9 @@ class GetInfoDialog(QDialog):
             line_edit = self._artist_combo.lineEdit()
             line_edit.setPlaceholderText("Multiple values")
             palette = line_edit.palette()
-            palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(Styles.TEXT_SUBTLE))
+            palette.setColor(
+                QPalette.ColorRole.PlaceholderText, QColor(Styles.TEXT_SUBTLE)
+            )
             line_edit.setPalette(palette)
 
         # Connect AFTER setting initial value to avoid false positive
@@ -126,7 +137,9 @@ class GetInfoDialog(QDialog):
         self._all_tags = self.db.get_all_tags()
 
         if not self._all_tags:
-            empty_label = QLabel("No tags available.\nCreate tags using the tag manager.")
+            empty_label = QLabel(
+                "No tags available.\nCreate tags using the tag manager."
+            )
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 13px;")
             parent_layout.addWidget(empty_label)
@@ -134,7 +147,7 @@ class GetInfoDialog(QDialog):
 
         # Compute per-tag counts from the audio files' tag lists
         tags_by_file = self.db._batch_load_tags(self._file_ids)
-        for file_id, file_tags in tags_by_file.items():
+        for _file_id, file_tags in tags_by_file.items():
             for tag in file_tags:
                 self._tag_counts[tag.id] = self._tag_counts.get(tag.id, 0) + 1
 
@@ -174,13 +187,17 @@ class GetInfoDialog(QDialog):
 
         if state == TagState.ALL:
             badge.set_label_style(
-                Styles.tag_badge_style(color, border_color=Styles.PRIMARY, border_style="solid")
+                Styles.tag_badge_style(
+                    color, border_color=Styles.PRIMARY, border_style="solid"
+                )
             )
             badge.label.setText(tag.name)
         elif state == TagState.PARTIAL:
             count = self._tag_counts.get(tag.id, 0)
             badge.set_label_style(
-                Styles.tag_badge_style(color, border_color=Styles.PRIMARY, border_style="dashed")
+                Styles.tag_badge_style(
+                    color, border_color=Styles.PRIMARY, border_style="dashed"
+                )
             )
             badge.label.setText(f"{tag.name} ({count}/{self._total})")
         else:
@@ -214,15 +231,19 @@ class GetInfoDialog(QDialog):
     def get_tags_to_add(self) -> list[int]:
         """Tag IDs that should be added to all files."""
         return [
-            tag_id for tag_id, state in self._tag_states.items()
-            if state == TagState.ALL and self._original_tag_states[tag_id] != TagState.ALL
+            tag_id
+            for tag_id, state in self._tag_states.items()
+            if state == TagState.ALL
+            and self._original_tag_states[tag_id] != TagState.ALL
         ]
 
     def get_tags_to_remove(self) -> list[int]:
         """Tag IDs that should be removed from all files."""
         return [
-            tag_id for tag_id, state in self._tag_states.items()
-            if state == TagState.NONE and self._original_tag_states[tag_id] != TagState.NONE
+            tag_id
+            for tag_id, state in self._tag_states.items()
+            if state == TagState.NONE
+            and self._original_tag_states[tag_id] != TagState.NONE
         ]
 
     @staticmethod

@@ -2,9 +2,16 @@
 
 import os
 import tempfile
+
 import pytest
 
-from app.database import DatabaseConnection, AudioFile, Tag, Scene, SceneAudioFile, ScenePlaylistEntry, Playlist, PlaylistTrack
+from app.database import (
+    AudioFile,
+    DatabaseConnection,
+    Playlist,
+    Scene,
+    Tag,
+)
 
 
 @pytest.fixture
@@ -28,7 +35,7 @@ class TestAudioFiles:
             file_path="/path/to/test.mp3",
             title="Test Song",
             artist="Test Artist",
-            duration_seconds=180.5
+            duration_seconds=180.5,
         )
         file_id = db.add_audio_file(audio_file)
 
@@ -40,7 +47,7 @@ class TestAudioFiles:
             file_path="/path/to/test.mp3",
             title="Test Song",
             artist="Test Artist",
-            duration_seconds=180.5
+            duration_seconds=180.5,
         )
         file_id = db.add_audio_file(audio_file)
 
@@ -54,10 +61,7 @@ class TestAudioFiles:
         assert retrieved.duration_seconds == 180.5
 
     def test_get_audio_file_by_path(self, db):
-        audio_file = AudioFile(
-            file_path="/path/to/unique.mp3",
-            title="Unique Song"
-        )
+        audio_file = AudioFile(file_path="/path/to/unique.mp3", title="Unique Song")
         db.add_audio_file(audio_file)
 
         retrieved = db.get_audio_file_by_path("/path/to/unique.mp3")
@@ -149,7 +153,7 @@ class TestScenes:
         file_id = db.add_audio_file(AudioFile(file_path="/track.mp3", title="Track"))
 
         # Add track
-        track_id = db.add_track_to_scene(scene_id, file_id, position=0)
+        db.add_track_to_scene(scene_id, file_id, position=0)
 
         # Verify
         scene = db.get_scene(scene_id)
@@ -328,7 +332,9 @@ class TestPlaylists:
 
     def test_playlist_tracks_include_tags(self, db):
         playlist_id = db.add_playlist(Playlist(name="Tagged Playlist"))
-        file_id = db.add_audio_file(AudioFile(file_path="/tagged.mp3", title="Tagged Track"))
+        file_id = db.add_audio_file(
+            AudioFile(file_path="/tagged.mp3", title="Tagged Track")
+        )
         tag_id = db.add_tag(Tag(name="Combat", color="#FF0000"))
         db.add_tag_to_audio_file(file_id, tag_id)
         db.add_track_to_playlist(playlist_id, file_id)
@@ -393,7 +399,7 @@ class TestScenePlaylistEntries:
     def test_update_scene_playlist_entry(self, db):
         scene_id = db.add_scene(Scene(title="Test Scene"))
         playlist_id = db.add_playlist(Playlist(name="Battle Music"))
-        entry_id = db.add_playlist_to_scene(scene_id, playlist_id)
+        db.add_playlist_to_scene(scene_id, playlist_id)
 
         entries = db.get_scene_playlist_entries(scene_id)
         entry = entries[0]
@@ -532,16 +538,31 @@ class TestScenePlaylistEntries:
 class TestBulkAudioFileMethods:
     def test_bulk_add_audio_files_returns_ids_and_persists(self, db):
         files = [
-            AudioFile(file_path="/bulk/a.mp3", title="Alpha", artist="Artist A", duration_seconds=60.0),
-            AudioFile(file_path="/bulk/b.mp3", title="Beta", artist="Artist B", duration_seconds=90.0),
-            AudioFile(file_path="/bulk/c.mp3", title="Gamma", artist="Artist C", duration_seconds=120.0),
+            AudioFile(
+                file_path="/bulk/a.mp3",
+                title="Alpha",
+                artist="Artist A",
+                duration_seconds=60.0,
+            ),
+            AudioFile(
+                file_path="/bulk/b.mp3",
+                title="Beta",
+                artist="Artist B",
+                duration_seconds=90.0,
+            ),
+            AudioFile(
+                file_path="/bulk/c.mp3",
+                title="Gamma",
+                artist="Artist C",
+                duration_seconds=120.0,
+            ),
         ]
         ids = db.bulk_add_audio_files(files)
 
         assert len(ids) == 3
         assert len(set(ids)) == 3  # all distinct
 
-        for file_id, original in zip(ids, files):
+        for file_id, original in zip(ids, files, strict=True):
             retrieved = db.get_audio_file(file_id)
             assert retrieved is not None
             assert retrieved.file_path == original.file_path

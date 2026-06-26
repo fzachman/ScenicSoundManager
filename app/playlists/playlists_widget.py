@@ -1,19 +1,21 @@
 """Main playlists view widget"""
 
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QSplitter
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QHBoxLayout, QSplitter, QWidget
 
-from ..database import DatabaseConnection, Playlist
 from ..audio import AudioEngine
-from .playlist_list import PlaylistListWidget
+from ..database import DatabaseConnection, Playlist
 from .playlist_editor import PlaylistEditor
+from .playlist_list import PlaylistListWidget
 
 
 class PlaylistsWidget(QWidget):
     """Main playlists view with list and editor"""
 
     playlist_selection_changed = pyqtSignal(int)  # playlist_id
-    playback_state_changed = pyqtSignal(object, object, bool)  # playlist_id, playlist_name, is_playing
+    playback_state_changed = pyqtSignal(
+        object, object, bool
+    )  # playlist_id, playlist_name, is_playing
 
     def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
         super().__init__(parent)
@@ -49,7 +51,9 @@ class PlaylistsWidget(QWidget):
         self.playlist_list.playlist_created.connect(self._on_playlist_created)
         self.playlist_list.playlist_deleted.connect(self._on_playlist_deleted)
         self.playlist_editor.playlist_renamed.connect(self._on_playlist_renamed)
-        self.playlist_editor.playback_state_changed.connect(self.playback_state_changed.emit)
+        self.playlist_editor.playback_state_changed.connect(
+            self.playback_state_changed.emit
+        )
 
     def _on_playlist_selected(self, playlist: Playlist):
         """Handle playlist selection"""

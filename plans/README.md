@@ -58,9 +58,19 @@ Ordered by leverage; ask for plans for any of these in a future `improve` run.
   already had dedicated tests; this round did not add an integration-level test
   of a real `SceneMixer` driving real `TrackPlayer`s (all mixer tests mock the
   player boundary by design).
-- **[DX-01] No lint/format/typecheck/CI** — no `pyproject.toml`, ruff, mypy, or
-  CI config anywhere. Effort S, high ongoing value. Recommend ruff + a
-  `pyproject.toml` + a GitHub Actions pytest job.
+- **[DX-01] No lint/format/typecheck/CI** — ✅ DONE (2026-06-25). Added
+  `pyproject.toml` (ruff lint+format, mypy, pytest config), folded `ruff`
+  (pinned `==0.15.20`) + `mypy` into `requirements.txt`, and a GitHub Actions
+  workflow (`.github/workflows/ci.yml`) gating ruff lint + `ruff format --check`
+  + pytest, with mypy advisory/non-blocking. Whole repo reformatted (ruff
+  format) and lint-clean. `python_requires=">=3.10"` declared (the
+  `Optional[X]`→`X | None` rewrite raised the floor). Reviewed via the
+  adversarial-review skill (Codex). FOLLOW-UPS deferred: (a) commit the
+  reformat as its own commit and add its hash to `.git-blame-ignore-revs`
+  (multiple active branches will rebase across it); (b) consider a mypy
+  baseline so advisory errors ratchet down instead of hiding new ones;
+  (c) tighten mypy from advisory → gating once the ~205 Optional/union-attr
+  findings are worked down.
 - **[DX-03] No README.md** — only CLAUDE.md (agent-facing) and design docs in
   `docs/`. Effort S.
 - **[DEBT-01] `TrackControl` vs `PlaylistEntryControl` duplication** —

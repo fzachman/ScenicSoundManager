@@ -2,10 +2,14 @@
 
 import math
 
+from PyQt6.QtCore import QSettings, pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QComboBox, QPushButton, QSizePolicy
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QWidget,
 )
-from PyQt6.QtCore import pyqtSignal, QSettings
 
 from ..shared.styles import Styles
 

@@ -1,9 +1,11 @@
 """Individual track player with fade support"""
 
-from typing import Optional, Callable, Any
-from PyQt6.QtCore import QTimer, QObject, pyqtSignal
+from collections.abc import Callable
+from typing import Any
 
-from .engine import AudioEngine, vlc, VLC_AVAILABLE
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+
+from .engine import AudioEngine, vlc
 
 
 class TrackPlayer(QObject):
@@ -14,7 +16,7 @@ class TrackPlayer(QObject):
     state_changed = pyqtSignal(int)  # VLC state
     end_reached = pyqtSignal()
 
-    def __init__(self, file_path: str, engine: Optional[AudioEngine] = None):
+    def __init__(self, file_path: str, engine: AudioEngine | None = None):
         super().__init__()
         self.engine = engine or AudioEngine.get_instance()
         self.file_path = file_path
@@ -25,10 +27,10 @@ class TrackPlayer(QObject):
         self._current_volume = 100
 
         # Fade timer
-        self._fade_timer: Optional[QTimer] = None
+        self._fade_timer: QTimer | None = None
         self._fade_steps_remaining = 0
         self._fade_volume_step = 0.0
-        self._fade_callback: Optional[Callable] = None
+        self._fade_callback: Callable | None = None
 
         # Position update timer
         self._position_timer = QTimer()
@@ -52,10 +54,18 @@ class TrackPlayer(QObject):
 
                 # Set up end-reached event
                 events = self.media_player.event_manager()
-                events.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_end_reached)
-                events.event_attach(vlc.EventType.MediaPlayerPlaying, self._on_state_change)
-                events.event_attach(vlc.EventType.MediaPlayerPaused, self._on_state_change)
-                events.event_attach(vlc.EventType.MediaPlayerStopped, self._on_state_change)
+                events.event_attach(
+                    vlc.EventType.MediaPlayerEndReached, self._on_end_reached
+                )
+                events.event_attach(
+                    vlc.EventType.MediaPlayerPlaying, self._on_state_change
+                )
+                events.event_attach(
+                    vlc.EventType.MediaPlayerPaused, self._on_state_change
+                )
+                events.event_attach(
+                    vlc.EventType.MediaPlayerStopped, self._on_state_change
+                )
                 self.engine.register_player(self)
             else:
                 self.available = False
@@ -163,7 +173,7 @@ class TrackPlayer(QObject):
         from_volume: int,
         to_volume: int,
         duration_ms: int,
-        callback: Optional[Callable] = None
+        callback: Callable | None = None,
     ) -> None:
         """Start a fade transition"""
         steps = 20

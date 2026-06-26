@@ -17,7 +17,7 @@ For production builds:
 
 import os
 import sys
-import shutil
+
 from setuptools import setup
 
 # Application metadata
@@ -112,8 +112,12 @@ def setup_vlc_bundling():
 
         return True
     else:
-        print("WARNING: VLC.app not found. The app will require VLC to be installed separately.")
-        print("Install VLC from https://www.videolan.org/vlc/ to bundle it with the app.")
+        print(
+            "WARNING: VLC.app not found. The app will require VLC to be installed separately."
+        )
+        print(
+            "Install VLC from https://www.videolan.org/vlc/ to bundle it with the app."
+        )
         return False
 
 
@@ -129,6 +133,7 @@ if __name__ == "__main__":
         data_files=DATA_FILES,
         options={"py2app": OPTIONS},
         setup_requires=["py2app"],
+        python_requires=">=3.10",
         install_requires=[
             "PyQt6>=6.6.0",
             "python-vlc>=3.0.18",

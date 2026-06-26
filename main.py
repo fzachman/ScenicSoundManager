@@ -4,8 +4,8 @@
 Main entry point for the application.
 """
 
-import sys
 import os
+import sys
 
 
 def setup_environment():
@@ -30,6 +30,7 @@ def main():
     setup_environment()
 
     from app.shared.logging import configure_logging
+
     configure_logging()
 
     from PyQt6.QtCore import Qt

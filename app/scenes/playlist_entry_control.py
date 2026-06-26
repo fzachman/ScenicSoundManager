@@ -1,17 +1,21 @@
 """Control widget for a playlist entry within a scene"""
 
-from typing import Optional
-
-from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QSlider,
-    QPushButton, QFrame, QMenu, QApplication
-)
-from PyQt6.QtCore import pyqtSignal, Qt, QMimeData, QByteArray, QSize
+from PyQt6.QtCore import QByteArray, QMimeData, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QDrag
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+)
 
 from ..database import ScenePlaylistEntry
-from ..shared.styles import Styles
 from ..shared.icons import IconLibrary
+from ..shared.styles import Styles
 
 
 class PlaylistEntryControl(QFrame):
@@ -72,7 +76,9 @@ class PlaylistEntryControl(QFrame):
         name = self.entry.playlist.name if self.entry.playlist else "Unknown Playlist"
         self.title_label = QLabel(name)
         self.title_label.setStyleSheet(Styles.title_style(size=14))
-        self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.title_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         top_row.addWidget(self.title_label, 1)
 
         # Play/Pause toggle button
@@ -86,8 +92,12 @@ class PlaylistEntryControl(QFrame):
 
         # Now-playing row: shows currently playing track title
         self.now_playing_label = QLabel("")
-        self.now_playing_label.setStyleSheet(f"color: {Styles.SUCCESS}; font-size: 11px; font-weight: 700; padding-left: 32px;")
-        self.now_playing_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.now_playing_label.setStyleSheet(
+            f"color: {Styles.SUCCESS}; font-size: 11px; font-weight: 700; padding-left: 32px;"
+        )
+        self.now_playing_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         self.now_playing_label.hide()
         layout.addWidget(self.now_playing_label)
 
@@ -110,7 +120,9 @@ class PlaylistEntryControl(QFrame):
         self.volume_value_label = QLabel(f"{int(self.entry.volume * 100)}%")
         self.volume_value_label.setFixedWidth(40)
         self.volume_value_label.setStyleSheet(Styles.subtle_text_style(size=12))
-        self.volume_value_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.volume_value_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         volume_row.addWidget(self.volume_value_label)
 
         volume_row.addStretch()
@@ -122,13 +134,17 @@ class PlaylistEntryControl(QFrame):
 
         # Track count from playlist
         if self.entry.playlist:
-            track_count = len(self.entry.playlist.tracks) if self.entry.playlist.tracks else 0
+            track_count = (
+                len(self.entry.playlist.tracks) if self.entry.playlist.tracks else 0
+            )
             info_text = f"{track_count} track{'s' if track_count != 1 else ''}"
         else:
             info_text = "Unknown"
         self.info_label = QLabel(info_text)
         self.info_label.setStyleSheet(Styles.subtle_text_style(size=11))
-        self.info_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.info_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         bottom_row.addWidget(self.info_label)
 
         bottom_row.addStretch()
@@ -226,7 +242,9 @@ class PlaylistEntryControl(QFrame):
         """Show context menu"""
         menu = QMenu(self)
         remove_action = menu.addAction("Remove from scene")
-        remove_action.triggered.connect(lambda: self.remove_requested.emit(self.entry.id))
+        remove_action.triggered.connect(
+            lambda: self.remove_requested.emit(self.entry.id)
+        )
         menu.exec(event.globalPos())
 
     def mousePressEvent(self, event):
@@ -239,7 +257,9 @@ class PlaylistEntryControl(QFrame):
             return
         if self._drag_start_pos is None:
             return
-        if (event.position().toPoint() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+        if (
+            event.position().toPoint() - self._drag_start_pos
+        ).manhattanLength() < QApplication.startDragDistance():
             return
 
         drag = QDrag(self)

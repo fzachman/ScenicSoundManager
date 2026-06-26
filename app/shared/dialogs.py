@@ -2,24 +2,35 @@
 
 import colorsys
 import os
-from typing import Optional
 
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QPushButton, QLabel, QFileDialog, QLineEdit, QSlider, QListWidget,
-    QWidget, QScrollArea, QFrame
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QSize
 
-from .styles import Styles
 from .icons import IconLibrary
 from .layouts import clear_layout
+from .styles import Styles
 
 
 class FilePickerDialog(QFileDialog):
     """Custom file picker for audio files"""
 
-    AUDIO_FILTER = "Audio Files (*.mp3 *.wav *.flac *.ogg *.m4a *.aac *.wma);;All Files (*)"
+    AUDIO_FILTER = (
+        "Audio Files (*.mp3 *.wav *.flac *.ogg *.m4a *.aac *.wma);;All Files (*)"
+    )
 
     def __init__(self, parent=None, title: str = "Select Audio Files"):
         super().__init__(parent)
@@ -202,7 +213,9 @@ class TagEditDialog(QDialog):
         self._custom_color = self._rgb_to_hex(r, g, b)
         if self._selected_is_custom:
             self._selected_color = self._custom_color
-        self._set_custom_button_style(self._custom_color, selected=self._selected_is_custom)
+        self._set_custom_button_style(
+            self._custom_color, selected=self._selected_is_custom
+        )
         self._update_preview()
 
     def _on_hue_changed(self):
@@ -295,7 +308,7 @@ class TagEditDialog(QDialog):
     @staticmethod
     def _is_light_color(color: str) -> bool:
         r, g, b = TagEditDialog._hex_to_rgb(color)
-        luminance = (0.299 * r + 0.587 * g + 0.114 * b)
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
         return luminance > 186
 
 
@@ -336,9 +349,7 @@ class DuplicateFilesDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        label = QLabel(
-            "These files are already in the library and were not imported:"
-        )
+        label = QLabel("These files are already in the library and were not imported:")
         label.setWordWrap(True)
         layout.addWidget(label)
 
@@ -363,7 +374,7 @@ class TextInputDialog(QDialog):
         parent=None,
         title: str = "Input",
         label: str = "Enter value:",
-        default: str = ""
+        default: str = "",
     ):
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -402,16 +413,17 @@ class TextInputDialog(QDialog):
 class AudioFileSearchDialog(QDialog):
     """Dialog for searching and selecting audio files"""
 
-    def __init__(self, db, audio_engine,
-                 disabled_track_ids: Optional[set[int]] = None, parent=None):
+    def __init__(
+        self, db, audio_engine, disabled_track_ids: set[int] | None = None, parent=None
+    ):
         super().__init__(parent)
         self.db = db
         self.audio_engine = audio_engine
         self.selected_files = []
         self._disabled_track_ids: set[int] = disabled_track_ids or set()
         self._preview_player = None
-        self._preview_file_id: Optional[int] = None
-        self._preview_item: Optional["FileSelectItem"] = None
+        self._preview_file_id: int | None = None
+        self._preview_item: FileSelectItem | None = None
 
         self.setWindowTitle("Add Audio Files")
         self.setMinimumSize(500, 400)
@@ -604,7 +616,11 @@ class FileSelectItem(QFrame):
         info_layout = QVBoxLayout()
         title_label = QLabel(file.display_title)
         text_color = Styles.TEXT_MUTED if disabled else ""
-        title_label.setStyleSheet(f"font-weight: bold; color: {text_color};" if disabled else "font-weight: bold;")
+        title_label.setStyleSheet(
+            f"font-weight: bold; color: {text_color};"
+            if disabled
+            else "font-weight: bold;"
+        )
         info_layout.addWidget(title_label)
 
         if file.artist:
@@ -617,7 +633,9 @@ class FileSelectItem(QFrame):
         # "Already added" label for disabled items
         if disabled:
             added_label = QLabel("Already added")
-            added_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px; font-style: italic;")
+            added_label.setStyleSheet(
+                f"color: {Styles.TEXT_MUTED}; font-size: 11px; font-style: italic;"
+            )
             layout.addWidget(added_label)
 
         # Duration

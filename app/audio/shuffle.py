@@ -5,7 +5,6 @@ When the sequence is exhausted, it reshuffles for the next cycle.
 """
 
 import random
-from typing import Optional
 
 
 class SmartShuffle:
@@ -18,7 +17,7 @@ class SmartShuffle:
         shuffle.update_tracks([1, 2])  # change the track list
     """
 
-    def __init__(self, track_ids: Optional[list[int]] = None):
+    def __init__(self, track_ids: list[int] | None = None):
         self._track_ids: list[int] = list(track_ids) if track_ids else []
         self._sequence: list[int] = []
         self._index: int = 0
@@ -35,7 +34,7 @@ class SmartShuffle:
         random.shuffle(self._sequence)
         self._index = 0
 
-    def next(self) -> Optional[int]:
+    def next(self) -> int | None:
         """Return the next track ID in the shuffled sequence.
 
         Returns None if there are no tracks.
@@ -51,7 +50,7 @@ class SmartShuffle:
         self._index += 1
         return track_id
 
-    def peek(self) -> Optional[int]:
+    def peek(self) -> int | None:
         """Return the next track ID without advancing the position."""
         if not self._sequence:
             return None

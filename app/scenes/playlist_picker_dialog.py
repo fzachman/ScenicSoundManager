@@ -1,16 +1,21 @@
 """Dialog for selecting a playlist to add to a scene"""
 
-from typing import Optional
-
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QFrame, QLineEdit, QWidget
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import pyqtSignal, Qt
 
 from ..database import DatabaseConnection, Playlist
-from ..shared.styles import Styles
 from ..shared.layouts import clear_layout
+from ..shared.styles import Styles
 
 
 class PlaylistSelectItem(QFrame):
@@ -53,7 +58,9 @@ class PlaylistSelectItem(QFrame):
         text_color = Styles.TEXT_MUTED if disabled else ""
         title_label = QLabel(playlist.name)
         title_label.setStyleSheet(
-            f"font-weight: bold; color: {text_color};" if disabled else "font-weight: bold;"
+            f"font-weight: bold; color: {text_color};"
+            if disabled
+            else "font-weight: bold;"
         )
         info_layout.addWidget(title_label)
 
@@ -67,7 +74,9 @@ class PlaylistSelectItem(QFrame):
         # "Already added" label for disabled items
         if disabled:
             added_label = QLabel("Already added")
-            added_label.setStyleSheet(f"color: {Styles.TEXT_MUTED}; font-size: 11px; font-style: italic;")
+            added_label.setStyleSheet(
+                f"color: {Styles.TEXT_MUTED}; font-size: 11px; font-style: italic;"
+            )
             layout.addWidget(added_label)
 
     def _update_style(self):
@@ -114,14 +123,18 @@ class PlaylistSelectItem(QFrame):
 class PlaylistPickerDialog(QDialog):
     """Dialog for selecting a playlist to add to a scene (single-select)"""
 
-    def __init__(self, db: DatabaseConnection,
-                 disabled_playlist_ids: Optional[set[int]] = None, parent=None):
+    def __init__(
+        self,
+        db: DatabaseConnection,
+        disabled_playlist_ids: set[int] | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.db = db
         self._disabled_ids = disabled_playlist_ids or set()
-        self.selected_playlist: Optional[Playlist] = None
+        self.selected_playlist: Playlist | None = None
         self._items: list[PlaylistSelectItem] = []
-        self._selected_item: Optional[PlaylistSelectItem] = None
+        self._selected_item: PlaylistSelectItem | None = None
 
         self.setWindowTitle("Add Playlist to Scene")
         self.setMinimumSize(400, 350)
@@ -212,5 +225,5 @@ class PlaylistPickerDialog(QDialog):
             self.selected_playlist = item.playlist
             self.add_btn.setEnabled(True)
 
-    def get_selected_playlist(self) -> Optional[Playlist]:
+    def get_selected_playlist(self) -> Playlist | None:
         return self.selected_playlist

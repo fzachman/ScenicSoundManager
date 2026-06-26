@@ -1,12 +1,17 @@
 """Base list widget for sidebar lists"""
 
-from typing import Optional
-
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QPushButton, QLabel, QMenu, QAbstractItemView
-)
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..library.search_bar import SearchBar
 from .dialogs import TextInputDialog
@@ -21,8 +26,8 @@ class BaseListWidget(QWidget):
     and implement all methods that raise NotImplementedError.
     """
 
-    _entity_name: str = ""    # e.g. "Scene" or "Playlist"
-    _display_attr: str = ""   # attribute for display text, e.g. "title" or "name"
+    _entity_name: str = ""  # e.g. "Scene" or "Playlist"
+    _display_attr: str = ""  # attribute for display text, e.g. "title" or "name"
 
     def __init__(self, db, parent=None):
         super().__init__(parent)
@@ -62,7 +67,9 @@ class BaseListWidget(QWidget):
         layout.addLayout(header_layout)
 
         # Search bar
-        self.search_bar = SearchBar(placeholder=f"Search {self._entity_name.lower()}s...")
+        self.search_bar = SearchBar(
+            placeholder=f"Search {self._entity_name.lower()}s..."
+        )
         self.search_bar.search_changed.connect(self._on_search)
         layout.addWidget(self.search_bar)
 
@@ -150,9 +157,7 @@ class BaseListWidget(QWidget):
 
     def _create_item(self):
         dialog = TextInputDialog(
-            self,
-            title=f"New {self._entity_name}",
-            label=f"{self._entity_name} name:"
+            self, title=f"New {self._entity_name}", label=f"{self._entity_name} name:"
         )
 
         if dialog.exec():
@@ -169,7 +174,7 @@ class BaseListWidget(QWidget):
             self,
             title=f"Rename {self._entity_name}",
             label=f"{self._entity_name} name:",
-            default=current_name
+            default=current_name,
         )
 
         if dialog.exec():
@@ -190,7 +195,7 @@ class BaseListWidget(QWidget):
         self.refresh()
         self._emit_deleted(item.id)
 
-    def get_selected_id(self) -> Optional[int]:
+    def get_selected_id(self) -> int | None:
         items = self.list_widget.selectedItems()
         if items:
             return items[0].data(Qt.ItemDataRole.UserRole)
@@ -212,7 +217,11 @@ class BaseListWidget(QWidget):
         self.list_widget.setDragEnabled(enabled)
         self.list_widget.setAcceptDrops(enabled)
         self.list_widget.setDropIndicatorShown(enabled)
-        mode = QAbstractItemView.DragDropMode.InternalMove if enabled else QAbstractItemView.DragDropMode.NoDragDrop
+        mode = (
+            QAbstractItemView.DragDropMode.InternalMove
+            if enabled
+            else QAbstractItemView.DragDropMode.NoDragDrop
+        )
         self.list_widget.setDragDropMode(mode)
 
     def _on_rows_moved(self, parent, start, end, destination, row):

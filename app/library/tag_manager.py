@@ -1,18 +1,24 @@
 """Tag management widget"""
 
-from typing import Optional, List
-
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QFrame, QMenu, QLayout, QSizePolicy
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QMenu,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QRect, QSize, QPoint, QTimer
 
 from ..database import DatabaseConnection, Tag
+from ..shared.dialogs import TagEditDialog
+from ..shared.icons import IconLibrary
 from ..shared.layouts import clear_layout
 from ..shared.styles import Styles
-from ..shared.icons import IconLibrary
-from ..shared.dialogs import TagEditDialog
 
 NO_TAG_ID = -1
 
@@ -114,7 +120,9 @@ class FlowLayout(QLayout):
         for item in self._items:
             size = size.expandedTo(item.minimumSize())
         margins = self.contentsMargins()
-        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+        size += QSize(
+            margins.left() + margins.right(), margins.top() + margins.bottom()
+        )
         return size
 
     def _do_layout(self, rect: QRect, test_only: bool) -> int:
@@ -165,7 +173,7 @@ class TagManager(QWidget):
         self._header_text = header_text
         self._selected_tag_ids: set[int] = set()
         self._icons = IconLibrary()
-        self._tags_scroll: Optional[QScrollArea] = None
+        self._tags_scroll: QScrollArea | None = None
 
         self._setup_ui()
         self.refresh_tags()
@@ -259,7 +267,9 @@ class TagManager(QWidget):
             # Highlight if selected
             if tag.id in self._selected_tag_ids:
                 badge.set_label_style(
-                    Styles.tag_badge_style(tag.color or Styles.TAG_COLORS[0], Styles.PRIMARY)
+                    Styles.tag_badge_style(
+                        tag.color or Styles.TAG_COLORS[0], Styles.PRIMARY
+                    )
                 )
 
             self.tags_layout.addWidget(badge)
@@ -310,12 +320,7 @@ class TagManager(QWidget):
 
     def _edit_tag(self, tag: Tag):
         """Edit a tag"""
-        dialog = TagEditDialog(
-            self,
-            title="Edit Tag",
-            name=tag.name,
-            color=tag.color
-        )
+        dialog = TagEditDialog(self, title="Edit Tag", name=tag.name, color=tag.color)
 
         if dialog.exec():
             name = dialog.get_tag_name()

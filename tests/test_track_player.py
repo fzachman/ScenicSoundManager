@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from PyQt6.QtCore import QCoreApplication
 
 from app.audio.engine import vlc
