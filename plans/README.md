@@ -16,6 +16,15 @@ passed in ~0.8s. There is no lint/typecheck/CI tooling in this repo.
 subagents, reviewed, and merged into `experimental-improvements`. Suite went
 from 82 → 100 tests. Current baseline for future plans: 100 passed at `6e7caa6`.
 
+**TESTS-02 done (2026-06-25):** unit tests added for the previously-untested
+audio modules — `tests/test_engine.py` (AudioEngine, new), `tests/test_mixer.py`
+(SceneMixer, new), and an expanded `tests/test_track_player.py` (TrackPlayer);
+plus a shared `tests/conftest.py` with an offscreen `qapp` fixture. Written and
+adversarially mutation-verified via workflow. Suite went 100 → 187 passed. Note
+for future audio-test work: `python-vlc` IS importable in this env (so
+`AudioEngine.available` is True), and a live `QApplication` is required for
+`QTimer.isActive()`/fade tests — request the `qapp` fixture.
+
 ## Execution order & status
 
 | Plan | Title | Priority | Effort | Depends on | Status |
@@ -42,9 +51,13 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 Ordered by leverage; ask for plans for any of these in a future `improve` run.
 
-- **[TESTS-02] Audio engine/player/mixer have no unit tests** — `app/audio/engine.py`,
-  `mixer.py`, and most of `player.py` are untested (plan 001 adds the first
-  `test_track_player.py` tests). Effort M. Natural follow-up to 001/005.
+- **[TESTS-02] Audio engine/player/mixer have no unit tests** — ✅ DONE
+  (2026-06-25). `test_engine.py` (24 tests), `test_mixer.py` (25 tests), and
+  `test_track_player.py` expanded to 40 tests; shared `conftest.py` added.
+  Suite 100 → 187. Not covered here: `scene_playlist_player.py` and `shuffle.py`
+  already had dedicated tests; this round did not add an integration-level test
+  of a real `SceneMixer` driving real `TrackPlayer`s (all mixer tests mock the
+  player boundary by design).
 - **[DX-01] No lint/format/typecheck/CI** — no `pyproject.toml`, ruff, mypy, or
   CI config anywhere. Effort S, high ongoing value. Recommend ruff + a
   `pyproject.toml` + a GitHub Actions pytest job.
