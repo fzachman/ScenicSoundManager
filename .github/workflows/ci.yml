@@ -35,6 +35,13 @@ jobs:
 
       - name: Install system libraries (libvlc + headless Qt)
         run: |
+          # GitHub's ubuntu-latest image ships Microsoft/Azure apt repos that
+          # periodically fail signing checks (403 / "no longer signed") and
+          # abort `apt-get update`. We don't use them — drop any source pointing
+          # at packages.microsoft.com so only the stock Ubuntu archive is fetched.
+          # (|| true: don't fail the step if there's nothing to remove.)
+          grep -rlE 'packages\.microsoft\.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f || true
           sudo apt-get update
           # libvlc-dev pulls the libvlc/libvlccore runtime so `import vlc`
           # succeeds (otherwise the VLC-dependent tests are skipped). The
