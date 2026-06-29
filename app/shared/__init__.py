@@ -8,6 +8,7 @@ from .dialogs import (
 )
 from .logging import configure_logging, get_logger
 from .styles import Styles
+from .volume_slider import VolumeSlider
 
 __all__ = [
     "configure_logging",
@@ -17,4 +18,5 @@ __all__ = [
     "TagEditDialog",
     "DuplicateFilesDialog",
     "AudioFileSearchDialog",
+    "VolumeSlider",
 ]
