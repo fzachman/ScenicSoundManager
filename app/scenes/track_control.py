@@ -164,7 +164,7 @@ class TrackControl(SceneControlCard):
         self._connect_player_signals()
 
         # Apply current settings
-        self.player.target_volume = int(self.track.volume * 100)
+        self.player.target_volume = round(self.track.volume * 100)
         self.player.repeat = self.track.is_repeat
 
     def _update_position(self, position_ms: int):

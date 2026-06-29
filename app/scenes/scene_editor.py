@@ -182,7 +182,7 @@ class SceneEditor(QWidget):
                     player = self.mixer.add_track(track.id, track.audio_file.file_path)
                     created_player = True
                 if player:
-                    player.target_volume = int(track.volume * 100)
+                    player.target_volume = round(track.volume * 100)
                     player.repeat = track.is_repeat
                     if created_player and track.play_mode:
                         player.fade_in(500)
@@ -290,7 +290,7 @@ class SceneEditor(QWidget):
         # Forward to running player if active
         player = self._playlist_players.get(entry_id)
         if player:
-            player.set_volume(int(volume * 100))
+            player.set_volume(round(volume * 100))
 
     def _on_playlist_entry_volume_committed(self, entry_id: int, volume: float):
         """Persist a playlist entry's volume once the user settles."""
@@ -370,7 +370,7 @@ class SceneEditor(QWidget):
             engine=self.audio_engine,
             is_shuffle=entry.is_shuffle,
             is_repeat=entry.is_repeat,
-            volume=int(entry.volume * 100),
+            volume=round(entry.volume * 100),
         )
         player.track_changed.connect(
             lambda audio_file_id, eid=entry.id: self._update_playlist_entry_now_playing(
@@ -435,7 +435,7 @@ class SceneEditor(QWidget):
         _on_track_volume_committed (slider release / discrete change) so a drag
         is a single DB write rather than one per tick.
         """
-        self.mixer.set_track_volume(track_id, int(volume * 100))
+        self.mixer.set_track_volume(track_id, round(volume * 100))
 
     def _on_track_volume_committed(self, track_id: int, volume: float):
         """Persist a track's volume once the user settles."""
@@ -527,7 +527,7 @@ class SceneEditor(QWidget):
         player = self.mixer.get_player(track.id)
         if not player:
             player = self.mixer.add_track(track.id, track.audio_file.file_path)
-        player.target_volume = int(track.volume * 100)
+        player.target_volume = round(track.volume * 100)
         player.repeat = track.is_repeat
         control = self._track_controls.get(track.id)
         if control and control.player is not player:

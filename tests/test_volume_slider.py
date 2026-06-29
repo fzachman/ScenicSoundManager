@@ -18,6 +18,13 @@ class TestConstruction:
         assert vs.slider.value() == 50
         assert vs.value_label.text() == "50%"
 
+    def test_initial_value_rounds_not_truncates(self, qapp):
+        # 0.29 * 100 == 28.9999...; must round to 29, so a saved 29% reloads as
+        # 29%, not 28%.
+        vs = VolumeSlider(0.29)
+        assert vs.slider.value() == 29
+        assert vs.value_label.text() == "29%"
+
 
 class TestLiveChanged:
     def test_changed_fires_every_tick(self, qapp):

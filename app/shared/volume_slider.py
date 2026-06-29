@@ -37,13 +37,13 @@ class VolumeSlider(QWidget):
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(0)
         self.slider.setMaximum(100)
-        self.slider.setValue(int(initial_volume * 100))
+        self.slider.setValue(round(initial_volume * 100))
         self.slider.setFixedWidth(120)
         self.slider.valueChanged.connect(self._on_changed)
         self.slider.sliderReleased.connect(self._on_released)
         layout.addWidget(self.slider)
 
-        self.value_label = QLabel(f"{int(initial_volume * 100)}%")
+        self.value_label = QLabel(f"{round(initial_volume * 100)}%")
         self.value_label.setFixedWidth(40)
         self.value_label.setStyleSheet(Styles.subtle_text_style(size=12))
         self.value_label.setAttribute(

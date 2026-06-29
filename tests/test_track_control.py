@@ -254,6 +254,15 @@ class TestPlayerIntegration:
         assert player.target_volume == 50
         assert player.repeat is True
 
+    def test_set_player_rounds_volume_not_truncates(self, qapp):
+        # 0.29 * 100 == 28.9999...; set_player must round to 29, not int() to 28.
+        player = FakeTrackPlayer()
+        control = TrackControl(make_track(volume=0.29))
+
+        control.set_player(player)
+
+        assert player.target_volume == 29
+
     def test_set_player_connects_position_and_end_signals(self, qapp):
         player = FakeTrackPlayer(duration_ms=60000)
         control = TrackControl(make_track())
