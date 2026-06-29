@@ -98,6 +98,13 @@ Ordered by leverage; ask for plans for any of these in a future `improve` run.
   uses `round()` for the control's own push (preserving old behavior exactly),
   but the production live volume is still set by `scene_editor`'s `int()`.
   Harmonizing all volume int conversions to `round()` is a small standalone fix.
+  **✅ RESOLVED (2026-06-29, `b849120`):** every 0-1-float → 0-100-int volume
+  conversion now uses `round()` (scene_editor live slots + ScenePlaylistPlayer
+  construction + scene-start setup + `TrackControl.set_player` + `VolumeSlider`
+  init/display), with regression tests at value 0.29 → 29 and a Codex skeptic
+  review (no high/medium findings; suite 243 → 245). Left as-is by design:
+  `player.py`'s effective-volume scaling (`int(base*master/100)`, a different
+  computation) and the position-slider math.
 - **[DEBT-05] Full-list rebuilds on single-item mutations** — e.g.
   `tag_manager.refresh_tags()` rebuilds all badges on one rename;
   `BaseListWidget.refresh()` reloads everything. Effort M, mild UX cost today.

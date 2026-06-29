@@ -55,6 +55,13 @@ old behavior exactly), so this refactor neither caused nor worsened it.
 Harmonizing all volume conversions to `round()` is a small standalone fix,
 deliberately left out of this behavior-preserving refactor.
 
+**✅ RESOLVED (2026-06-29, commit `b849120`):** harmonized every 0-1-float →
+0-100-int volume conversion to `round()` (scene_editor live slots,
+ScenePlaylistPlayer construction, scene-start setup, `TrackControl.set_player`,
+`VolumeSlider` init/display), with regression tests at value 0.29 → 29 and a
+Codex skeptic review (no high/medium findings; suite 243 → 245). `player.py`'s
+effective-volume scaling and the position math are intentionally left as `int()`.
+
 ## Why this matters
 
 `app/scenes/track_control.py` (`TrackControl`, 328 lines) and
