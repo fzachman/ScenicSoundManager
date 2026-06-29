@@ -106,16 +106,24 @@ class FakeMenu:
 
     This drives the *real* ``contextMenuEvent`` body (which connects the action's
     ``triggered`` to a ``remove_requested.emit`` lambda) without blocking on a
-    real event loop.
+    real event loop. Constructed instances are recorded in ``FakeMenu.created``
+    so a test can assert which actions the menu actually offered (e.g. that the
+    only action is "Remove from scene").
     """
+
+    created: list["FakeMenu"] = []
 
     def __init__(self, *args, **kwargs):
         self._actions: list[FakeAction] = []
+        FakeMenu.created.append(self)
 
     def addAction(self, text: str) -> FakeAction:
         action = FakeAction(text)
         self._actions.append(action)
         return action
+
+    def actions(self) -> list[FakeAction]:
+        return list(self._actions)
 
     def exec(self, *args, **kwargs):
         for action in self._actions:

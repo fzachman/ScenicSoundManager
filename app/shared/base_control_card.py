@@ -30,7 +30,27 @@ from .volume_slider import VolumeSlider
 
 
 class SceneControlCard(QFrame):
-    """Base class for ``TrackControl`` and ``PlaylistEntryControl``."""
+    """Base class for ``TrackControl`` and ``PlaylistEntryControl``.
+
+    Subclass construction protocol (the base relies on this order):
+
+    1. ``super().__init__(parent)``
+    2. store the model object (``self.track`` / ``self.entry``) so the abstract
+       ``_model`` / ``_entity_id`` hooks resolve
+    3. ``self._init_card_state()`` (sets ``_icons``, ``_drag_start_pos``,
+       ``_play_mode``, ``_repeat_mode`` from the model)
+    4. set ``self._base_style`` and any tooltip
+    5. ``self._setup_ui()`` — which MUST create ``self.play_btn`` (via
+       ``_build_play_button()``) and ``self.repeat_btn`` (via
+       ``_build_repeat_button()``); the volume row comes from
+       ``_build_volume_row()``
+    6. ``self._update_play_mode_ui()`` — reads ``self.play_btn``, so it must run
+       after step 5
+
+    ``_update_play_mode_ui`` and ``_setup_ui`` stay per-subclass because the row
+    composition and accent styling genuinely differ; everything identical (or
+    differing only by a model attribute / MIME type / id) lives here.
+    """
 
     # Signals common to both controls. The leading int is the entity id
     # (track id / entry id); volume is a 0-1 float.
@@ -78,6 +98,18 @@ class SceneControlCard(QFrame):
         self.volume.changed.connect(self._on_volume_changed)
         self.volume.committed.connect(self._on_volume_committed)
         return self.volume
+
+    def _build_play_button(self) -> QPushButton:
+        """Create the play/pause toggle button and return it.
+
+        The button's stylesheet is applied by ``_update_play_mode_ui`` (run
+        after ``_setup_ui``), so it is intentionally not styled here.
+        """
+        self.play_btn = QPushButton()
+        self.play_btn.setFixedSize(28, 28)
+        self.play_btn.setIconSize(QSize(12, 12))
+        self.play_btn.clicked.connect(self._toggle_play)
+        return self.play_btn
 
     def _build_repeat_button(self) -> QPushButton:
         """Create the repeat toggle button (already styled) and return it."""

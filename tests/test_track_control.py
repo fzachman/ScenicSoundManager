@@ -216,10 +216,16 @@ class TestRemove:
     def test_context_menu_remove_emits_track_id(self, qapp, monkeypatch):
         control = TrackControl(make_track())
         patch_qt(monkeypatch, QMenu=FakeMenu)
+        FakeMenu.created.clear()
         rec = record(control.remove_requested)
 
         control.contextMenuEvent(FakeContextEvent())
 
+        # The only action offered is "Remove from scene", and triggering it
+        # emits the track id.
+        assert [a.text() for a in FakeMenu.created[-1].actions()] == [
+            "Remove from scene"
+        ]
         assert rec == [(7,)]
 
 
@@ -262,9 +268,13 @@ class TestPlayerIntegration:
         assert control.position_label.text() == "0:00"
 
     def test_volume_change_pushes_exact_int_to_player(self, qapp):
-        # 0.29 * 100 == 28.9999... ; truncating gives 28. The live push must
-        # send the slider's actual integer (29), so this guards against a
-        # float-truncation regression when the value is reconstructed.
+        # Pins the CONTROL's own push in isolation (what this refactor changed:
+        # the base reconstructs the 0-100 int from the emitted float). 0.29 * 100
+        # == 28.9999...; round() must give 29, not int()'s 28. This does NOT
+        # model the full live SceneEditor path, where scene_editor's own
+        # int(volume*100) conversion independently sets the mixer volume — that
+        # conversion is pre-existing and out of scope for DEBT-01 (see the
+        # plan's follow-up note).
         player = FakeTrackPlayer()
         control = TrackControl(make_track(), player)
 

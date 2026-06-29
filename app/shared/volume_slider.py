@@ -51,14 +51,6 @@ class VolumeSlider(QWidget):
         )
         layout.addWidget(self.value_label)
 
-    def value(self) -> float:
-        """Return the current volume as a 0-1 float."""
-        return self.slider.value() / 100.0
-
-    def set_value(self, volume: float) -> None:
-        """Set the slider from a 0-1 float (emits ``changed`` if it moves)."""
-        self.slider.setValue(int(volume * 100))
-
     def _on_changed(self, value: int) -> None:
         self.value_label.setText(f"{value}%")
         volume = value / 100.0

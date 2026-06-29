@@ -96,12 +96,8 @@ class PlaylistEntryControl(SceneControlCard):
         )
         top_row.addWidget(self.title_label, 1)
 
-        # Play/Pause toggle button
-        self.play_btn = QPushButton()
-        self.play_btn.setFixedSize(28, 28)
-        self.play_btn.setIconSize(QSize(12, 12))
-        self.play_btn.clicked.connect(self._toggle_play)
-        top_row.addWidget(self.play_btn)
+        # Play/Pause toggle button (shared builder; styled by _update_play_mode_ui)
+        top_row.addWidget(self._build_play_button())
 
         layout.addLayout(top_row)
 

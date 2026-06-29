@@ -236,10 +236,16 @@ class TestRemove:
     def test_context_menu_remove_emits_entry_id(self, qapp, monkeypatch):
         control = PlaylistEntryControl(make_entry())
         patch_qt(monkeypatch, QMenu=FakeMenu)
+        FakeMenu.created.clear()
         rec = record(control.remove_requested)
 
         control.contextMenuEvent(FakeContextEvent())
 
+        # The only action offered is "Remove from scene", and triggering it
+        # emits the entry id.
+        assert [a.text() for a in FakeMenu.created[-1].actions()] == [
+            "Remove from scene"
+        ]
         assert rec == [(9,)]
 
 

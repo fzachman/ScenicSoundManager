@@ -17,7 +17,6 @@ class TestConstruction:
         vs = VolumeSlider(0.5)
         assert vs.slider.value() == 50
         assert vs.value_label.text() == "50%"
-        assert vs.value() == pytest.approx(0.5)
 
 
 class TestLiveChanged:
@@ -59,11 +58,3 @@ class TestCommit:
         vs.slider.sliderReleased.emit()
         assert len(rec) == 1
         assert rec[0] == pytest.approx((0.2,))
-
-
-class TestSetValue:
-    def test_set_value_round_trips(self, qapp):
-        vs = VolumeSlider(0.5)
-        vs.set_value(0.7)
-        assert vs.slider.value() == 70
-        assert vs.value() == pytest.approx(0.7)

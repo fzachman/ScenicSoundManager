@@ -3,11 +3,10 @@
 import os
 from typing import cast
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSlider,
     QVBoxLayout,
 )
@@ -105,13 +104,8 @@ class TrackControl(SceneControlCard):
             )
             top_row.addWidget(missing_label)
 
-        # Play/Pause button
-        self.play_btn = QPushButton()
-        self.play_btn.setFixedSize(28, 28)
-        self.play_btn.setIconSize(QSize(12, 12))
-        self.play_btn.setStyleSheet(Styles.play_button_style(size=28))
-        self.play_btn.clicked.connect(self._toggle_play)
-        top_row.addWidget(self.play_btn)
+        # Play/Pause button (shared builder; styled by _update_play_mode_ui)
+        top_row.addWidget(self._build_play_button())
 
         layout.addLayout(top_row)
 
