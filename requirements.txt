@@ -13,6 +13,6 @@ structlog==25.5.0
 
 # Development / CI
 py2app==0.28.9
-pytest==9.0.2
+pytest==9.0.3
 ruff==0.15.20
 mypy==2.1.0
