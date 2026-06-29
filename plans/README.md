@@ -34,6 +34,7 @@ for future audio-test work: `python-vlc` IS importable in this env (so
 | 003 | Batch duplicate-check and inserts in library import | P1 | S | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `7678bb0`) |
 | 004 | Batch-load playlist tracks in get_scene_playlist_entries | P2 | S | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `259ea4f`) |
 | 005 | Characterization tests for MainWindow mutual exclusivity | P1 | M | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `6e7caa6`) |
+| 006 | De-duplicate scene control cards (DEBT-01) | P2 | M | — | DONE (2026-06-29 on `advisor/006-dedupe-control-cards`; adversarially reviewed; see `006-deduplicate-scene-control-cards.md`) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -73,14 +74,30 @@ Ordered by leverage; ask for plans for any of these in a future `improve` run.
   findings are worked down.
 - **[DX-03] No README.md** — only CLAUDE.md (agent-facing) and design docs in
   `docs/`. Effort S.
-- **[DEBT-01] `TrackControl` vs `PlaylistEntryControl` duplication** —
-  `app/scenes/track_control.py` (276 lines) and `playlist_entry_control.py`
-  (256 lines) share most of their card UI. Effort M, MED risk. NOTE: PERF-02
-  (2026-06-25) added to this surface — the volume commit-on-release behavior
-  (`volume_committed` signal + `isSliderDown`/`sliderReleased` logic) is now
-  duplicated in both controls. A shared base control or a small reusable
-  `VolumeSlider` that owns commit-on-release would resolve both the broad UI
-  duplication and that specific strand.
+- **[DEBT-01] `TrackControl` vs `PlaylistEntryControl` duplication** — ✅ DONE
+  (2026-06-29, Plan 006, branch `advisor/006-dedupe-control-cards`). Extracted a
+  reusable `VolumeSlider` component (`app/shared/volume_slider.py`, owns the
+  PERF-02 commit-on-release contract) AND a `SceneControlCard(QFrame)` base
+  (`app/shared/base_control_card.py`, mirroring `BaseListWidget`) that hoists the
+  5 common signals, the volume/repeat/play toggles + builders, a play-mode-style
+  template, and the drag/context-menu plumbing. `_setup_ui` + the card-style
+  hooks + the TrackControl player cluster + the PlaylistEntryControl
+  shuffle/badge/now-playing clusters stay per-class by design. Characterization
+  tests written first (the controls were ~80% untested): suite 197 → 243.
+  Public contract byte-stable; `scene_editor.py` untouched; zero new mypy errors.
+  Planned from a workflow analysis + 3 scored designs; full base+component chosen
+  over minimal/hybrid since the user prioritized the best end result over
+  interruptible delivery. Adversarially reviewed (Codex skeptic/architect/
+  minimalist) — verdict PASS, no high-severity findings; accepted findings folded
+  in (shared `_build_play_button`, documented construction protocol, removed
+  speculative `VolumeSlider` API + package export, tightened the remove/volume
+  tests). FOLLOW-UP (out of scope, pre-existing, NOT introduced by this work):
+  `scene_editor.py` converts the emitted 0-1 volume float to a 0-100 int with
+  `int(volume*100)` in the live slots (lines ~293/373/438/530) and `mixer.py`,
+  which truncates (e.g. 0.29 → 28) one step low for some values; the new base
+  uses `round()` for the control's own push (preserving old behavior exactly),
+  but the production live volume is still set by `scene_editor`'s `int()`.
+  Harmonizing all volume int conversions to `round()` is a small standalone fix.
 - **[DEBT-05] Full-list rebuilds on single-item mutations** — e.g.
   `tag_manager.refresh_tags()` rebuilds all badges on one rename;
   `BaseListWidget.refresh()` reloads everything. Effort M, mild UX cost today.
