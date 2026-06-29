@@ -1,47 +1,34 @@
 """Control widget for a playlist entry within a scene"""
 
-from PyQt6.QtCore import QByteArray, QMimeData, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QDrag
+from typing import cast
+
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication,
-    QFrame,
     QHBoxLayout,
     QLabel,
-    QMenu,
     QPushButton,
-    QSlider,
     QVBoxLayout,
 )
 
 from ..database import ScenePlaylistEntry
-from ..shared.icons import IconLibrary
+from ..shared.base_control_card import SceneControlCard
 from ..shared.styles import Styles
 
 
-class PlaylistEntryControl(QFrame):
+class PlaylistEntryControl(SceneControlCard):
     """Widget for controlling a playlist entry in a scene"""
 
-    volume_changed = pyqtSignal(int, float)  # entry_id, volume (0-1) — live, per-tick
-    # Fired when the volume settles (slider release / discrete change) so
-    # listeners can persist once instead of on every drag tick.
-    volume_committed = pyqtSignal(int, float)  # entry_id, volume (0-1)
+    # Unique to playlist entries (TrackControl has no shuffle concept).
     shuffle_changed = pyqtSignal(int, bool)  # entry_id, is_shuffle
-    repeat_changed = pyqtSignal(int, bool)  # entry_id, is_repeat
-    play_mode_changed = pyqtSignal(int, bool)  # entry_id, play_mode
-    remove_requested = pyqtSignal(int)  # entry_id
 
     MIME_TYPE = "application/x-soundmanager-scene-playlist"
 
     def __init__(self, entry: ScenePlaylistEntry, parent=None):
         super().__init__(parent)
         self.entry = entry
-        self._icons = IconLibrary()
-        self._drag_start_pos = None
-        self._play_mode = bool(entry.play_mode)
         self._shuffle_mode = bool(entry.is_shuffle)
-        self._repeat_mode = bool(entry.is_repeat)
 
-        self.setFrameStyle(QFrame.Shape.StyledPanel)
+        self._init_card_state()
         self._base_style = Styles.card_frame_style(
             "PlaylistEntryControl",
             accent_color=Styles.PRIMARY,
@@ -51,7 +38,32 @@ class PlaylistEntryControl(QFrame):
             self.setToolTip(f"Playlist: {self.entry.playlist.name}")
 
         self._setup_ui()
+        # Note: no setStyleSheet here — _update_play_mode_ui applies the frame
+        # style for both states.
         self._update_play_mode_ui()
+
+    # --- Hooks for the shared base ---
+
+    @property
+    def _model(self) -> ScenePlaylistEntry:
+        return self.entry
+
+    @property
+    def _entity_id(self) -> int:
+        # A control only exists for a persisted entry, so id is always set.
+        return cast(int, self.entry.id)
+
+    def _active_card_style(self) -> str:
+        return self._base_style
+
+    def _inactive_card_style(self) -> str:
+        return Styles.card_frame_style(
+            "PlaylistEntryControl",
+            border_color=Styles.BORDER,
+            background_color=Styles.BACKGROUND_LIGHT,
+        )
+
+    # --- UI ---
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -104,33 +116,10 @@ class PlaylistEntryControl(QFrame):
         self.now_playing_label.hide()
         layout.addWidget(self.now_playing_label)
 
-        # Volume row
+        # Volume row (shared component)
         volume_row = QHBoxLayout()
-
-        volume_label = QLabel("Vol:")
-        volume_label.setStyleSheet(Styles.subtle_text_style(size=12))
-        volume_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        volume_row.addWidget(volume_label)
-
-        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
-        self.volume_slider.setMinimum(0)
-        self.volume_slider.setMaximum(100)
-        self.volume_slider.setValue(int(self.entry.volume * 100))
-        self.volume_slider.setFixedWidth(120)
-        self.volume_slider.valueChanged.connect(self._on_volume_changed)
-        self.volume_slider.sliderReleased.connect(self._on_volume_released)
-        volume_row.addWidget(self.volume_slider)
-
-        self.volume_value_label = QLabel(f"{int(self.entry.volume * 100)}%")
-        self.volume_value_label.setFixedWidth(40)
-        self.volume_value_label.setStyleSheet(Styles.subtle_text_style(size=12))
-        self.volume_value_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
-        )
-        volume_row.addWidget(self.volume_value_label)
-
+        volume_row.addWidget(self._build_volume_row())
         volume_row.addStretch()
-
         layout.addLayout(volume_row)
 
         # Bottom row: track count info + shuffle + repeat
@@ -153,7 +142,7 @@ class PlaylistEntryControl(QFrame):
 
         bottom_row.addStretch()
 
-        # Shuffle toggle
+        # Shuffle toggle (unique to playlist entries)
         self.shuffle_btn = QPushButton()
         self.shuffle_btn.setFixedSize(28, 28)
         self.shuffle_btn.setIcon(self._icons.icon("shuffle"))
@@ -162,34 +151,12 @@ class PlaylistEntryControl(QFrame):
         bottom_row.addWidget(self.shuffle_btn)
         self._update_shuffle_button()
 
-        # Repeat toggle
-        self.repeat_btn = QPushButton()
-        self.repeat_btn.setFixedSize(28, 28)
-        self.repeat_btn.setIcon(self._icons.icon("repeat"))
-        self.repeat_btn.setIconSize(QSize(14, 14))
-        self.repeat_btn.clicked.connect(self._toggle_repeat)
-        bottom_row.addWidget(self.repeat_btn)
-        self._update_repeat_button()
+        # Repeat toggle (shared builder)
+        bottom_row.addWidget(self._build_repeat_button())
 
         layout.addLayout(bottom_row)
 
-    def _on_volume_changed(self, value: int):
-        """Handle volume slider change (fires on every tick while dragging)."""
-        volume = value / 100.0
-        # Keep the in-memory model fresh (matches TrackControl) so later
-        # playback setup reads the current volume, not the loaded one.
-        self.entry.volume = volume
-        self.volume_value_label.setText(f"{value}%")
-        # Live update every tick so the audio responds immediately.
-        self.volume_changed.emit(self.entry.id, volume)
-        # Persist only for discrete changes; drags persist on release below.
-        if not self.volume_slider.isSliderDown():
-            self.volume_committed.emit(self.entry.id, volume)
-
-    def _on_volume_released(self):
-        """Persist the final volume once a drag finishes."""
-        volume = self.volume_slider.value() / 100.0
-        self.volume_committed.emit(self.entry.id, volume)
+    # --- Now-playing display ---
 
     def set_current_track(self, title: str):
         """Update the now-playing display with the current track title"""
@@ -199,34 +166,7 @@ class PlaylistEntryControl(QFrame):
         else:
             self.now_playing_label.hide()
 
-    def _toggle_play(self):
-        """Toggle play mode"""
-        self._play_mode = not self._play_mode
-        self.entry.play_mode = self._play_mode
-        self._update_play_mode_ui()
-        self.play_mode_changed.emit(self.entry.id, self._play_mode)
-
-    def set_play_mode(self, play_mode: bool):
-        """Update the play mode state"""
-        self._play_mode = bool(play_mode)
-        self.entry.play_mode = self._play_mode
-        self._update_play_mode_ui()
-
-    def _update_play_mode_ui(self):
-        """Update play button and border based on play mode state"""
-        self.play_btn.setIcon(self._icons.icon("play-solid"))
-        if self._play_mode:
-            self.play_btn.setStyleSheet(Styles.play_button_style(size=28))
-            self.setStyleSheet(self._base_style)
-        else:
-            self.play_btn.setStyleSheet(Styles.play_button_inactive_style(size=28))
-            self.setStyleSheet(
-                Styles.card_frame_style(
-                    "PlaylistEntryControl",
-                    border_color=Styles.BORDER,
-                    background_color=Styles.BACKGROUND_LIGHT,
-                )
-            )
+    # --- Shuffle (specific to PlaylistEntryControl) ---
 
     def _toggle_shuffle(self):
         """Toggle shuffle mode"""
@@ -235,58 +175,8 @@ class PlaylistEntryControl(QFrame):
         self._update_shuffle_button()
         self.shuffle_changed.emit(self.entry.id, self._shuffle_mode)
 
-    def _toggle_repeat(self):
-        """Toggle repeat mode"""
-        self._repeat_mode = not self._repeat_mode
-        self.entry.is_repeat = self._repeat_mode
-        self._update_repeat_button()
-        self.repeat_changed.emit(self.entry.id, self._repeat_mode)
-
     def _update_shuffle_button(self):
         """Update shuffle button appearance"""
         self.shuffle_btn.setStyleSheet(
             Styles.icon_toggle_button_style(self._shuffle_mode, size=28)
         )
-
-    def _update_repeat_button(self):
-        """Update repeat button appearance"""
-        self.repeat_btn.setStyleSheet(
-            Styles.icon_toggle_button_style(self._repeat_mode, size=28)
-        )
-
-    def contextMenuEvent(self, event):
-        """Show context menu"""
-        menu = QMenu(self)
-        remove_action = menu.addAction("Remove from scene")
-        remove_action.triggered.connect(
-            lambda: self.remove_requested.emit(self.entry.id)
-        )
-        menu.exec(event.globalPos())
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start_pos = event.position().toPoint()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if not (event.buttons() & Qt.MouseButton.LeftButton):
-            return
-        if self._drag_start_pos is None:
-            return
-        if (
-            event.position().toPoint() - self._drag_start_pos
-        ).manhattanLength() < QApplication.startDragDistance():
-            return
-
-        drag = QDrag(self)
-        mime = QMimeData()
-        mime.setData(self.MIME_TYPE, QByteArray(str(self.entry.id).encode()))
-        drag.setMimeData(mime)
-        drag.setPixmap(self.grab())
-        drag.setHotSpot(event.position().toPoint())
-        drag.exec(Qt.DropAction.MoveAction)
-        self._drag_start_pos = None
-
-    def mouseReleaseEvent(self, event):
-        self._drag_start_pos = None
-        super().mouseReleaseEvent(event)
