@@ -72,8 +72,10 @@ Ordered by leverage; ask for plans for any of these in a future `improve` run.
   baseline so advisory errors ratchet down instead of hiding new ones;
   (c) tighten mypy from advisory → gating once the ~205 Optional/union-attr
   findings are worked down.
-- **[DX-03] No README.md** — only CLAUDE.md (agent-facing) and design docs in
-  `docs/`. Effort S.
+- **[DX-03] No README.md** — ✅ DONE (2026-06-29, `8573a0b`). Added a
+  user/contributor-facing `README.md` (features, requirements incl. VLC/libVLC,
+  setup, running, py2app build, dev workflow, project layout); points to
+  CLAUDE.md/docs for architecture.
 - **[DEBT-01] `TrackControl` vs `PlaylistEntryControl` duplication** — ✅ DONE
   (2026-06-29, Plan 006, branch `advisor/006-dedupe-control-cards`). Extracted a
   reusable `VolumeSlider` component (`app/shared/volume_slider.py`, owns the
@@ -125,9 +127,10 @@ Ordered by leverage; ask for plans for any of these in a future `improve` run.
   drag is held); (c) the new two-signal volume API was copy-pasted into both
   controls — this is a strand of **DEBT-01** (see below), not a separate item;
   a shared base/`VolumeSlider` would absorb it.
-- **[TESTS-03] Metadata extraction error path untested** — the broad
-  `except Exception` in `app/library/metadata.py:55-58`. Effort S; could ride
-  along with any library-area plan.
+- **[TESTS-03] Metadata extraction error path untested** — ✅ DONE (2026-06-29,
+  `b45dbeb`). Added `tests/test_metadata.py` pinning the broad `except Exception`
+  path (mutagen failure → filename-as-title, no propagation), the audio-is-None
+  path, the happy path, the missing-title fallback, and `is_supported_format`.
 - **[DX-04] py2app build proceeds without VLC.app** — `setup.py:91-117` warns
   but continues to a confusing later failure. Effort S.
 - **[DX-02/DEPS-01] No lockfile; floor-pins only in requirements.txt** —
