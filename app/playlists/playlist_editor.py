@@ -615,10 +615,14 @@ class PlaylistEditor(QWidget):
         else:
             audio_file_id = audio_file_ids[0] if audio_file_ids else None
 
+        # Mark playing *before* _play_audio_file: the now-playing highlight is
+        # gated on _is_playing, so setting it afterward leaves the very first
+        # track un-highlighted until the next auto/manual advance.
+        self._is_playing = True
+
         if audio_file_id is not None:
             self._play_audio_file(audio_file_id)
 
-        self._is_playing = True
         self.next_btn.setEnabled(True)
         self._sync_play_button()
         self.playback_state_changed.emit(
