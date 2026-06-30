@@ -5,6 +5,7 @@ with optional repeat. Each ScenePlaylistPlayer drives a single TrackPlayer
 at a time, auto-advancing when a track ends.
 """
 
+import contextlib
 import os
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -24,10 +25,13 @@ class ScenePlaylistPlayer(QObject):
 
     Signals:
         track_changed(int): emitted with audio_file_id when a new track starts
+        position_changed(int): current track position in ms (forwarded from the
+            active TrackPlayer); reset implicitly via track_changed on advance
         playback_finished(): emitted when the playlist finishes (no repeat)
     """
 
     track_changed = pyqtSignal(int)  # audio_file_id
+    position_changed = pyqtSignal(int)  # position in ms of the current track
     playback_finished = pyqtSignal()
 
     def __init__(
@@ -86,6 +90,15 @@ class ScenePlaylistPlayer(QObject):
         """Update repeat mode (can be toggled during playback)."""
         self._is_repeat = enabled
 
+    def get_duration(self) -> int:
+        """Duration (ms) of the current track, or 0 if nothing is loaded."""
+        return self._player.get_duration() if self._player else 0
+
+    def set_position(self, position_ms: int) -> None:
+        """Seek the current track to ``position_ms`` (no-op if nothing loaded)."""
+        if self._player:
+            self._player.set_position(position_ms)
+
     def _load_tracks(self) -> None:
         """Load playlist tracks from the database."""
         self._tracks = self._db.get_playlist_tracks(self._playlist_id)
@@ -125,6 +138,26 @@ class ScenePlaylistPlayer(QObject):
             self._player.fade_in(fade_ms)
         self._is_playing = True
 
+    def next_track(self, fade_ms: int = 500) -> None:
+        """Manually skip to the next track.
+
+        Uses the same advance logic as a natural track end (honoring shuffle and
+        repeat). At the end of a non-repeating playlist there is nothing to skip
+        to, so the current track is stopped and the entry finishes — matching how
+        auto-advance ends. No-op when not playing or the playlist is empty.
+        """
+        if not self._is_playing or not self._audio_file_ids:
+            return
+
+        next_id = self._get_next_audio_file_id()
+        if next_id is not None:
+            self._play_file_or_advance(next_id, fade_ms)
+        elif self._is_repeat:
+            self._restart()
+        else:
+            self.stop()
+            self.playback_finished.emit()
+
     def stop(self) -> None:
         """Stop playback and release player."""
         self._release_player()
@@ -155,6 +188,10 @@ class ScenePlaylistPlayer(QObject):
         self._player = TrackPlayer(track.audio_file.file_path, self._engine)
         self._player.target_volume = self._volume
         self._player.end_reached.connect(self._on_track_ended)
+        # Forward the active track's position so the scene's playlist card can
+        # show a scrubber. The prior player is released in _release_player above,
+        # so only the current track emits.
+        self._player.position_changed.connect(self.position_changed)
         self._player.fade_in(fade_ms)
         self._current_audio_file_id = audio_file_id
         self._tracks_played_count += 1
@@ -181,7 +218,11 @@ class ScenePlaylistPlayer(QObject):
                 return
             attempts += 1
             next_id = self._get_next_audio_file_id()
-        # Nothing playable
+        # Nothing playable. Release the current track too: on a manual skip the
+        # old track is still audible (a missing next file returns from
+        # _play_file *before* _release_player), so without this it would keep
+        # playing while the UI reports "finished".
+        self._release_player()
         self._is_playing = False
         self._current_audio_file_id = None
         self.playback_finished.emit()
@@ -247,6 +288,15 @@ class ScenePlaylistPlayer(QObject):
     def _release_player(self) -> None:
         """Release the current TrackPlayer."""
         if self._player:
+            # Disconnect first: TrackPlayer.end_reached is delivered via
+            # QTimer.singleShot, so a manual skip can race a just-posted
+            # end-of-media and advance the playlist twice (skipping a track) if
+            # the old player's signals stay wired. Position forwarding is cut for
+            # the same reason — the released track must not drive the scrubber.
+            with contextlib.suppress(TypeError):
+                self._player.end_reached.disconnect(self._on_track_ended)
+            with contextlib.suppress(TypeError):
+                self._player.position_changed.disconnect(self.position_changed)
             self._player.stop()
             self._player.release()
             self._player = None

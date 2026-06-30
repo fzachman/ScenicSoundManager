@@ -7,13 +7,13 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QSlider,
     QVBoxLayout,
 )
 
 from ..audio import TrackPlayer
 from ..database import SceneAudioFile
 from ..shared.base_control_card import SceneControlCard
+from ..shared.position_scrubber import PositionScrubber
 from ..shared.styles import Styles
 
 
@@ -28,7 +28,6 @@ class TrackControl(SceneControlCard):
         super().__init__(parent)
         self.track = track
         self.player = player
-        self._updating_position = False
 
         self._init_card_state()
         self._base_style = Styles.card_frame_style("TrackControl")
@@ -109,39 +108,21 @@ class TrackControl(SceneControlCard):
 
         layout.addLayout(top_row)
 
-        # Middle row: position slider
-        position_row = QHBoxLayout()
-
-        self.position_label = QLabel("0:00")
-        self.position_label.setFixedWidth(45)
-        self.position_label.setStyleSheet(Styles.subtle_text_style(size=11))
-        self.position_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
-        )
-        position_row.addWidget(self.position_label)
-
-        self.position_slider = QSlider(Qt.Orientation.Horizontal)
-        self.position_slider.setMinimum(0)
-        self.position_slider.setMaximum(1000)
-        self.position_slider.setValue(0)
-        self.position_slider.sliderPressed.connect(self._on_position_pressed)
-        self.position_slider.sliderReleased.connect(self._on_position_released)
-        position_row.addWidget(self.position_slider, 1)
-
-        self.duration_label = QLabel(
+        # Middle row: position scrubber (shared component). Duration comes from
+        # file metadata so the length shows before playback starts; position is
+        # driven by the player once connected.
+        self.scrubber = PositionScrubber()
+        self.scrubber.set_duration_text(
             self.track.audio_file.duration_formatted
             if self.track.audio_file
             else "--:--"
         )
-        self.duration_label.setFixedWidth(45)
-        self.duration_label.setStyleSheet(Styles.subtle_text_style(size=11))
-        self.duration_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.duration_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
-        )
-        position_row.addWidget(self.duration_label)
-
-        layout.addLayout(position_row)
+        self.scrubber.seek.connect(self._on_seek)
+        # Stable public handles (tests / external refs poke these).
+        self.position_slider = self.scrubber.slider
+        self.position_label = self.scrubber.position_label
+        self.duration_label = self.scrubber.duration_label
+        layout.addWidget(self.scrubber)
 
         # Bottom row: volume (shared component) and repeat (shared builder)
         bottom_row = QHBoxLayout()
@@ -155,8 +136,8 @@ class TrackControl(SceneControlCard):
     def _connect_player_signals(self):
         """Connect to player signals if available"""
         if self.player:
-            self.player.position_changed.connect(self._update_position)
-            self.player.end_reached.connect(self._on_end_reached)
+            self.player.position_changed.connect(self._on_player_position)
+            self.player.end_reached.connect(self.scrubber.reset)
 
     def set_player(self, player: TrackPlayer):
         """Set the track player"""
@@ -167,37 +148,16 @@ class TrackControl(SceneControlCard):
         self.player.target_volume = round(self.track.volume * 100)
         self.player.repeat = self.track.is_repeat
 
-    def _update_position(self, position_ms: int):
-        """Update position display"""
-        if self._updating_position:
-            return
+    def _on_player_position(self, position_ms: int):
+        """Forward the player's position to the scrubber."""
+        if self.player:
+            self.scrubber.set_progress(position_ms, self.player.get_duration())
 
+    def _on_seek(self, fraction: float):
+        """Map the scrubber's 0..1 release fraction to ms and seek the player."""
         if self.player:
             duration = self.player.get_duration()
+            # Don't seek before VLC reports a length (get_duration() can be 0 or
+            # -1); otherwise a release would jump to 0 / an invalid time.
             if duration > 0:
-                self.position_slider.setValue(int(position_ms * 1000 / duration))
-
-            # Update time label
-            seconds = position_ms // 1000
-            minutes = seconds // 60
-            seconds = seconds % 60
-            self.position_label.setText(f"{minutes}:{seconds:02d}")
-
-    def _on_position_pressed(self):
-        """Handle position slider press"""
-        self._updating_position = True
-
-    def _on_position_released(self):
-        """Handle position slider release"""
-        if self.player:
-            duration = self.player.get_duration()
-            if duration > 0:
-                position = int(self.position_slider.value() * duration / 1000)
-                self.player.set_position(position)
-
-        self._updating_position = False
-
-    def _on_end_reached(self):
-        """Handle end of playback"""
-        self.position_slider.setValue(0)
-        self.position_label.setText("0:00")
+                self.player.set_position(int(fraction * duration))

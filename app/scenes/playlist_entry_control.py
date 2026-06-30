@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 
 from ..database import ScenePlaylistEntry
 from ..shared.base_control_card import SceneControlCard
+from ..shared.position_scrubber import PositionScrubber
 from ..shared.styles import Styles
 
 
@@ -20,6 +21,10 @@ class PlaylistEntryControl(SceneControlCard):
 
     # Unique to playlist entries (TrackControl has no shuffle concept).
     shuffle_changed = pyqtSignal(int, bool)  # entry_id, is_shuffle
+    # The current track's transport: skip to next, and seek within it. The
+    # owning scene editor routes these to the entry's ScenePlaylistPlayer.
+    next_requested = pyqtSignal(int)  # entry_id
+    seek_requested = pyqtSignal(int, float)  # entry_id, 0..1 fraction
 
     MIME_TYPE = "application/x-soundmanager-scene-playlist"
 
@@ -112,6 +117,30 @@ class PlaylistEntryControl(SceneControlCard):
         self.now_playing_label.hide()
         layout.addWidget(self.now_playing_label)
 
+        # Position row: scrubber for the current track + a Next (skip) button.
+        # The scrubber is the shared component (same as TrackControl); duration
+        # is unknown until a track is playing, so it starts as "--:--".
+        position_row = QHBoxLayout()
+        self.scrubber = PositionScrubber()
+        self.scrubber.seek.connect(
+            lambda fraction: self.seek_requested.emit(self._entity_id, fraction)
+        )
+        position_row.addWidget(self.scrubber, 1)
+
+        self.next_btn = QPushButton()
+        self.next_btn.setFixedSize(28, 28)
+        self.next_btn.setIcon(self._icons.icon("skip-forward"))
+        self.next_btn.setIconSize(QSize(14, 14))
+        # Momentary action, but styled with the active-accent (PRIMARY blue) look
+        # so it matches the shuffle/repeat buttons and the icon stays legible —
+        # the transparent utility style left the black glyph on the dark card.
+        self.next_btn.setStyleSheet(Styles.icon_toggle_button_style(True, size=28))
+        self.next_btn.setToolTip("Next track")
+        self.next_btn.clicked.connect(lambda: self.next_requested.emit(self._entity_id))
+        position_row.addWidget(self.next_btn)
+
+        layout.addLayout(position_row)
+
         # Volume row (shared component)
         volume_row = QHBoxLayout()
         volume_row.addWidget(self._build_volume_row())
@@ -161,6 +190,18 @@ class PlaylistEntryControl(SceneControlCard):
             self.now_playing_label.show()
         else:
             self.now_playing_label.hide()
+
+    # --- Position scrubber (driven by the scene editor's player) ---
+
+    def update_position(self, position_ms: int, duration_ms: int):
+        """Update the scrubber from the active player's position/duration."""
+        self.scrubber.set_progress(position_ms, duration_ms)
+        self.scrubber.set_duration(duration_ms)
+
+    def reset_position(self):
+        """Reset the scrubber to the start (track change / stop / finish)."""
+        self.scrubber.reset()
+        self.scrubber.set_duration(0)
 
     # --- Shuffle (specific to PlaylistEntryControl) ---
 

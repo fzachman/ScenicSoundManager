@@ -232,6 +232,93 @@ class TestSetCurrentTrack:
         assert control.now_playing_label.isHidden() is True
 
 
+def _vlayout_row_index(control, widget):
+    """Top-level vertical-layout row index containing ``widget`` (-1 if absent).
+
+    Looks one level into row sub-layouts so a widget nested in an HBox row
+    (scrubber, volume) resolves to that row's index.
+    """
+    layout = control.layout()
+    for i in range(layout.count()):
+        item = layout.itemAt(i)
+        if item.widget() is widget:
+            return i
+        sub = item.layout()
+        if sub is not None:
+            for j in range(sub.count()):
+                if sub.itemAt(j).widget() is widget:
+                    return i
+    return -1
+
+
+class TestPositionScrubberRow:
+    def test_scrubber_and_next_button_present(self, qapp):
+        control = PlaylistEntryControl(make_entry())
+        assert control.scrubber is not None
+        assert control.next_btn is not None
+        # Starts blank: nothing playing yet.
+        assert control.scrubber.slider.value() == 0
+        assert control.scrubber.duration_label.text() == "--:--"
+
+    def test_row_sits_below_now_playing_and_above_volume(self, qapp):
+        # The user-facing requirement: the position/Next row goes under the
+        # now-playing line and over the volume slider.
+        control = PlaylistEntryControl(make_entry())
+        now_playing = _vlayout_row_index(control, control.now_playing_label)
+        scrubber = _vlayout_row_index(control, control.scrubber)
+        volume = _vlayout_row_index(control, control.volume)
+        assert now_playing != -1 and scrubber != -1 and volume != -1
+        assert now_playing < scrubber < volume
+
+    def test_next_button_uses_accent_blue_style(self, qapp):
+        # The Next button carries the active-accent (PRIMARY blue) look so it
+        # matches shuffle/repeat and the black skip glyph stays legible (it was
+        # invisible on the dark card with the transparent utility style).
+        control = PlaylistEntryControl(make_entry())
+        assert control.next_btn.styleSheet() == Styles.icon_toggle_button_style(
+            True, size=28
+        )
+
+    def test_next_button_emits_next_requested(self, qapp):
+        control = PlaylistEntryControl(make_entry())
+        rec = record(control.next_requested)
+
+        control.next_btn.click()
+
+        assert rec == [(9,)]
+
+    def test_scrubber_release_emits_seek_requested(self, qapp):
+        control = PlaylistEntryControl(make_entry())
+        rec = record(control.seek_requested)
+
+        control.scrubber.slider.sliderPressed.emit()
+        control.scrubber.slider.setValue(250)
+        control.scrubber.slider.sliderReleased.emit()
+
+        assert len(rec) == 1
+        assert rec[0][0] == 9
+        assert rec[0][1] == pytest.approx(0.25)
+
+    def test_update_position_drives_scrubber(self, qapp):
+        control = PlaylistEntryControl(make_entry())
+
+        control.update_position(30000, 60000)
+
+        assert control.scrubber.slider.value() == 500
+        assert control.scrubber.position_label.text() == "0:30"
+        assert control.scrubber.duration_label.text() == "1:00"
+
+    def test_reset_position_clears_scrubber(self, qapp):
+        control = PlaylistEntryControl(make_entry())
+        control.update_position(30000, 60000)
+
+        control.reset_position()
+
+        assert control.scrubber.slider.value() == 0
+        assert control.scrubber.position_label.text() == "0:00"
+        assert control.scrubber.duration_label.text() == "--:--"
+
+
 class TestRemove:
     def test_context_menu_remove_emits_entry_id(self, qapp, monkeypatch):
         control = PlaylistEntryControl(make_entry())

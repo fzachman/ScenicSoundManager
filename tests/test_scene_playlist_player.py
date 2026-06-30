@@ -385,6 +385,154 @@ class TestStartStop:
         assert player.is_playing
 
 
+class TestNextTrack:
+    def test_advances_to_next_sequential(self, db, playlist_with_tracks, mock_engine):
+        playlist_id, file_ids = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+        player._is_playing = True
+        player._current_index = 0
+
+        played_ids = []
+        player._play_file = lambda afid, fade_ms=500: played_ids.append(afid) or True
+
+        player.next_track()
+        assert played_ids == [file_ids[1]]
+
+    def test_at_end_no_repeat_stops_and_finishes(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        playlist_id, file_ids = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine, is_repeat=False)
+        player._is_playing = True
+        player._current_index = len(file_ids) - 1
+        player._current_audio_file_id = file_ids[-1]
+
+        finished = []
+        player.playback_finished.connect(lambda: finished.append(True))
+
+        player.next_track()
+        assert not player.is_playing
+        assert player.current_audio_file_id is None
+        assert finished == [True]
+
+    def test_at_end_with_repeat_restarts(self, db, playlist_with_tracks, mock_engine):
+        playlist_id, file_ids = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine, is_repeat=True)
+        player._is_playing = True
+        player._current_index = len(file_ids) - 1
+
+        played_ids = []
+        player._play_file = lambda afid, fade_ms=500: played_ids.append(afid) or True
+
+        player.next_track()
+        assert played_ids == [file_ids[0]]  # sequential restart -> first track
+
+    def test_noop_when_not_playing(self, db, playlist_with_tracks, mock_engine):
+        playlist_id, _ = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+        player._is_playing = False
+
+        played_ids = []
+        player._play_file = lambda afid, fade_ms=500: played_ids.append(afid) or True
+
+        player.next_track()
+        assert played_ids == []
+
+    def test_noop_on_empty_playlist(self, db, mock_engine):
+        playlist = Playlist(name="Empty")
+        playlist_id = db.add_playlist(playlist)
+        player = _make_player(playlist_id, db, mock_engine)
+        player._is_playing = True  # force the playing guard past
+
+        # No tracks -> nothing to skip to, no crash.
+        player.next_track()
+        # _audio_file_ids guard short-circuits before any advance attempt.
+        assert player._audio_file_ids == []
+
+
+class TestSkipSafety:
+    def test_next_track_releases_current_when_remaining_missing(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        # A is playing, every later file is missing: a manual skip must STOP A
+        # (not leave it audible) while reporting finished.
+        playlist_id, file_ids = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+        player._is_playing = True
+        player._current_index = 0
+        player._player = MagicMock()  # the currently-audible track
+        finished = []
+        player.playback_finished.connect(lambda: finished.append(True))
+
+        player._play_file = lambda afid, fade_ms=500: False  # all missing
+
+        player.next_track()
+        assert player._player is None  # current track was released
+        assert not player.is_playing
+        assert finished == [True]
+
+    def test_released_player_end_signal_does_not_advance(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        # A manual skip can race a just-posted end-of-media. The old player's
+        # queued end_reached must not advance the playlist a second time.
+        playlist_id, file_ids = playlist_with_tracks
+        with patch("app.audio.scene_playlist_player.os.path.exists", return_value=True):
+            player = _make_player(playlist_id, db, mock_engine)
+            player._is_playing = True
+            assert player._play_file(file_ids[0]) is True
+            old = player._player
+            assert player._play_file(file_ids[1]) is True  # advance; releases old
+
+            advanced = []
+            player._play_file = lambda afid, fade_ms=500: advanced.append(afid) or True
+            old.end_reached.emit()  # stale signal from the released player
+
+            assert advanced == []  # no spurious advance
+
+
+class TestPositionAndSeek:
+    def test_get_duration_zero_without_player(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        playlist_id, _ = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+        assert player.get_duration() == 0
+
+    def test_set_position_noop_without_player(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        playlist_id, _ = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+        player.set_position(1000)  # must not raise
+
+    def test_get_duration_and_set_position_delegate(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        playlist_id, _ = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+        player._player = MagicMock()
+        player._player.get_duration.return_value = 42000
+
+        assert player.get_duration() == 42000
+        player.set_position(12345)
+        player._player.set_position.assert_called_once_with(12345)
+
+    def test_position_changed_forwarded_from_inner_player(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        playlist_id, file_ids = playlist_with_tracks
+        with patch("app.audio.scene_playlist_player.os.path.exists", return_value=True):
+            player = _make_player(playlist_id, db, mock_engine)
+            received = []
+            player.position_changed.connect(lambda ms: received.append(ms))
+
+            assert player._play_file(file_ids[0]) is True
+            player._player.position_changed.emit(4321)
+
+            assert received == [4321]
+
+
 class TestMissingFiles:
     def test_skips_missing_track_on_advance(
         self, db, playlist_with_tracks, mock_engine

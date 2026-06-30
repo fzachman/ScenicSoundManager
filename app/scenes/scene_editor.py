@@ -229,16 +229,21 @@ class SceneEditor(QWidget):
         control.repeat_changed.connect(self._on_playlist_entry_repeat_changed)
         control.play_mode_changed.connect(self._on_playlist_entry_play_mode_changed)
         control.remove_requested.connect(self._remove_playlist_entry)
+        control.next_requested.connect(self._on_playlist_entry_next)
+        control.seek_requested.connect(self._on_playlist_entry_seek)
 
-        # Update now-playing if player already active
+        # Register before refreshing now-playing: _update_playlist_entry_now_playing
+        # looks the control up in this dict and would early-return if it ran first
+        # (so a mid-playback re-add would lose its now-playing title + scrubber).
+        self._playlist_entry_controls[entry.id] = control
+        self.tracks_layout.addWidget(control)
+
+        # Restore now-playing for an entry whose player is already active.
         player = self._playlist_players.get(entry.id)
         if player and player.current_audio_file_id:
             self._update_playlist_entry_now_playing(
                 entry.id, player.current_audio_file_id
             )
-
-        self._playlist_entry_controls[entry.id] = control
-        self.tracks_layout.addWidget(control)
 
     def _add_playlist_entry(self):
         """Show dialog to add a playlist to the scene"""
@@ -377,6 +382,11 @@ class SceneEditor(QWidget):
                 eid, audio_file_id
             )
         )
+        player.position_changed.connect(
+            lambda position_ms, eid=entry.id: self._update_playlist_entry_position(
+                eid, position_ms
+            )
+        )
         player.playback_finished.connect(
             lambda eid=entry.id: self._on_playlist_entry_finished(eid)
         )
@@ -388,6 +398,9 @@ class SceneEditor(QWidget):
         control = self._playlist_entry_controls.get(entry_id)
         if not control:
             return
+        # A new track is starting: zero the scrubber (the next position tick
+        # repopulates it once the new track reports its length).
+        control.reset_position()
         # Look up audio file title from the playlist's tracks
         entry = next(
             (e for e in self._current_scene.playlist_entries if e.id == entry_id),
@@ -400,20 +413,49 @@ class SceneEditor(QWidget):
                     return
         control.set_current_track("")
 
+    def _update_playlist_entry_position(self, entry_id: int, position_ms: int):
+        """Forward the active player's position to the entry's scrubber."""
+        control = self._playlist_entry_controls.get(entry_id)
+        player = self._playlist_players.get(entry_id)
+        if control and player:
+            control.update_position(position_ms, player.get_duration())
+
+    def _on_playlist_entry_next(self, entry_id: int):
+        """Skip to the next track in a playing playlist entry."""
+        player = self._playlist_players.get(entry_id)
+        if player:
+            player.next_track()
+
+    def _on_playlist_entry_seek(self, entry_id: int, fraction: float):
+        """Seek within the entry's current track (fraction is 0..1)."""
+        player = self._playlist_players.get(entry_id)
+        if player:
+            duration = player.get_duration()
+            if duration > 0:
+                player.set_position(int(fraction * duration))
+
     def _on_playlist_entry_finished(self, entry_id: int):
         """Handle playlist entry playback finished (no repeat)."""
         control = self._playlist_entry_controls.get(entry_id)
         if control:
             control.set_current_track("")
+            control.reset_position()
+        # Drop the spent player. Its inner TrackPlayer is already released, so a
+        # cached reference would make a later resume() a silent no-op; clearing
+        # it means the next play starts the entry fresh from the top.
+        player = self._playlist_players.pop(entry_id, None)
+        if player:
+            player.release()
 
     def _stop_all_playlist_players(self):
         """Stop and release all scene playlist players."""
         for player in self._playlist_players.values():
             player.release()
         self._playlist_players.clear()
-        # Clear now-playing labels
+        # Clear now-playing labels and scrubbers
         for control in self._playlist_entry_controls.values():
             control.set_current_track("")
+            control.reset_position()
 
     def _remove_track(self, track_id: int):
         """Remove a track from the scene"""

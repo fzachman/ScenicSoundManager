@@ -293,6 +293,18 @@ class TestPlayerIntegration:
         control.volume_slider.setValue(80)
         assert player.target_volume == 80
 
+    def test_seek_noop_before_duration_known(self, qapp):
+        # VLC hasn't reported a length yet (get_duration() == 0): releasing the
+        # scrubber must NOT seek (else it jumps to 0 / an invalid time).
+        player = FakeTrackPlayer(duration_ms=0)
+        control = TrackControl(make_track(), player)
+
+        control.position_slider.sliderPressed.emit()
+        control.position_slider.setValue(500)
+        control.position_slider.sliderReleased.emit()
+
+        assert player.set_position_calls == []
+
     def test_toggle_repeat_pushes_to_player(self, qapp):
         player = FakeTrackPlayer()
         control = TrackControl(make_track(is_repeat=False), player)
@@ -305,14 +317,14 @@ class TestPlayerIntegration:
         player = FakeTrackPlayer(duration_ms=60000)
         control = TrackControl(make_track(), player)
 
-        # While the handle is pressed, position updates from the player no-op.
-        control._on_position_pressed()
+        # While the handle is held, player position ticks must not move the
+        # slider (the scrubber freezes during a drag).
+        control.position_slider.sliderPressed.emit()
         control.position_slider.setValue(123)
-        control._update_position(30000)
+        player.position_changed.emit(30000)
         assert control.position_slider.value() == 123
 
-        # Releasing maps slider -> ms via duration and seeks the player.
+        # Releasing maps the slider fraction -> ms via duration and seeks.
         control.position_slider.setValue(500)
-        control._on_position_released()
+        control.position_slider.sliderReleased.emit()
         assert player.set_position_calls == [30000]
-        assert control._updating_position is False
