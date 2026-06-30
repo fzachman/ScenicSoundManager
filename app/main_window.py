@@ -1,13 +1,21 @@
 """Main application window with tab navigation"""
 
-from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtCore import QEvent, QSettings, Qt, QTimer
+from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import (
+    QAbstractButton,
+    QAbstractSlider,
+    QAbstractSpinBox,
+    QApplication,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
+    QPlainTextEdit,
     QPushButton,
     QSlider,
     QTabWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -77,6 +85,11 @@ class MainWindow(QMainWindow):
         master_bar.addWidget(master_label)
 
         self.master_slider = QSlider(Qt.Orientation.Horizontal)
+        # Don't hold keyboard focus, so the playback arrow shortcuts aren't
+        # redirected into the volume after the slider is clicked. (Kept wheel-
+        # adjustable: it's in the top bar, not a scroll area, so it can't snag
+        # list scrolling.)
+        self.master_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.master_slider.setRange(0, 100)
         self.master_slider.setValue(self.audio_engine.master_volume)
         self.master_slider.setFixedWidth(260)
@@ -112,7 +125,6 @@ class MainWindow(QMainWindow):
         # Tab widget
         self.tab_widget = QTabWidget()
         self.tab_widget.tabBar().setDrawBase(False)
-        self.tab_widget.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(self.tab_widget, 1)
 
         # Library tab
@@ -127,8 +139,119 @@ class MainWindow(QMainWindow):
         self.playlists_widget = PlaylistsWidget(self.db, self.audio_engine)
         self.tab_widget.addTab(self.playlists_widget, "Playlists")
 
+        # Connect currentChanged only AFTER the tabs exist: adding the first tab
+        # auto-fires currentChanged, and the handler references every tab widget.
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+
         # Connect signals between modules
         self._connect_signals()
+
+        # Playback keyboard shortcuts
+        self._setup_shortcuts()
+
+    def _setup_shortcuts(self):
+        """Install an application event filter for the playback transport keys.
+
+        Why a filter rather than QShortcut: the keys we want are also used by
+        focused widgets — the sidebar ``QListWidget`` consumes Space, sliders
+        consume the arrows — so a QShortcut is unreliably swallowed (Space right
+        after clicking a scene) or conversely steals a key the widget needs. The
+        filter dispatches each key for transport but yields to widgets that
+        legitimately use it (see ``_handle_transport_key``). On macOS Qt reports
+        the ⌘ key as ``ControlModifier``, so Ctrl+Arrow here means ⌘+Arrow.
+        """
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if (
+            isinstance(event, QKeyEvent)
+            and event.type() == QEvent.Type.KeyPress
+            and not event.isAutoRepeat()
+            # Don't hijack keys while a modal dialog (rename, playlist/color
+            # picker) is open — those belong to the dialog.
+            and QApplication.activeModalWidget() is None
+            and self._handle_transport_key(
+                event.key(), event.modifiers(), QApplication.focusWidget()
+            )
+        ):
+            return True
+        return super().eventFilter(obj, event)
+
+    def _handle_transport_key(self, key, modifiers, focus) -> bool:
+        """Dispatch a transport key; return True if handled (consume the event).
+
+        Yields (False) when the focused widget legitimately uses the key: text
+        inputs for every shortcut, plus sliders/spinboxes for the bare Right
+        (they step on arrows). So Space still types in the search box and
+        activates a focused button, and Right still nudges a focused volume slider.
+        """
+        # macOS tags arrow keys (and Home/End/PageUp/Down) with KeypadModifier;
+        # QKeySequence normalizes that away but a manual filter must strip it, or
+        # the comparisons below never match and the arrows appear dead.
+        mods = modifiers & ~Qt.KeyboardModifier.KeypadModifier
+        no_mod = mods == Qt.KeyboardModifier.NoModifier
+        ctrl = mods == Qt.KeyboardModifier.ControlModifier  # ⌘ on macOS
+        is_text = isinstance(
+            focus, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox)
+        )
+
+        if no_mod and key == Qt.Key.Key_Space:
+            if is_text or isinstance(focus, QAbstractButton):
+                return False
+            self._shortcut_toggle_play()
+            return True
+        if no_mod and key == Qt.Key.Key_Right:
+            if is_text or isinstance(focus, QAbstractSlider):
+                return False
+            self._shortcut_next_track()
+            return True
+        if ctrl and key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            if is_text:
+                return False
+            self._shortcut_step_item(1 if key == Qt.Key.Key_Right else -1)
+            return True
+        return False
+
+    def _active_play_widget(self) -> "ScenesWidget | PlaylistsWidget | None":
+        """The scenes/playlists widget for the current tab (None on Library)."""
+        current = self.tab_widget.currentWidget()
+        if current is self.scenes_widget:
+            return self.scenes_widget
+        if current is self.playlists_widget:
+            return self.playlists_widget
+        return None
+
+    def _shortcut_toggle_play(self):
+        """Space: pause whatever is playing; if idle, start/resume the item
+        open in the current Scenes/Playlists tab."""
+        if self._current_playing_type == "scene":
+            self.scenes_widget.pause_active()
+        elif self._current_playing_type == "playlist":
+            self.playlists_widget.pause_active()
+        else:
+            widget = self._active_play_widget()
+            if widget is not None:
+                widget.toggle_playback()
+
+    def _shortcut_next_track(self):
+        """Right: advance the playing playlist to its next track (no-op when a
+        scene is playing or nothing is)."""
+        if self._current_playing_type == "playlist":
+            self.playlists_widget.next_track()
+
+    def _shortcut_step_item(self, delta: int):
+        """Ctrl+Left / Ctrl+Right: step to the previous/next scene-or-playlist
+        in the current tab's sidebar (no wrap). If something was playing, the
+        newly selected item starts playing (mutual exclusivity stops the old)."""
+        widget = self._active_play_widget()
+        if widget is None:
+            return
+        was_playing = self._current_playing_type is not None
+        new_id = widget.select_relative(delta)
+        if new_id is not None and was_playing:
+            widget.play_current()
 
     def _connect_signals(self):
         """Connect signals between different modules"""
@@ -172,8 +295,16 @@ class MainWindow(QMainWindow):
         self.master_value_label.setText(f"{value}%")
 
     def _on_tab_changed(self, index: int):
-        if self.tab_widget.widget(index) is not self.library_widget:
+        widget = self.tab_widget.widget(index)
+        if widget is not self.library_widget:
             self.library_widget.file_table.stop_playback()
+        # Focus the tab's list so its header order/search buttons don't keep
+        # keyboard focus (which would make Space toggle the order button instead
+        # of play/pause). Deferred so it runs after Qt's own tab-switch focus.
+        if widget is self.scenes_widget:
+            QTimer.singleShot(0, self.scenes_widget.focus_list)
+        elif widget is self.playlists_widget:
+            QTimer.singleShot(0, self.playlists_widget.focus_list)
         if not self._tab_restore_done:
             return
         settings = QSettings()

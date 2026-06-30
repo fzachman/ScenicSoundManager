@@ -211,6 +211,57 @@ class BaseListWidget(QWidget):
                     self._emit_selected(item)
                 break
 
+    def select_relative(self, delta: int) -> int | None:
+        """Move the selection by ``delta`` rows in display order and emit it.
+
+        Used by the keyboard shortcuts to step to the next/previous item. Stops
+        at the ends (no wrap-around); with nothing selected, ``+1`` lands on the
+        first row and ``-1`` on the last. Returns the newly selected id, or
+        ``None`` if there was no move (empty list / already at the edge).
+        """
+        count = self.list_widget.count()
+        if count == 0:
+            return None
+
+        current_id = self.get_selected_id()
+        current_row = -1
+        if current_id is not None:
+            for i in range(count):
+                if (
+                    self.list_widget.item(i).data(Qt.ItemDataRole.UserRole)
+                    == current_id
+                ):
+                    current_row = i
+                    break
+
+        if current_row < 0:
+            new_row = 0 if delta > 0 else count - 1
+        else:
+            new_row = current_row + delta
+            if new_row < 0 or new_row >= count:
+                return None
+
+        list_item = self.list_widget.item(new_row)
+        item_id = list_item.data(Qt.ItemDataRole.UserRole)
+        self.list_widget.setCurrentItem(list_item)  # single-select: deselects others
+        list_item.setSelected(True)
+        item = self._get_item_by_id(item_id)
+        if item:
+            self._emit_selected(item)
+        return item_id
+
+    def focus_list(self):
+        """Give the list keyboard focus, ensuring a row is selected.
+
+        Called when the tab is shown so the header's order/search controls don't
+        hold focus — otherwise the Space shortcut would toggle the focused order
+        button instead of play/pause. Selection persists across tab switches; if
+        nothing is selected yet (first visit), the first item is selected.
+        """
+        if self.get_selected_id() is None:
+            self.select_relative(1)  # nothing selected -> select the first row
+        self.list_widget.setFocus()
+
     def _set_ordering_enabled(self, enabled: bool):
         lock_text = "Lock" if enabled else "Unlock"
         self.order_btn.setToolTip(f"{lock_text} {self._entity_name} Order")

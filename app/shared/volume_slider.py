@@ -1,8 +1,9 @@
 """Reusable volume slider with commit-on-release semantics."""
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSlider, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
+from .no_scroll_slider import NoScrollSlider
 from .styles import Styles
 
 
@@ -34,7 +35,7 @@ class VolumeSlider(QWidget):
         label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         layout.addWidget(label)
 
-        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider = NoScrollSlider()
         self.slider.setMinimum(0)
         self.slider.setMaximum(100)
         self.slider.setValue(round(initial_volume * 100))

@@ -504,6 +504,26 @@ class SceneEditor(QWidget):
         self._persist_track_order(track_ids)
         self.scene_modified.emit()
 
+    # Public entry points for the application keyboard shortcuts (MainWindow).
+    # They wrap the private play/pause logic so MainWindow needn't reach into
+    # editor internals.
+
+    def toggle_playback(self) -> None:
+        """Play/pause the open scene (Space, when this tab is focused)."""
+        self._toggle_scene_play()
+
+    def pause_active(self) -> None:
+        """Pause the playing scene, regardless of which one is open."""
+        if self._scene_playing:
+            self._pause_scene_playback()
+
+    def play_current(self) -> None:
+        """Start the open scene unless it is already the one playing."""
+        if self._current_scene and not (
+            self._is_current_scene_active() and self._scene_playing
+        ):
+            self._start_scene_playback()
+
     def _toggle_scene_play(self):
         """Toggle scene play/pause"""
         if not self._current_scene:

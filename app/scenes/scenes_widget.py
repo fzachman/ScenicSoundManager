@@ -81,3 +81,25 @@ class ScenesWidget(QWidget):
     def select_scene(self, scene_id: int):
         """Select and load a scene by ID"""
         self.scene_list.select_scene(scene_id)
+
+    # --- Keyboard-shortcut entry points (delegated to editor / list) ---
+
+    def toggle_playback(self):
+        """Play/pause the open scene."""
+        self.scene_editor.toggle_playback()
+
+    def pause_active(self):
+        """Pause the playing scene."""
+        self.scene_editor.pause_active()
+
+    def play_current(self):
+        """Start the open scene unless it is already playing."""
+        self.scene_editor.play_current()
+
+    def select_relative(self, delta: int) -> int | None:
+        """Step the scene-list selection by ``delta`` (next/prev)."""
+        return self.scene_list.select_relative(delta)
+
+    def focus_list(self):
+        """Focus the scene list (so transport shortcuts work when the tab opens)."""
+        self.scene_list.focus_list()

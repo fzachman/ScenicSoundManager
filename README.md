@@ -27,6 +27,22 @@ persistence.
 Your library and scenes are stored in a local SQLite database at
 `~/Library/Application Support/SoundManager/soundmanager.db` (macOS).
 
+## Keyboard shortcuts
+
+Transport keys work while the app window is focused (these are in-app shortcuts,
+not global media keys). On macOS the modifier is **⌘ (Command)**; on Windows/Linux
+it's **Ctrl**.
+
+| Key | Action |
+| --- | --- |
+| **Space** | Play / pause. Pauses whatever is currently playing (from any tab); if nothing is playing, starts the scene or playlist open in the current tab. |
+| **→** | Next track in the playing playlist. (Scenes layer many sounds at once, so they have no "next track" — this does nothing for a scene.) |
+| **⌘← / ⌘→** | Select the previous / next scene or playlist in the current tab's sidebar. If something was already playing, the newly selected item starts playing. |
+
+These yield to whatever you're interacting with: typing a space in a search box,
+nudging a focused slider with the arrows, or activating a focused button with
+Space all still work as normal.
+
 ## Requirements
 
 - **Python 3.10+** (developed and tested on 3.13).

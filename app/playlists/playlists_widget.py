@@ -82,3 +82,29 @@ class PlaylistsWidget(QWidget):
     def select_playlist(self, playlist_id: int):
         """Select and load a playlist by ID"""
         self.playlist_list.select_playlist(playlist_id)
+
+    # --- Keyboard-shortcut entry points (delegated to editor / list) ---
+
+    def toggle_playback(self):
+        """Play/pause the open playlist."""
+        self.playlist_editor.toggle_playback()
+
+    def pause_active(self):
+        """Pause the playing playlist."""
+        self.playlist_editor.pause_active()
+
+    def next_track(self):
+        """Advance the playing playlist to its next track."""
+        self.playlist_editor.next_track()
+
+    def play_current(self):
+        """Start the open playlist unless it is already playing."""
+        self.playlist_editor.play_current()
+
+    def select_relative(self, delta: int) -> int | None:
+        """Step the playlist-list selection by ``delta`` (next/prev)."""
+        return self.playlist_list.select_relative(delta)
+
+    def focus_list(self):
+        """Focus the playlist list (so transport shortcuts work when the tab opens)."""
+        self.playlist_list.focus_list()

@@ -551,6 +551,33 @@ class PlaylistEditor(QWidget):
 
     # -- Playback controls --
 
+    # Public entry points for the application keyboard shortcuts (MainWindow).
+    # They wrap the private play/pause logic so MainWindow needn't reach into
+    # editor internals.
+
+    def toggle_playback(self) -> None:
+        """Play/pause the open playlist (Space, when this tab is focused)."""
+        self._toggle_play()
+
+    def pause_active(self) -> None:
+        """Pause the playing playlist, regardless of which one is open."""
+        if self._is_playing:
+            self._pause_playback()
+
+    def next_track(self) -> None:
+        """Advance the playing playlist to its next track (no-op otherwise)."""
+        self._next_track()
+
+    def play_current(self) -> None:
+        """Start the open playlist unless it is already the one playing."""
+        if self._current_playlist is None:
+            return
+        already_playing = (
+            self._active_playlist_id == self._current_playlist.id and self._is_playing
+        )
+        if not already_playing:
+            self._toggle_play()
+
     def _toggle_play(self):
         """Toggle play/pause for the current playlist"""
         if not self._current_playlist or not self._current_playlist.tracks:

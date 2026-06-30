@@ -16,8 +16,9 @@ release.
 """
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSlider, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
+from .no_scroll_slider import NoScrollSlider
 from .styles import Styles
 
 
@@ -54,7 +55,7 @@ class PositionScrubber(QWidget):
         )
         layout.addWidget(self.position_label)
 
-        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider = NoScrollSlider()
         self.slider.setMinimum(0)
         self.slider.setMaximum(self.SLIDER_MAX)
         self.slider.setValue(0)
