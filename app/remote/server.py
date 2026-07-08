@@ -11,6 +11,7 @@ only ever produce an ``ok: false`` response, never a crash.
 
 import json
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject
 from PyQt6.QtNetwork import QHostAddress
 from PyQt6.QtWebSockets import QWebSocket, QWebSocketServer
@@ -70,8 +71,19 @@ class RemoteControlServer(QObject):
         return True
 
     def stop(self):
-        for client in list(self._clients):
-            client.close()
+        clients, self._clients = self._clients, []
+        for client in clients:
+            # abort(), not close(): close() starts an async close handshake
+            # the app's exit would destroy mid-flight. Localhost controllers
+            # just see a dropped connection either way and reconnect.
+            client.abort()
+            # Destroy the socket synchronously: left to QApplication teardown
+            # (deleteLater never runs once the loop is exiting), destruction
+            # happens during interpreter shutdown, after logging is gone. A
+            # QWebSocket's destructor intrinsically emits Qt wildcard-
+            # disconnect warnings; destroying it here keeps those inside the
+            # configured Qt message handler's lifetime (see shared/logging.py).
+            sip.delete(client)
         self._server.close()
 
     @property
