@@ -118,14 +118,14 @@ def _record(monkeypatch, obj, name):
 def test_space_pauses_active_scene(main_window, monkeypatch):
     calls = _record(monkeypatch, main_window.scenes_widget, "pause_active")
     main_window._current_playing_type = "scene"
-    main_window._shortcut_toggle_play()
+    main_window.toggle_play_pause()
     assert len(calls) == 1
 
 
 def test_space_pauses_active_playlist(main_window, monkeypatch):
     calls = _record(monkeypatch, main_window.playlists_widget, "pause_active")
     main_window._current_playing_type = "playlist"
-    main_window._shortcut_toggle_play()
+    main_window.toggle_play_pause()
     assert len(calls) == 1
 
 
@@ -133,7 +133,7 @@ def test_space_idle_starts_open_scene_on_scenes_tab(main_window, monkeypatch):
     calls = _record(monkeypatch, main_window.scenes_widget, "toggle_playback")
     main_window._current_playing_type = None
     main_window.tab_widget.setCurrentWidget(main_window.scenes_widget)
-    main_window._shortcut_toggle_play()
+    main_window.toggle_play_pause()
     assert len(calls) == 1
 
 
@@ -141,7 +141,7 @@ def test_space_idle_starts_open_playlist_on_playlists_tab(main_window, monkeypat
     calls = _record(monkeypatch, main_window.playlists_widget, "toggle_playback")
     main_window._current_playing_type = None
     main_window.tab_widget.setCurrentWidget(main_window.playlists_widget)
-    main_window._shortcut_toggle_play()
+    main_window.toggle_play_pause()
     assert len(calls) == 1
 
 
@@ -150,7 +150,7 @@ def test_space_idle_on_library_tab_is_noop(main_window, monkeypatch):
     p = _record(monkeypatch, main_window.playlists_widget, "toggle_playback")
     main_window._current_playing_type = None
     main_window.tab_widget.setCurrentWidget(main_window.library_widget)
-    main_window._shortcut_toggle_play()
+    main_window.toggle_play_pause()
     assert s == [] and p == []
 
 
@@ -160,21 +160,21 @@ def test_space_idle_on_library_tab_is_noop(main_window, monkeypatch):
 def test_right_advances_playing_playlist(main_window, monkeypatch):
     calls = _record(monkeypatch, main_window.playlists_widget, "next_track")
     main_window._current_playing_type = "playlist"
-    main_window._shortcut_next_track()
+    main_window.next_track()
     assert len(calls) == 1
 
 
 def test_right_noop_when_scene_playing(main_window, monkeypatch):
     calls = _record(monkeypatch, main_window.playlists_widget, "next_track")
     main_window._current_playing_type = "scene"
-    main_window._shortcut_next_track()
+    main_window.next_track()
     assert calls == []
 
 
 def test_right_noop_when_idle(main_window, monkeypatch):
     calls = _record(monkeypatch, main_window.playlists_widget, "next_track")
     main_window._current_playing_type = None
-    main_window._shortcut_next_track()
+    main_window.next_track()
     assert calls == []
 
 
@@ -247,28 +247,28 @@ def _key_event(key, modifiers=NO_MOD, autorepeat=False):
 
 
 def test_space_toggles_on_neutral_focus(main_window, monkeypatch, qapp):
-    calls = _record(monkeypatch, main_window, "_shortcut_toggle_play")
+    calls = _record(monkeypatch, main_window, "toggle_play_pause")
     handled = main_window._handle_transport_key(Qt.Key.Key_Space, NO_MOD, QWidget())
     assert handled is True
     assert len(calls) == 1
 
 
 def test_space_yields_to_button(main_window, monkeypatch, qapp):
-    calls = _record(monkeypatch, main_window, "_shortcut_toggle_play")
+    calls = _record(monkeypatch, main_window, "toggle_play_pause")
     handled = main_window._handle_transport_key(Qt.Key.Key_Space, NO_MOD, QPushButton())
     assert handled is False  # button keeps Space (activates)
     assert calls == []
 
 
 def test_space_yields_to_text_input(main_window, monkeypatch, qapp):
-    calls = _record(monkeypatch, main_window, "_shortcut_toggle_play")
+    calls = _record(monkeypatch, main_window, "toggle_play_pause")
     handled = main_window._handle_transport_key(Qt.Key.Key_Space, NO_MOD, QLineEdit())
     assert handled is False
     assert calls == []
 
 
 def test_right_advances_on_neutral_focus(main_window, monkeypatch, qapp):
-    calls = _record(monkeypatch, main_window, "_shortcut_next_track")
+    calls = _record(monkeypatch, main_window, "next_track")
     handled = main_window._handle_transport_key(Qt.Key.Key_Right, NO_MOD, QWidget())
     assert handled is True
     assert len(calls) == 1
@@ -276,14 +276,14 @@ def test_right_advances_on_neutral_focus(main_window, monkeypatch, qapp):
 
 def test_right_yields_to_slider(main_window, monkeypatch, qapp):
     # A focused volume/scrubber slider must keep Right to nudge its value.
-    calls = _record(monkeypatch, main_window, "_shortcut_next_track")
+    calls = _record(monkeypatch, main_window, "next_track")
     handled = main_window._handle_transport_key(Qt.Key.Key_Right, NO_MOD, QSlider())
     assert handled is False
     assert calls == []
 
 
 def test_right_yields_to_text_input(main_window, monkeypatch, qapp):
-    calls = _record(monkeypatch, main_window, "_shortcut_next_track")
+    calls = _record(monkeypatch, main_window, "next_track")
     handled = main_window._handle_transport_key(Qt.Key.Key_Right, NO_MOD, QLineEdit())
     assert handled is False
     assert calls == []
@@ -330,7 +330,7 @@ def test_unrelated_key_is_not_handled(main_window, qapp):
 
 
 def test_right_with_keypad_modifier_still_advances(main_window, monkeypatch, qapp):
-    calls = _record(monkeypatch, main_window, "_shortcut_next_track")
+    calls = _record(monkeypatch, main_window, "next_track")
     handled = main_window._handle_transport_key(
         Qt.Key.Key_Right, NO_MOD | KEYPAD, QWidget()
     )
@@ -359,7 +359,7 @@ def test_ctrl_left_with_keypad_modifier_still_steps(main_window, monkeypatch, qa
 
 
 def test_event_filter_ignores_autorepeat(main_window, monkeypatch):
-    calls = _record(monkeypatch, main_window, "_shortcut_toggle_play")
+    calls = _record(monkeypatch, main_window, "toggle_play_pause")
     main_window.eventFilter(main_window, _key_event(Qt.Key.Key_Space, autorepeat=True))
     assert calls == []
 

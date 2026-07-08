@@ -24,6 +24,7 @@ from .audio import AudioEngine
 from .database import DatabaseConnection
 from .library import LibraryWidget
 from .playlists import PlaylistsWidget
+from .remote import RemoteControlFacade
 from .scenes import ScenesWidget
 from .shared.styles import Styles
 
@@ -58,6 +59,9 @@ class MainWindow(QMainWindow):
 
         # Set up UI
         self._setup_ui()
+        # After _setup_ui: the facade's state snapshots rely on MainWindow's
+        # playback slots being connected (and thus invoked) first.
+        self.remote_facade = RemoteControlFacade(self)
         self._restore_master_volume()
         self._restore_active_tab()
         self._restore_last_scene()
@@ -200,12 +204,12 @@ class MainWindow(QMainWindow):
         if no_mod and key == Qt.Key.Key_Space:
             if is_text or isinstance(focus, QAbstractButton):
                 return False
-            self._shortcut_toggle_play()
+            self.toggle_play_pause()
             return True
         if no_mod and key == Qt.Key.Key_Right:
             if is_text or isinstance(focus, QAbstractSlider):
                 return False
-            self._shortcut_next_track()
+            self.next_track()
             return True
         if ctrl and key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
             if is_text:
@@ -223,9 +227,10 @@ class MainWindow(QMainWindow):
             return self.playlists_widget
         return None
 
-    def _shortcut_toggle_play(self):
-        """Space: pause whatever is playing; if idle, start/resume the item
-        open in the current Scenes/Playlists tab."""
+    def toggle_play_pause(self):
+        """Pause whatever is playing; if idle, start/resume the item open in
+        the current Scenes/Playlists tab. Shared by the Space shortcut and the
+        remote-control facade — keep them on this single path."""
         if self._current_playing_type == "scene":
             self.scenes_widget.pause_active()
         elif self._current_playing_type == "playlist":
@@ -235,11 +240,20 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.toggle_playback()
 
-    def _shortcut_next_track(self):
-        """Right: advance the playing playlist to its next track (no-op when a
-        scene is playing or nothing is)."""
+    def next_track(self):
+        """Advance the playing playlist to its next track (no-op when a scene
+        is playing or nothing is). Shared by the Right shortcut and the
+        remote-control facade."""
         if self._current_playing_type == "playlist":
             self.playlists_widget.next_track()
+
+    def current_playback(self) -> tuple[str, int | None] | None:
+        """(type, id) of the actively playing scene/playlist, or None if idle."""
+        if self._current_playing_type == "scene":
+            return ("scene", self._current_scene_id)
+        if self._current_playing_type == "playlist":
+            return ("playlist", self._current_playlist_playing_id)
+        return None
 
     def _shortcut_step_item(self, delta: int):
         """Ctrl+Left / Ctrl+Right: step to the previous/next scene-or-playlist
