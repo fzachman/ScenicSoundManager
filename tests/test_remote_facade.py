@@ -49,6 +49,7 @@ def test_get_playlists_returns_id_and_name(main_window, facade):
 def test_get_state_idle(main_window, facade):
     state = facade.get_state()
     assert state["playing"] is None
+    assert state["paused"] is None
     assert state["master_volume"] == main_window.audio_engine.master_volume
 
 
@@ -74,6 +75,60 @@ def test_get_state_reflects_playing_playlist(main_window, facade, qapp):
         "id": playlist_id,
         "name": "Battle Mix",
     }
+
+
+def _set_scene_editor_active(main_window, scene_id: int, is_playing: bool):
+    """Put the real scene editor into an active (playing/paused) state."""
+    editor = main_window.scenes_widget.scene_editor
+    editor._active_scene_id = scene_id
+    editor._scene_playing = is_playing
+
+
+def _set_playlist_editor_active(main_window, playlist_id: int, is_playing: bool):
+    editor = main_window.playlists_widget.playlist_editor
+    editor._active_playlist_id = playlist_id
+    editor._is_playing = is_playing
+
+
+def test_get_state_reports_paused_scene(main_window, facade):
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    _set_scene_editor_active(main_window, scene_id, is_playing=False)
+    state = facade.get_state()
+    assert state["playing"] is None
+    assert state["paused"] == {"type": "scene", "id": scene_id, "name": "Tavern"}
+
+
+def test_get_state_reports_paused_playlist(main_window, facade):
+    playlist_id = main_window.db.add_playlist(Playlist(name="Battle Mix"))
+    _set_playlist_editor_active(main_window, playlist_id, is_playing=False)
+    state = facade.get_state()
+    assert state["playing"] is None
+    assert state["paused"] == {
+        "type": "playlist",
+        "id": playlist_id,
+        "name": "Battle Mix",
+    }
+
+
+def test_get_state_paused_is_none_while_active_item_is_playing(main_window, facade):
+    # An editor reporting active-and-playing must not surface as paused.
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    _set_scene_editor_active(main_window, scene_id, is_playing=True)
+    state = facade.get_state()
+    assert state["paused"] is None
+
+
+def test_get_state_playing_suppresses_paused(main_window, facade, qapp):
+    # Defensive: if editor state were ever stale while something plays,
+    # `playing` wins — the two fields stay mutually exclusive on the wire.
+    playlist_id = main_window.db.add_playlist(Playlist(name="Battle Mix"))
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    _set_playlist_editor_active(main_window, playlist_id, is_playing=False)
+    main_window.scenes_widget.playback_state_changed.emit(scene_id, "Tavern", True)
+    qapp.processEvents()
+    state = facade.get_state()
+    assert state["playing"]["id"] == scene_id
+    assert state["paused"] is None
 
 
 def test_get_state_name_is_none_for_id_missing_from_db(main_window, facade, qapp):
@@ -180,6 +235,23 @@ def test_state_changed_on_scene_playback_sees_updated_state(main_window, facade)
     main_window.scenes_widget.playback_state_changed.emit(scene_id, "Tavern", True)
     assert snapshots
     assert snapshots[-1]["playing"] == {
+        "type": "scene",
+        "id": scene_id,
+        "name": "Tavern",
+    }
+
+
+def test_state_changed_on_pause_reports_paused(main_window, facade):
+    # Pausing emits is_playing=False with the id still set; the snapshot built
+    # off that event must show the item as paused, not vanished.
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    main_window.scenes_widget.playback_state_changed.emit(scene_id, "Tavern", True)
+    _set_scene_editor_active(main_window, scene_id, is_playing=False)
+    snapshots = []
+    facade.state_changed.connect(snapshots.append)
+    main_window.scenes_widget.playback_state_changed.emit(scene_id, "Tavern", False)
+    assert snapshots[-1]["playing"] is None
+    assert snapshots[-1]["paused"] == {
         "type": "scene",
         "id": scene_id,
         "name": "Tavern",

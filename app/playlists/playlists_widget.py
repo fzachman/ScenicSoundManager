@@ -79,6 +79,10 @@ class PlaylistsWidget(QWidget):
         """Stop all playlist playback"""
         self.playlist_editor.stop_all()
 
+    def active_playback(self) -> tuple[int, bool] | None:
+        """(playlist_id, is_playing) of the playlist owning playback, or None."""
+        return self.playlist_editor.active_playback()
+
     def select_playlist(self, playlist_id: int):
         """Select and load a playlist by ID"""
         self.playlist_list.select_playlist(playlist_id)

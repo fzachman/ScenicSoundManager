@@ -74,6 +74,10 @@ class ScenesWidget(QWidget):
         """Stop all audio playback"""
         self.scene_editor.stop_all()
 
+    def active_playback(self) -> tuple[int, bool] | None:
+        """(scene_id, is_playing) of the scene owning playback, or None."""
+        return self.scene_editor.active_playback()
+
     def refresh_current_scene(self):
         """Refresh the currently loaded scene"""
         self.scene_editor.refresh()

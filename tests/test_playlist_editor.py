@@ -111,3 +111,41 @@ class TestStartPlaybackHighlight:
         editor.toggle_playback()
         editor._stop_playback()
         assert _highlighted_audio_file_ids(editor) == []
+
+
+class TestActivePlaybackState:
+    def test_active_playback_lifecycle(self, editor, playlist):
+        assert editor.active_playback() is None
+
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        assert editor.active_playback() == (playlist.id, True)
+
+        editor.toggle_playback()  # pause keeps the playlist active
+        assert editor.active_playback() == (playlist.id, False)
+
+        editor._stop_playback()
+        assert editor.active_playback() is None
+
+    def test_stop_while_paused_emits_state_change(self, editor, playlist):
+        # Stopping a PAUSED playlist is a real transition (its resumable state
+        # is gone) and must be broadcast — the old guard on _is_playing made
+        # this teardown silent, leaving remote clients showing a stale pause.
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor.toggle_playback()  # now paused
+        emissions = []
+        editor.playback_state_changed.connect(lambda *args: emissions.append(args))
+
+        editor._stop_playback()
+
+        assert emissions == [(playlist.id, None, False)]
+
+    def test_stop_while_idle_emits_nothing(self, editor, playlist):
+        editor.load_playlist(playlist)
+        emissions = []
+        editor.playback_state_changed.connect(lambda *args: emissions.append(args))
+
+        editor._stop_playback()
+
+        assert emissions == []

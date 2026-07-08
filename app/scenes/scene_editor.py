@@ -524,6 +524,17 @@ class SceneEditor(QWidget):
         ):
             self._start_scene_playback()
 
+    def active_playback(self) -> tuple[int, bool] | None:
+        """(scene_id, is_playing) of the scene that owns playback, or None.
+
+        The active scene is independent of the one open in the editor: it is
+        set when playback starts and survives pause (paused = active with
+        is_playing False), so browsing the sidebar doesn't affect it.
+        """
+        if self._active_scene_id is None:
+            return None
+        return (self._active_scene_id, self._scene_playing)
+
     def _toggle_scene_play(self):
         """Toggle scene play/pause"""
         if not self._current_scene:
@@ -620,13 +631,18 @@ class SceneEditor(QWidget):
 
     def _stop_active_scene(self):
         """Stop playback and clear the active scene"""
+        was_active = self._active_scene_id is not None
         self.mixer.stop_all()
         self.mixer.clear()
         self._stop_all_playlist_players()
         self._scene_playing = False
         self._active_scene_id = None
         self._active_scene_title = None
-        self.playback_state_changed.emit(None, None, False)
+        if was_active:
+            # Emitting only when a scene was actually active (playing OR
+            # paused) lets callers invoke this unconditionally without
+            # broadcasting spurious idle states to remote clients.
+            self.playback_state_changed.emit(None, None, False)
         self._sync_scene_play_button()
 
     def _is_current_scene_active(self) -> bool:

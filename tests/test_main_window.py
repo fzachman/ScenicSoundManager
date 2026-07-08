@@ -87,6 +87,54 @@ def test_scene_start_stops_active_playlist(main_window, qapp, monkeypatch):
     assert main_window.current_scene_btn.text() == "Scene: Tavern"
 
 
+def test_playlist_start_stops_paused_scene(main_window, qapp, monkeypatch):
+    # A PAUSED scene has _current_playing_type None but still holds resumable
+    # players — starting a playlist must tear it down too (loophole fix).
+    editor = main_window.scenes_widget.scene_editor
+    editor._active_scene_id = 3
+    editor._scene_playing = False
+    stopped = []
+    monkeypatch.setattr(
+        main_window.scenes_widget, "stop_all_playback", lambda: stopped.append(True)
+    )
+    main_window.playlists_widget.playback_state_changed.emit(7, "Battle Mix", True)
+    qapp.processEvents()
+    assert stopped == [True]
+    assert main_window._current_playing_type == "playlist"
+
+
+def test_scene_start_stops_paused_playlist(main_window, qapp, monkeypatch):
+    editor = main_window.playlists_widget.playlist_editor
+    editor._active_playlist_id = 7
+    editor._is_playing = False
+    stopped = []
+    monkeypatch.setattr(
+        main_window.playlists_widget, "stop_all_playback", lambda: stopped.append(True)
+    )
+    main_window.scenes_widget.playback_state_changed.emit(3, "Tavern", True)
+    qapp.processEvents()
+    assert stopped == [True]
+    assert main_window._current_playing_type == "scene"
+
+
+def test_scene_stop_emits_only_when_active(main_window, qapp):
+    # stop_all_playback on an idle scene editor must be silent (it is now
+    # called unconditionally on every playlist start); once a scene is active
+    # (playing or paused) the same call must broadcast exactly one stop.
+    emissions = []
+    main_window.scenes_widget.playback_state_changed.connect(
+        lambda *args: emissions.append(args)
+    )
+    main_window.scenes_widget.stop_all_playback()
+    assert emissions == []
+
+    editor = main_window.scenes_widget.scene_editor
+    editor._active_scene_id = 3
+    editor._scene_playing = False  # paused still counts as active
+    main_window.scenes_widget.stop_all_playback()
+    assert emissions == [(None, None, False)]
+
+
 def test_stale_playlist_stop_does_not_clear_scene_state(main_window, qapp):
     # A playlist's stop signal arriving while a scene is active must not
     # clear the scene's now-playing state.

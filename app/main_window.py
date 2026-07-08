@@ -395,9 +395,12 @@ class MainWindow(QMainWindow):
 
     def _on_scene_playback_changed(self, scene_id, scene_title, is_playing: bool):
         if is_playing and scene_id:
-            # Mutual exclusivity: stop any active playlist before activating scene
-            if self._current_playing_type == "playlist":
-                self.playlists_widget.stop_all_playback()
+            # Mutual exclusivity: stop any active playlist before activating
+            # the scene. Unconditional because _current_playing_type can't be
+            # trusted here — a PAUSED playlist has type None but still holds a
+            # resumable player. The editor's stop path only emits when
+            # something was actually active, so this is a silent no-op when idle.
+            self.playlists_widget.stop_all_playback()
             self._current_scene_id = scene_id
             self._current_playing_type = "scene"
             self.current_scene_btn.setText(f"Scene: {scene_title or 'Untitled Scene'}")
@@ -412,9 +415,10 @@ class MainWindow(QMainWindow):
         self, playlist_id, playlist_name, is_playing: bool
     ):
         if is_playing and playlist_id:
-            # Mutual exclusivity: stop any active scene before activating playlist
-            if self._current_playing_type == "scene":
-                self.scenes_widget.stop_all_playback()
+            # Mutual exclusivity: stop any active scene before activating the
+            # playlist. Unconditional for the same reason as the scene handler:
+            # a paused scene has type None but must still be torn down.
+            self.scenes_widget.stop_all_playback()
             self._current_playlist_playing_id = playlist_id
             self._current_playing_type = "playlist"
             self.current_scene_btn.setText(

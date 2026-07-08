@@ -41,7 +41,7 @@ If a request can't be parsed at all (invalid JSON), the response carries
 **Event** (server → client, unsolicited, no `id`):
 
 ```json
-{"event": "state", "data": {"playing": {"type": "scene", "id": 3, "name": "Tavern"}, "master_volume": 80}}
+{"event": "state", "data": {"playing": {"type": "scene", "id": 3, "name": "Tavern"}, "paused": null, "master_volume": 80}}
 ```
 
 ## The `state` event
@@ -56,11 +56,19 @@ Schema of `data` (identical to the `get_state` result):
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `playing` | object \| null | `null` when idle |
+| `playing` | object \| null | `null` when nothing is audibly playing |
 | `playing.type` | `"scene"` \| `"playlist"` | what kind of item is playing |
 | `playing.id` | int | database id of the playing item |
 | `playing.name` | string \| null | display name (`null` if unresolvable) |
+| `paused` | object \| null | the previously-playing item now paused (resumable); same shape as `playing`; `null` when something is playing or the app is fully idle |
 | `master_volume` | int 0–100 | current master volume |
+
+`playing` and `paused` are mutually exclusive — at most one is non-null. At
+most one item is active app-wide: starting any scene or playlist stops
+whatever else was active, **including a paused item**, so a `state` event
+showing a new `playing` item also means any previously paused item is gone
+(not resumable). Pausing is independent of UI selection: the paused item stays
+paused (and reported) while the user browses other scenes/playlists in the app.
 
 Clients should treat every `state` event as a full re-render; no diffing is
 required or expected. Events and responses may interleave: a mutating command
@@ -84,8 +92,8 @@ Notes:
 - Ids are **database ids** and stable across renames — controllers should
   store ids, never names, and use `get_scenes`/`get_playlists` to (re)resolve
   display names.
-- Only one scene *or* one playlist plays at a time; `play_*` on one kind
-  stops the other (the app's mutual-exclusivity rule).
+- Only one scene *or* one playlist is active at a time; `play_*` stops
+  whatever else was playing **or paused** (the app's mutual-exclusivity rule).
 - `play_scene`/`play_playlist` intentionally change the visible UI selection,
   exactly as if the item was clicked.
 

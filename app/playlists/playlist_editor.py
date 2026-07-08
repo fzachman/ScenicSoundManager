@@ -578,6 +578,17 @@ class PlaylistEditor(QWidget):
         if not already_playing:
             self._toggle_play()
 
+    def active_playback(self) -> tuple[int, bool] | None:
+        """(playlist_id, is_playing) of the playlist that owns playback, or None.
+
+        The active playlist is independent of the one open in the editor: it
+        is set when playback starts and survives pause (paused = active with
+        is_playing False), so browsing the sidebar doesn't affect it.
+        """
+        if self._active_playlist_id is None:
+            return None
+        return (self._active_playlist_id, self._is_playing)
+
     def _toggle_play(self):
         """Toggle play/pause for the current playlist"""
         if not self._current_playlist or not self._current_playlist.tracks:
@@ -652,7 +663,6 @@ class PlaylistEditor(QWidget):
     def _stop_playback(self):
         """Stop playback completely"""
         self._release_player()
-        was_playing = self._is_playing
         self._is_playing = False
         self._current_audio_file_id = None
         old_playlist_id = self._active_playlist_id
@@ -662,7 +672,11 @@ class PlaylistEditor(QWidget):
         self.next_btn.setEnabled(False)
         self._update_now_playing_highlight()
         self._sync_play_button()
-        if was_playing:
+        if old_playlist_id is not None:
+            # Emit whenever a playlist was active — playing OR paused. A
+            # paused playlist being stopped is a real transition for remote
+            # clients (its "resumable" state is gone); gating on _is_playing
+            # here would make that teardown silent.
             self.playback_state_changed.emit(old_playlist_id, None, False)
 
     def _play_audio_file(self, audio_file_id: int) -> bool:

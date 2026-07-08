@@ -50,8 +50,15 @@ class RemoteControlFacade(QObject):
     # --- queries ---------------------------------------------------------
 
     def get_state(self) -> dict:
-        """Full snapshot: what's playing (if anything) and the master volume."""
+        """Full snapshot: what's playing or paused (if anything) + master volume.
+
+        ``playing`` and ``paused`` are mutually exclusive: at most one item is
+        active app-wide (mutual exclusivity stops the old item — paused or
+        playing — whenever a new one starts), and ``paused`` is only reported
+        when nothing is playing.
+        """
         playing = None
+        paused = None
         current = self._window.current_playback()
         if current is not None:
             kind, item_id = current
@@ -60,8 +67,11 @@ class RemoteControlFacade(QObject):
                 "id": item_id,
                 "name": self._name_of(kind, item_id),
             }
+        else:
+            paused = self._paused_item()
         return {
             "playing": playing,
+            "paused": paused,
             "master_volume": self._window.audio_engine.master_volume,
         }
 
@@ -120,6 +130,29 @@ class RemoteControlFacade(QObject):
         return value
 
     # --- internal ---------------------------------------------------------
+
+    def _paused_item(self) -> dict | None:
+        """The item that owns playback but is paused (resumable), if any.
+
+        Pulled from the editors' active-playback state rather than
+        MainWindow's now-playing tracking, which collapses paused into idle.
+        Selection is irrelevant here: browsing the sidebar while something is
+        paused doesn't change what this reports.
+        """
+        for kind, widget in (
+            ("scene", self._window.scenes_widget),
+            ("playlist", self._window.playlists_widget),
+        ):
+            active = widget.active_playback()
+            if active is not None:
+                item_id, is_playing = active
+                if not is_playing:
+                    return {
+                        "type": kind,
+                        "id": item_id,
+                        "name": self._name_of(kind, item_id),
+                    }
+        return None
 
     def _name_of(self, kind: str, item_id) -> str | None:
         if item_id is None:

@@ -261,6 +261,32 @@ def test_playback_change_broadcasts_state_to_all_clients(
         other.close()
 
 
+def test_pause_broadcasts_paused_state(main_window, qapp, client):
+    # A pause (is_playing=False with the id still set, editor still active)
+    # must reach clients as paused, not as idle.
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    main_window.scenes_widget.playback_state_changed.emit(scene_id, "Tavern", True)
+    editor = main_window.scenes_widget.scene_editor
+    editor._active_scene_id = scene_id
+    editor._scene_playing = False
+    main_window.scenes_widget.playback_state_changed.emit(scene_id, "Tavern", False)
+
+    def got_paused():
+        return any(
+            (e["data"].get("paused") or {}).get("id") == scene_id
+            for e in client.state_events()
+        )
+
+    _wait_until(qapp, got_paused, "paused broadcast")
+    event = client.state_events()[-1]
+    assert event["data"]["playing"] is None
+    assert event["data"]["paused"] == {
+        "type": "scene",
+        "id": scene_id,
+        "name": "Tavern",
+    }
+
+
 def test_volume_change_broadcasts_state(main_window, qapp, client):
     main_window.master_slider.setValue(33)
     _wait_until(
