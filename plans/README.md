@@ -35,7 +35,7 @@ for future audio-test work: `python-vlc` IS importable in this env (so
 | 004 | Batch-load playlist tracks in get_scene_playlist_entries | P2 | S | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `259ea4f`) |
 | 005 | Characterization tests for MainWindow mutual exclusivity | P1 | M | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `6e7caa6`) |
 | 006 | De-duplicate scene control cards (DEBT-01) | P2 | M | — | DONE (2026-06-29 on `advisor/006-dedupe-control-cards`; adversarially reviewed; see `006-deduplicate-scene-control-cards.md`) |
-| 007 | Stream Deck remote control: local WebSocket API (user-requested feature; final phase exports a plan for the separate plugin repo) | Feature | M–L | — | TODO (planned 2026-07-07 at `6319f25`) |
+| 007 | Stream Deck remote control: local WebSocket API (user-requested feature) | Feature | M–L | — | DONE (app side, 2026-07-07 on `feature/remote-control`; suite 251→297; plugin repo starts from `streamdeck-plugin-plan.md`) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 

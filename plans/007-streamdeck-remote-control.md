@@ -19,7 +19,33 @@
 - **Planned at**: commit `6319f25`, 2026-07-07, branch `main`
 - **Baseline**: `venv/bin/pytest tests/ -q` → **251 passed** (~1s)
 - **Branch**: `feature/remote-control` off `main`
-- **Status**: TODO
+- **Status**: ✅ DONE (app side, 2026-07-07; plugin project not yet started)
+
+## Execution outcome (2026-07-07)
+
+All four phases completed on `feature/remote-control`, one commit per phase:
+facade (`deb8872`) → server + protocol doc (`e497280`) → MainWindow wiring +
+CLI client + docs (`1c88c4c`) → plugin-plan export. Suite **251 → 297**; ruff/
+format clean; mypy held at baseline (zero errors on touched files).
+
+Notable deviations from / additions to the original plan:
+
+- Added a QSettings `remote/enabled` flag (default true, no UI) beyond the
+  planned port setting — needed so the test conftest can keep every
+  MainWindow-constructing unit test from binding port 8765.
+- Server tests required a deterministic Qt teardown fixture (pump deleteLater
+  + `gc.collect()` at test boundaries): leftover QWebSocket objects GC'd
+  mid-test otherwise abort the process ("Fatal Python error: Aborted").
+- `setup.py` py2app `includes` was also missing `app.playlists` (pre-existing);
+  added alongside `app.remote`.
+
+Verified live against the running app via `scripts/remote_client.py`:
+state/scenes/playlists/volume round-trips, `not_found` error path (exit 1),
+and state-event broadcasts observed by a concurrent `watch` client while a
+second client made changes.
+
+**Handoff:** the plugin project starts from `plans/streamdeck-plugin-plan.md`
+(self-contained, protocol inlined — copy it into the new repo).
 
 ## Goal
 

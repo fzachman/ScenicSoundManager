@@ -1,0 +1,164 @@
+# Plan: SoundManager Stream Deck Plugin
+
+> **This document is self-contained and designed to be copied into a new
+> repository as its starting plan.** It was exported from the SoundManager
+> app project (plan 007, 2026-07-07) after the app-side WebSocket API was
+> implemented, tested (297-test suite), and verified end-to-end against the
+> running app. The full wire protocol is inlined below — no access to the app
+> repo is required, though its `scripts/remote_client.py` is a working
+> reference client if questions come up.
+
+## Goal
+
+An Elgato Stream Deck plugin that controls the SoundManager desktop app
+(D&D audio soundscape manager) over its local WebSocket API:
+
+1. **Play Scene** keys — each key is bound to one scene via a dropdown in the
+   property inspector; pressing it plays that scene. The key visibly
+   highlights while its scene is the one playing.
+2. **Play/Pause** key — toggles playback; icon reflects current state.
+3. **Master Volume** — a dial action for Stream Deck+ (rotate = adjust,
+   optionally press = mute-style set-to-0/restore), plus volume-up /
+   volume-down key actions as the fallback for button-only decks.
+
+## Architecture
+
+```
+Stream Deck app ⇄ (Elgato WebSocket protocol, handled by SDK) ⇄ plugin process (Node)
+                                                                  │
+                                                    SoundManagerClient (this plan)
+                                                                  │
+                                              ws://127.0.0.1:8765 ⇄ SoundManager app
+```
+
+The plugin is a thin bridge: the Elgato SDK handles everything deck-side;
+`SoundManagerClient` handles everything app-side; actions subscribe to state
+snapshots and render.
+
+## Scaffold
+
+- Node 20+, TypeScript.
+- Official SDK: `@elgato/streamdeck`. Scaffold with the official CLI
+  (`npm i -g @elgato/cli`, then `streamdeck create`) — treat the generated
+  template as the source of truth for manifest shape, build tooling, and dev
+  workflow (`streamdeck link`, `streamdeck restart`), since these evolve.
+- One plugin, four actions in the manifest: `play-scene`, `play-pause`,
+  `master-volume-dial` (Encoder controller), `volume-step` (key, with a
+  +/− direction setting).
+- Global settings: `port` (default **8765**). Per-action settings: scene id
+  for `play-scene`; step size and direction for `volume-step`.
+
+## Milestone 1 — `SoundManagerClient`
+
+A single shared connection for the whole plugin process:
+
+- **Connect** to `ws://127.0.0.1:<port>`; JSON text frames.
+- **Reconnect forever** with capped exponential backoff (e.g. 1s → 2s → 5s,
+  cap 5s; the app simply may not be running yet). Never crash on refusal.
+- **Request/response correlation**: every request carries a client-chosen
+  `id` (monotonic counter); resolve the matching pending promise when a frame
+  with that `id` arrives. Time out pending requests (~5s) with a rejection.
+- **State fan-out**: frames with `{"event": "state"}` go to subscribers
+  (`onState(cb)`). The server pushes a snapshot immediately on connect and on
+  every change, so subscribers can render with zero polling.
+- **Connection status fan-out**: `onStatus(cb)` with connected/disconnected,
+  so actions can render a "disconnected" look (e.g. `showAlert()` on press,
+  dimmed icon otherwise).
+- Cache the latest state snapshot so newly-appearing actions render
+  immediately.
+
+Test this milestone against the real app before writing any action.
+
+## Milestone 2 — Play/Pause action
+
+- On key press: `toggle_play_pause`. Semantics (implemented app-side): pauses
+  whatever is playing; if idle, starts the item currently open in the app's
+  Scenes/Playlists tab.
+- Render from state: playing → "pause" glyph + item name as title (truncate;
+  `state.playing.name` may be `null`); idle → "play" glyph; disconnected →
+  dimmed/alert.
+
+## Milestone 3 — Play Scene action + property inspector
+
+- Property inspector: a dropdown populated by calling `get_scenes` through
+  the client (datasource pattern from the SDK template). Store the scene's
+  **id** in action settings — ids are database ids, stable across renames.
+  Never store the name; re-resolve display names via `get_scenes`.
+- On key press: `play_scene {scene_id}`. On a `not_found` error, `showAlert()`
+  (the scene was deleted; the user should re-pick in the inspector).
+- Render from state: when `state.playing` is `{type: "scene", id: <mine>}`,
+  show the active look; otherwise inactive. Title = scene name from settings
+  refresh or `get_scenes`.
+- Note: playing a scene from the deck intentionally changes the app's visible
+  UI selection (tab + sidebar), exactly as if clicked in-app.
+
+## Milestone 4 — Master volume
+
+- **Dial (Stream Deck+)**: on rotate, adjust by `ticks * step` from the last
+  known `state.master_volume` and send `set_master_volume` (server clamps to
+  0–100 and echoes the applied value). Render the value/bar on the touchscreen
+  via the SDK's feedback layout. Debounce lightly if rotation floods (the app
+  persists volume on every change).
+- **Volume-step keys**: same math on press; settings choose +/− and step
+  (default 5).
+- Always re-render from pushed `state` events, not from local echo — in-app
+  slider changes must move the deck's display too.
+
+## Milestone 5 — Polish & packaging
+
+- Global settings UI for the port (rarely changed; default 8765).
+- Icons for all states (Stream Deck expects @1x/@2x PNGs; template shows sizes).
+- `streamdeck pack` for a distributable `.streamDeckPlugin`.
+- Manual test matrix: app not running (reconnect + disconnected render), app
+  restarted mid-session, scene deleted while bound, two decks/pages with the
+  same scene bound twice, volume dial while a playlist plays.
+
+---
+
+## Wire protocol (v1) — as implemented and verified
+
+Transport: `ws://127.0.0.1:8765` (localhost only; port configurable app-side
+via its settings). JSON text frames, UTF-8, one message per frame. No auth.
+Errors never close the connection.
+
+**Request** (plugin → app): `{"id": <any>, "cmd": <str>, "params": {...}}` —
+`id` is echoed verbatim in the response; `params` may be omitted.
+
+**Response** (one per request):
+`{"id": 1, "ok": true, "result": ...}` or
+`{"id": 1, "ok": false, "error": {"code": "...", "message": "..."}}`.
+Unparseable requests get `"id": null`.
+
+**Event** (unsolicited, no `id`):
+`{"event": "state", "data": {...}}` — pushed on connect and on any playback
+or master-volume change from any source. `data` schema (same as `get_state`):
+
+```json
+{
+  "playing": {"type": "scene", "id": 3, "name": "Tavern"},
+  "master_volume": 80
+}
+```
+
+`playing` is `null` when idle; `type` is `"scene"` or `"playlist"`; `name`
+can be `null` if unresolvable. Treat every event as a full re-render — a
+mutating command's `state` broadcast typically arrives *before* its response.
+
+| `cmd` | `params` | `result` |
+|-------|----------|----------|
+| `get_state` | — | state snapshot (above) |
+| `get_scenes` | — | `[{"id": int, "name": str}, ...]` |
+| `get_playlists` | — | `[{"id": int, "name": str}, ...]` |
+| `play_scene` | `{"scene_id": int}` | `null` |
+| `play_playlist` | `{"playlist_id": int}` | `null` |
+| `toggle_play_pause` | — | `null` |
+| `next_track` | — | `null` (playing playlist only; no-op otherwise) |
+| `set_master_volume` | `{"value": int}` | `{"master_volume": int}` (clamped 0–100) |
+
+Error codes: `bad_request` (bad JSON / non-object frame or params),
+`unknown_command`, `invalid_params` (wrong type; ids and volume must be JSON
+integers — booleans are rejected), `not_found`, `internal_error`.
+
+Only one scene *or* one playlist plays at a time (app-enforced mutual
+exclusivity). v1 is additive-versioned: ignore unknown fields in `state` and
+responses.
