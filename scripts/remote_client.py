@@ -20,6 +20,7 @@ Exit status: 0 on ok:true, 1 on protocol error / connection failure / timeout.
 
 import argparse
 import json
+import signal
 import sys
 
 from PyQt6.QtCore import QCoreApplication, QTimer, QUrl
@@ -90,6 +91,12 @@ def main() -> int:
     def on_timeout():
         print("timed out waiting for a response", file=sys.stderr)
         finish(1)
+
+    # Python's KeyboardInterrupt can't be delivered while Qt's C++ event loop
+    # is idle (it just queues, then aborts the process when the next slot runs).
+    # Restore the OS default so Ctrl+C terminates immediately — nothing here
+    # needs graceful cleanup.
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     socket.connected.connect(on_connected)
     socket.textMessageReceived.connect(on_message)
