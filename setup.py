@@ -53,6 +53,8 @@ OPTIONS = {
         "app.database",
         "app.audio",
         "app.library",
+        "app.playlists",
+        "app.remote",
         "app.scenes",
         "app.shared",
     ],

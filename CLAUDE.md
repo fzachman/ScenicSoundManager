@@ -42,6 +42,7 @@ Each tab follows a **splitter pattern**: `*Widget` (container) = `*ListWidget` (
 - `app/library/` — Audio file import, metadata extraction (mutagen), tagging, search
 - `app/scenes/` — Scene management, multi-track mixing, playlist-in-scene support
 - `app/playlists/` — Playlist management, track ordering, playback
+- `app/remote/` — Remote control: `RemoteControlFacade` (validated commands over MainWindow/widgets + coarse `state_changed` snapshots) and `RemoteControlServer` (localhost `QWebSocketServer`, protocol in `docs/remote-protocol.md`, QSettings `remote/enabled` + `remote/port`)
 - `app/shared/` — Reusable UI components, dark theme styles, structlog config, icon library
 
 ### Key conventions

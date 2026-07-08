@@ -24,7 +24,7 @@ from .audio import AudioEngine
 from .database import DatabaseConnection
 from .library import LibraryWidget
 from .playlists import PlaylistsWidget
-from .remote import RemoteControlFacade
+from .remote import DEFAULT_PORT, RemoteControlFacade, RemoteControlServer
 from .scenes import ScenesWidget
 from .shared.styles import Styles
 
@@ -38,6 +38,9 @@ class MainWindow(QMainWindow):
     SETTINGS_ACTIVE_TAB = "active_tab"
     SETTINGS_LAST_SCENE_ID = "last_scene_id"
     SETTINGS_LAST_PLAYLIST_ID = "last_playlist_id"
+    SETTINGS_REMOTE_GROUP = "remote"
+    SETTINGS_REMOTE_ENABLED = "enabled"
+    SETTINGS_REMOTE_PORT = "port"
 
     def __init__(self):
         super().__init__()
@@ -62,6 +65,7 @@ class MainWindow(QMainWindow):
         # After _setup_ui: the facade's state snapshots rely on MainWindow's
         # playback slots being connected (and thus invoked) first.
         self.remote_facade = RemoteControlFacade(self)
+        self.remote_server = self._start_remote_server()
         self._restore_master_volume()
         self._restore_active_tab()
         self._restore_last_scene()
@@ -267,6 +271,28 @@ class MainWindow(QMainWindow):
         if new_id is not None and was_playing:
             widget.play_current()
 
+    def _start_remote_server(self) -> RemoteControlServer | None:
+        """Start the remote-control WebSocket server (see docs/remote-protocol.md).
+
+        Configured via QSettings group ``remote``: ``enabled`` (default True)
+        and ``port`` (default 8765). Bind failure only logs a warning — remote
+        control must never prevent the app from starting.
+        """
+        settings = QSettings()
+        settings.beginGroup(self.SETTINGS_REMOTE_GROUP)
+        enabled = settings.value(
+            self.SETTINGS_REMOTE_ENABLED, defaultValue=True, type=bool
+        )
+        port = settings.value(
+            self.SETTINGS_REMOTE_PORT, defaultValue=DEFAULT_PORT, type=int
+        )
+        settings.endGroup()
+        if not enabled:
+            return None
+        server = RemoteControlServer(self.remote_facade, port=port, parent=self)
+        server.start()
+        return server
+
     def _connect_signals(self):
         """Connect signals between different modules"""
         # When library is updated, refresh scene track info
@@ -418,6 +444,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle application close"""
+        if self.remote_server is not None:
+            self.remote_server.stop()
+
         # Stop all audio
         self.scenes_widget.stop_all_playback()
         self.playlists_widget.stop_all_playback()

@@ -14,7 +14,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QUrl
+from PyQt6.QtCore import QSettings, QUrl
 from PyQt6.QtNetwork import QAbstractSocket
 from PyQt6.QtWebSockets import QWebSocket
 
@@ -289,3 +289,50 @@ def test_disconnected_client_is_dropped(main_window, qapp, server, client):
 def test_bind_failure_returns_false(main_window, server):
     duplicate = RemoteControlServer(main_window.remote_facade, port=server.port)
     assert duplicate.start() is False
+
+
+# --- MainWindow wiring (QSettings: remote/enabled, remote/port) --------------------
+
+
+def _set_remote_settings(enabled: bool, port=None):
+    settings = QSettings()
+    settings.beginGroup("remote")
+    settings.setValue("enabled", enabled)
+    if port is not None:
+        settings.setValue("port", port)
+    settings.endGroup()
+
+
+@pytest.fixture
+def remote_enabled(qapp):
+    # Ephemeral port: wiring tests must not depend on 8765 being free.
+    _set_remote_settings(True, port=0)
+    yield
+    _set_remote_settings(False)
+
+
+def test_main_window_starts_server_when_enabled(
+    qapp, tmp_path, monkeypatch, remote_enabled
+):
+    db_path = str(tmp_path / "wired.db")
+    monkeypatch.setattr(
+        main_window_module, "DatabaseConnection", lambda: DatabaseConnection(db_path)
+    )
+    window = main_window_module.MainWindow()
+    try:
+        assert window.remote_server is not None
+        assert window.remote_server.port > 0
+        connected = Client(qapp, window.remote_server)
+        try:
+            assert connected.request("get_state")["ok"] is True
+        finally:
+            connected.close()
+    finally:
+        if window.remote_server is not None:
+            window.remote_server.stop()
+        window.db.close()
+
+
+def test_main_window_skips_server_when_disabled(main_window):
+    # conftest turns remote/enabled off in the test settings namespace.
+    assert main_window.remote_server is None

@@ -12,7 +12,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PyQt6.QtCore import QCoreApplication
+from PyQt6.QtCore import QCoreApplication, QSettings
 from PyQt6.QtWidgets import QApplication
 
 
@@ -24,4 +24,11 @@ def qapp():
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
+    # Keep MainWindow-constructing tests from each binding the real remote-
+    # control port (8765). Written to the SoundManagerTests settings namespace
+    # only; tests that exercise the wiring re-enable it with an ephemeral port.
+    settings = QSettings()
+    settings.beginGroup("remote")
+    settings.setValue("enabled", False)
+    settings.endGroup()
     return app

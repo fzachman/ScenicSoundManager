@@ -43,6 +43,28 @@ These yield to whatever you're interacting with: typing a space in a search box,
 nudging a focused slider with the arrows, or activating a focused button with
 Space all still work as normal.
 
+## Remote control
+
+The app runs a small WebSocket server on `ws://127.0.0.1:8765` so external
+controllers (e.g. a Stream Deck plugin) can play scenes/playlists, toggle
+play/pause, and set the master volume, with live now-playing state pushed back.
+The protocol is documented in [docs/remote-protocol.md](docs/remote-protocol.md),
+and `scripts/remote_client.py` is a small CLI for trying it:
+
+```bash
+# with the app running
+venv/bin/python scripts/remote_client.py scenes        # list scenes with ids
+venv/bin/python scripts/remote_client.py play-scene 3
+venv/bin/python scripts/remote_client.py toggle
+venv/bin/python scripts/remote_client.py volume 40
+venv/bin/python scripts/remote_client.py watch         # stream state events
+```
+
+The server only listens on localhost. To change the port or turn it off, edit
+the app settings (macOS: `defaults write com.soundmanager.SoundManager remote.port 9000`
+or `remote.enabled -bool false`, adjusting the domain to what `QSettings` uses
+on your install).
+
 ## Requirements
 
 - **Python 3.10+** (developed and tested on 3.13).
@@ -110,6 +132,7 @@ app/
   library/    audio import, metadata extraction, tagging, search
   scenes/     scene management, multi-track mixing, playlist-in-scene support
   playlists/  playlist management, ordering, sequential playback
+  remote/     remote-control facade + localhost WebSocket server (docs/remote-protocol.md)
   shared/     reusable widgets (base list/control cards, VolumeSlider), dark theme, logging, icons
 main.py       application entry point
 setup.py      py2app packaging
