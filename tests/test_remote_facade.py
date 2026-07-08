@@ -86,7 +86,7 @@ def _set_scene_editor_active(main_window, scene_id: int, is_playing: bool):
 
 def _set_playlist_editor_active(main_window, playlist_id: int, is_playing: bool):
     editor = main_window.playlists_widget.playlist_editor
-    editor._active_playlist_id = playlist_id
+    editor._active_playlist = Playlist(id=playlist_id)
     editor._is_playing = is_playing
 
 

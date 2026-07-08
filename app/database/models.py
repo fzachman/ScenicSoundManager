@@ -96,6 +96,7 @@ class Playlist:
     id: int | None = None
     name: str = ""
     position: int = 0
+    is_shuffle: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
     tracks: list["PlaylistTrack"] = field(default_factory=list)

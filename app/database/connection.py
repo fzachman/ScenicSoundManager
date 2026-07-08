@@ -46,6 +46,7 @@ class DatabaseConnection:
         self._ensure_scene_track_play_mode()
         self._ensure_scene_playlist_entry_play_mode()
         self._ensure_scene_playlist_entry_volume()
+        self._ensure_playlist_shuffle()
         self.connection.commit()
 
     def _ensure_scene_positions(self) -> None:
@@ -99,6 +100,15 @@ class DatabaseConnection:
         if "volume" not in columns:
             self.connection.execute(
                 "ALTER TABLE scene_playlist_entries ADD COLUMN volume REAL NOT NULL DEFAULT 1.0"
+            )
+
+    def _ensure_playlist_shuffle(self) -> None:
+        """Ensure playlists have an is_shuffle column"""
+        cursor = self.connection.execute("PRAGMA table_info(playlists)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if "is_shuffle" not in columns:
+            self.connection.execute(
+                "ALTER TABLE playlists ADD COLUMN is_shuffle INTEGER NOT NULL DEFAULT 0"
             )
 
     def close(self) -> None:
@@ -781,6 +791,14 @@ class DatabaseConnection:
         )
         self.connection.commit()
 
+    def update_playlist_shuffle(self, playlist_id: int, is_shuffle: bool) -> None:
+        """Update a playlist's persisted shuffle mode"""
+        self.connection.execute(
+            "UPDATE playlists SET is_shuffle = ?, updated_at = datetime('now') WHERE id = ?",
+            (int(is_shuffle), playlist_id),
+        )
+        self.connection.commit()
+
     def delete_playlist(self, playlist_id: int) -> None:
         """Delete a playlist"""
         self.connection.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
@@ -801,6 +819,7 @@ class DatabaseConnection:
             id=row["id"],
             name=row["name"],
             position=row["position"],
+            is_shuffle=bool(row["is_shuffle"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

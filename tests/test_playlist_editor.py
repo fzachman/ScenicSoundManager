@@ -52,6 +52,26 @@ def playlist(db):
 
 
 @pytest.fixture
+def second_playlist(db):
+    """A second playlist with 2 tracks disjoint from the first fixture's."""
+    file_ids = []
+    for i in range(2):
+        af = AudioFile(
+            file_path=f"/fake/path/other_{i}.mp3",
+            title=f"Other {i}",
+            artist="Test Artist",
+            duration_seconds=90.0,
+        )
+        file_ids.append(db.add_audio_file(af))
+
+    playlist_id = db.add_playlist(Playlist(name="Other Playlist"))
+    for i, fid in enumerate(file_ids):
+        db.add_track_to_playlist(playlist_id, fid, position=i)
+
+    return db.get_playlist(playlist_id)
+
+
+@pytest.fixture
 def mock_engine():
     engine = MagicMock()
     engine.available = False
@@ -149,3 +169,131 @@ class TestActivePlaybackState:
         editor._stop_playback()
 
         assert emissions == []
+
+
+class TestShufflePersistence:
+    def test_toggle_persists_to_db(self, editor, playlist, db):
+        editor.load_playlist(playlist)
+
+        editor.shuffle_btn.click()
+        assert db.get_playlist(playlist.id).is_shuffle is True
+
+        editor.shuffle_btn.click()
+        assert db.get_playlist(playlist.id).is_shuffle is False
+
+    def test_load_playlist_reflects_stored_flag(self, editor, playlist, db):
+        db.update_playlist_shuffle(playlist.id, True)
+
+        editor.load_playlist(db.get_playlist(playlist.id))
+        assert editor.shuffle_btn.isChecked() is True
+
+    def test_shuffle_state_follows_open_playlist(
+        self, editor, playlist, second_playlist, db
+    ):
+        db.update_playlist_shuffle(playlist.id, True)
+
+        editor.load_playlist(db.get_playlist(playlist.id))
+        assert editor.shuffle_btn.isChecked() is True
+
+        editor.load_playlist(second_playlist)
+        assert editor.shuffle_btn.isChecked() is False
+
+    def test_toggle_while_browsing_leaves_active_playback_alone(
+        self, editor, playlist, second_playlist, db
+    ):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        editor.load_playlist(second_playlist)
+        editor.shuffle_btn.click()
+
+        assert db.get_playlist(second_playlist.id).is_shuffle is True
+        assert db.get_playlist(playlist.id).is_shuffle is False
+        assert editor._active_playlist.is_shuffle is False
+
+    def test_toggle_on_active_playlist_updates_live_playback(
+        self, editor, playlist, db
+    ):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        editor.shuffle_btn.click()
+
+        assert editor._active_playlist.is_shuffle is True
+
+
+class TestActiveOpenDecoupling:
+    """Playback must keep operating on the ACTIVE playlist while another
+    one is open in the editor (browsing must not hijack the transport)."""
+
+    def test_next_advances_active_playlist_while_browsing(
+        self, editor, playlist, second_playlist
+    ):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        editor.load_playlist(second_playlist)
+        editor.next_track()
+
+        assert editor._current_audio_file_id == playlist.tracks[1].audio_file_id
+        assert editor.active_playback() == (playlist.id, True)
+
+    def test_auto_advance_uses_active_playlist_while_browsing(
+        self, editor, playlist, second_playlist
+    ):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        editor.load_playlist(second_playlist)
+        editor._on_track_ended()
+
+        assert editor._current_audio_file_id == playlist.tracks[1].audio_file_id
+
+    def test_shuffled_advance_draws_from_active_playlist(
+        self, editor, playlist, second_playlist, db
+    ):
+        db.update_playlist_shuffle(playlist.id, True)
+        editor.load_playlist(db.get_playlist(playlist.id))
+        editor.toggle_playback()
+
+        editor.load_playlist(second_playlist)
+        active_ids = {t.audio_file_id for t in playlist.tracks}
+        for _ in range(4):
+            editor.next_track()
+            assert editor._current_audio_file_id in active_ids
+
+    def test_next_while_paused_resumes_playback(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor.toggle_playback()  # pause
+        emissions = []
+        editor.playback_state_changed.connect(lambda *args: emissions.append(args))
+
+        editor.next_track()
+
+        assert editor._is_playing is True
+        assert editor._current_audio_file_id == playlist.tracks[1].audio_file_id
+        assert emissions == [(playlist.id, playlist.name, True)]
+
+    def test_next_while_idle_is_noop(self, editor, playlist):
+        editor.load_playlist(playlist)
+        emissions = []
+        editor.playback_state_changed.connect(lambda *args: emissions.append(args))
+
+        editor.next_track()
+
+        assert editor._is_playing is False
+        assert emissions == []
+
+    def test_track_edits_reach_active_playback(self, editor, playlist, db):
+        # Removing a track from the OPEN playlist while it is the ACTIVE one
+        # must update the copy playback advances over, not just the display.
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        editor._remove_track(playlist.tracks[1].id)
+
+        remaining = {t.audio_file_id for t in editor._active_playlist.tracks}
+        assert playlist.tracks[1].audio_file_id not in remaining
+        editor.next_track()
+        assert editor._current_audio_file_id in remaining

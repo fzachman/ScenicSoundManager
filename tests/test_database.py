@@ -300,6 +300,34 @@ class TestPlaylists:
         retrieved = db.get_playlist(playlist_id)
         assert retrieved.name == "New Name"
 
+    def test_playlist_shuffle_defaults_off(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+
+        assert db.get_playlist(playlist_id).is_shuffle is False
+
+    def test_update_playlist_shuffle(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+
+        db.update_playlist_shuffle(playlist_id, True)
+        assert db.get_playlist(playlist_id).is_shuffle is True
+        assert db.get_all_playlists()[0].is_shuffle is True
+
+        db.update_playlist_shuffle(playlist_id, False)
+        assert db.get_playlist(playlist_id).is_shuffle is False
+
+    def test_shuffle_column_added_to_legacy_database(self, db):
+        # Simulate a pre-is_shuffle database, then reconnect: the
+        # _ensure_playlist_shuffle migration must restore the column.
+        playlist_id = db.add_playlist(Playlist(name="Legacy Playlist"))
+        db.connection.execute("ALTER TABLE playlists DROP COLUMN is_shuffle")
+        db.connection.commit()
+        path = db.db_path
+        db.close()
+
+        db.connect()
+        assert db.db_path == path
+        assert db.get_playlist(playlist_id).is_shuffle is False
+
     def test_delete_playlist(self, db):
         playlist_id = db.add_playlist(Playlist(name="Delete Me"))
 

@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 import app.main_window as main_window_module
-from app.database import DatabaseConnection
+from app.database import DatabaseConnection, Playlist
 
 
 @pytest.fixture(scope="session")
@@ -105,7 +105,7 @@ def test_playlist_start_stops_paused_scene(main_window, qapp, monkeypatch):
 
 def test_scene_start_stops_paused_playlist(main_window, qapp, monkeypatch):
     editor = main_window.playlists_widget.playlist_editor
-    editor._active_playlist_id = 7
+    editor._active_playlist = Playlist(id=7, name="Battle Mix")
     editor._is_playing = False
     stopped = []
     monkeypatch.setattr(
