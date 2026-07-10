@@ -1,6 +1,6 @@
 """Database module for SoundManager"""
 
-from .connection import DatabaseConnection
+from .connection import PRESET_SLOTS, DatabaseConnection
 from .models import (
     AudioFile,
     Playlist,
@@ -13,6 +13,7 @@ from .models import (
 
 __all__ = [
     "DatabaseConnection",
+    "PRESET_SLOTS",
     "AudioFile",
     "Tag",
     "Scene",

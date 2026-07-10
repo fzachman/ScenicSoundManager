@@ -16,8 +16,14 @@ from PyQt6.QtWidgets import (
 from app.shared.logging import get_logger
 
 from ..audio import AudioEngine, SceneMixer, ScenePlaylistPlayer
-from ..database import DatabaseConnection, Scene, SceneAudioFile, ScenePlaylistEntry
-from ..shared.dialogs import AudioFileSearchDialog
+from ..database import (
+    PRESET_SLOTS,
+    DatabaseConnection,
+    Scene,
+    SceneAudioFile,
+    ScenePlaylistEntry,
+)
+from ..shared.dialogs import AudioFileSearchDialog, TextInputDialog
 from ..shared.icons import IconLibrary
 from ..shared.layouts import clear_layout
 from ..shared.styles import Styles
@@ -25,6 +31,9 @@ from .playlist_entry_control import PlaylistEntryControl
 from .track_control import TrackControl
 
 _log = get_logger(__name__)
+
+# Duration of the crossfade when switching presets while a scene plays.
+PRESET_FADE_MS = 1500
 
 
 class SceneEditor(QWidget):
@@ -44,6 +53,7 @@ class SceneEditor(QWidget):
         self._active_scene_title: str | None = None
         self._scene_playing = False
         self._current_scene: Scene | None = None
+        self._preset_slot: int = 1
         self._track_controls: dict[int, TrackControl] = {}
         self._playlist_entry_controls: dict[int, PlaylistEntryControl] = {}
         self._playlist_players: dict[
@@ -95,6 +105,26 @@ class SceneEditor(QWidget):
         add_layout.addWidget(self.add_playlist_btn)
 
         add_layout.addStretch()
+
+        # Preset buttons (right-aligned). Exclusivity is enforced by
+        # _sync_preset_buttons rather than a QButtonGroup so the checked
+        # style swap follows the codebase's stylesheet-in-code convention.
+        self._preset_buttons: dict[int, QPushButton] = {}
+        for slot in PRESET_SLOTS:
+            btn = QPushButton(f"Preset {slot}")
+            btn.setCheckable(True)
+            btn.setEnabled(False)
+            btn.setStyleSheet(Styles.toggle_off_style())
+            # clicked (not toggled): programmatic setChecked in
+            # _sync_preset_buttons must never re-enter the handler.
+            btn.clicked.connect(lambda _checked, s=slot: self._on_preset_clicked(s))
+            btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                lambda _pos, s=slot: self._rename_preset(s)
+            )
+            self._preset_buttons[slot] = btn
+            add_layout.addWidget(btn)
+
         layout.addLayout(add_layout)
 
         # Tracks scroll area
@@ -131,6 +161,11 @@ class SceneEditor(QWidget):
         self.add_playlist_btn.setEnabled(True)
         self.play_toggle_btn.setEnabled(True)
         self._sync_scene_play_button()
+
+        self._preset_slot = scene.active_preset_slot
+        for btn in self._preset_buttons.values():
+            btn.setEnabled(True)
+        self._sync_preset_buttons()
 
         # Load tracks and playlist entries
         self._refresh_tracks()
@@ -306,8 +341,8 @@ class SceneEditor(QWidget):
         for entry in self._current_scene.playlist_entries:
             if entry.id == entry_id:
                 entry.volume = volume
-                self.db.update_scene_playlist_entry(entry)
                 break
+        self.db.update_scene_playlist_entry_setting(entry_id, volume=volume)
 
     def _on_playlist_entry_shuffle_changed(self, entry_id: int, is_shuffle: bool):
         """Handle playlist entry shuffle toggle change"""
@@ -316,8 +351,8 @@ class SceneEditor(QWidget):
         for entry in self._current_scene.playlist_entries:
             if entry.id == entry_id:
                 entry.is_shuffle = is_shuffle
-                self.db.update_scene_playlist_entry(entry)
                 break
+        self.db.update_scene_playlist_entry_setting(entry_id, is_shuffle=is_shuffle)
         # Forward to running player if active
         player = self._playlist_players.get(entry_id)
         if player:
@@ -330,8 +365,8 @@ class SceneEditor(QWidget):
         for entry in self._current_scene.playlist_entries:
             if entry.id == entry_id:
                 entry.is_repeat = is_repeat
-                self.db.update_scene_playlist_entry(entry)
                 break
+        self.db.update_scene_playlist_entry_setting(entry_id, is_repeat=is_repeat)
         # Forward to running player if active
         player = self._playlist_players.get(entry_id)
         if player:
@@ -345,8 +380,8 @@ class SceneEditor(QWidget):
         for entry in self._current_scene.playlist_entries:
             if entry.id == entry_id:
                 entry.play_mode = play_mode
-                self.db.update_scene_playlist_entry(entry)
                 break
+        self.db.update_scene_playlist_entry_setting(entry_id, play_mode=play_mode)
 
         if self._is_current_scene_active() and self._scene_playing:
             self._apply_playlist_entry_play_mode(entry_id, play_mode)
@@ -371,7 +406,7 @@ class SceneEditor(QWidget):
             if player:
                 player.pause(500)
 
-    def _start_playlist_entry(self, entry: ScenePlaylistEntry):
+    def _start_playlist_entry(self, entry: ScenePlaylistEntry, fade_ms: int = 500):
         """Create and start a ScenePlaylistPlayer for a playlist entry."""
         assert entry.id is not None and entry.playlist_id is not None
         player = ScenePlaylistPlayer(
@@ -396,7 +431,7 @@ class SceneEditor(QWidget):
             lambda eid=entry.id: self._on_playlist_entry_finished(eid)
         )
         self._playlist_players[entry.id] = player
-        player.start(500)
+        player.start(fade_ms)
 
     def _update_playlist_entry_now_playing(self, entry_id: int, audio_file_id: int):
         """Update the now-playing display for a playlist entry control."""
@@ -509,6 +544,136 @@ class SceneEditor(QWidget):
         self._persist_track_order(track_ids)
         self.scene_modified.emit()
 
+    # --- Presets ---
+
+    def _sync_preset_buttons(self):
+        """Reflect names + the active slot on the three preset buttons."""
+        names = self._current_scene.preset_names if self._current_scene else {}
+        for slot, btn in self._preset_buttons.items():
+            btn.setText(names.get(slot) or f"Preset {slot}")
+            btn.setChecked(slot == self._preset_slot)
+            btn.setStyleSheet(
+                Styles.toggle_on_style()
+                if slot == self._preset_slot
+                else Styles.toggle_off_style()
+            )
+
+    def _on_preset_clicked(self, slot: int):
+        if not self._current_scene:
+            return
+        if slot == self._preset_slot:
+            # Clicking the checked button unchecks it visually; re-assert.
+            self._sync_preset_buttons()
+            return
+        self._switch_preset(slot)
+
+    def _rename_preset(self, slot: int):
+        if not self._current_scene or self._current_scene.id is None:
+            return
+        current = self._current_scene.preset_names.get(slot) or f"Preset {slot}"
+        dialog = TextInputDialog(
+            self, title="Rename Preset", label="Preset name:", default=current
+        )
+        if dialog.exec():
+            name = dialog.get_text()
+            if name and name != current:
+                self.db.rename_scene_preset(self._current_scene.id, slot, name)
+                self._current_scene.preset_names[slot] = name
+                self._sync_preset_buttons()
+
+    def _switch_preset(self, slot: int):
+        """Activate a preset: persist the slot, swap every card's state to
+        the preset's settings, and transition live playback smoothly."""
+        if not self._current_scene or self._current_scene.id is None:
+            return
+        scene_id = self._current_scene.id
+        self.db.set_active_preset_slot(scene_id, slot)
+        self._preset_slot = slot
+        self._current_scene.active_preset_slot = slot
+        self._sync_preset_buttons()
+
+        new_tracks = {t.id: t for t in self.db.get_scene_tracks(scene_id, slot=slot)}
+        new_entries = {
+            e.id: e for e in self.db.get_scene_playlist_entries(scene_id, slot=slot)
+        }
+
+        live = self._is_current_scene_active() and self._scene_playing
+        paused = self._is_current_scene_active() and not self._scene_playing
+
+        for track in self._current_scene.tracks:
+            new = new_tracks.get(track.id)
+            if not new:
+                continue
+            was_on = track.play_mode
+            control = self._track_controls.get(track.id) if track.id else None
+            if control:
+                # control._model IS this track object, so the silent setters
+                # keep the in-memory scene in sync too.
+                control.set_volume(new.volume)
+                control.set_repeat(new.is_repeat)
+                control.set_play_mode(new.play_mode)
+            else:
+                track.volume = new.volume
+                track.is_repeat = new.is_repeat
+                track.play_mode = new.play_mode
+
+            if live and track.id is not None:
+                player = self.mixer.get_player(track.id)
+                if new.play_mode and was_on and player:
+                    player.repeat = new.is_repeat
+                    player.fade_to_volume(round(new.volume * 100), PRESET_FADE_MS)
+                elif new.play_mode and not was_on:
+                    self._play_track(track, fade_ms=PRESET_FADE_MS)
+                elif not new.play_mode and player:
+                    player.fade_out(PRESET_FADE_MS, pause_after=True)
+            elif paused and track.id is not None:
+                # Silent players: snap settings so resume uses the new preset.
+                player = self.mixer.get_player(track.id)
+                if player:
+                    player.target_volume = round(new.volume * 100)
+                    player.repeat = new.is_repeat
+
+        for entry in self._current_scene.playlist_entries:
+            new_entry = new_entries.get(entry.id)
+            if not new_entry:
+                continue
+            was_on = entry.play_mode
+            entry_control = (
+                self._playlist_entry_controls.get(entry.id) if entry.id else None
+            )
+            if entry_control:
+                entry_control.set_volume(new_entry.volume)
+                entry_control.set_repeat(new_entry.is_repeat)
+                entry_control.set_shuffle(new_entry.is_shuffle)
+                entry_control.set_play_mode(new_entry.play_mode)
+            else:
+                entry.volume = new_entry.volume
+                entry.is_repeat = new_entry.is_repeat
+                entry.is_shuffle = new_entry.is_shuffle
+                entry.play_mode = new_entry.play_mode
+
+            entry_player = self._playlist_players.get(entry.id) if entry.id else None
+            if entry_player:
+                entry_player.set_shuffle(new_entry.is_shuffle)
+                entry_player.set_repeat(new_entry.is_repeat)
+            if live:
+                if new_entry.play_mode and was_on and entry_player:
+                    entry_player.fade_to_volume(
+                        round(new_entry.volume * 100), PRESET_FADE_MS
+                    )
+                elif new_entry.play_mode and not was_on:
+                    if entry_player:
+                        entry_player.set_volume(round(new_entry.volume * 100))
+                        entry_player.resume(PRESET_FADE_MS)
+                    else:
+                        self._start_playlist_entry(entry, fade_ms=PRESET_FADE_MS)
+                elif not new_entry.play_mode and entry_player:
+                    entry_player.pause(PRESET_FADE_MS)
+            elif paused and entry_player:
+                entry_player.set_volume(round(new_entry.volume * 100))
+
+        _log.info("preset_switched", scene_id=scene_id, slot=slot, live=live)
+
     # Public entry points for the application keyboard shortcuts (MainWindow).
     # They wrap the private play/pause logic so MainWindow needn't reach into
     # editor internals.
@@ -590,7 +755,7 @@ class SceneEditor(QWidget):
             self._active_scene_id, self._active_scene_title, False
         )
 
-    def _play_track(self, track: SceneAudioFile):
+    def _play_track(self, track: SceneAudioFile, fade_ms: int = 500):
         """Ensure a track has a player and start playback"""
         assert track.id is not None
         if not track.audio_file:
@@ -611,7 +776,7 @@ class SceneEditor(QWidget):
         control = self._track_controls.get(track.id)
         if control and control.player is not player:
             control.set_player(player)
-        player.fade_in(500)
+        player.fade_in(fade_ms)
 
     def _apply_track_play_mode(self, track_id: int, play_mode: bool):
         """Start or pause a track based on play mode"""
@@ -687,6 +852,10 @@ class SceneEditor(QWidget):
         self.add_playlist_btn.setEnabled(False)
         self.play_toggle_btn.setEnabled(False)
         self._sync_scene_play_button()
+        self._preset_slot = 1
+        for btn in self._preset_buttons.values():
+            btn.setEnabled(False)
+        self._sync_preset_buttons()
         self.empty_label.hide()
         self.scroll_area.hide()
 
