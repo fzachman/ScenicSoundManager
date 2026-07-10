@@ -194,6 +194,8 @@ class PlaylistPickerDialog(QDialog):
 
         # Load track counts for each playlist
         for playlist in playlists:
+            if playlist.id is None:
+                continue
             full = self.db.get_playlist(playlist.id)
             if full:
                 playlist.tracks = full.tracks

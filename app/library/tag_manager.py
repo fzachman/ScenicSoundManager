@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QLayoutItem,
     QMenu,
     QPushButton,
     QScrollArea,
@@ -79,7 +80,7 @@ class FlowLayout(QLayout):
 
     def __init__(self, parent=None, margin: int = 0, spacing: int = 0):
         super().__init__(parent)
-        self._items = []
+        self._items: list[QLayoutItem] = []
         self.setContentsMargins(margin, margin, margin, margin)
         self.setSpacing(spacing)
 
@@ -126,8 +127,10 @@ class FlowLayout(QLayout):
         return size
 
     def _do_layout(self, rect: QRect, test_only: bool) -> int:
-        left, top, right, bottom = self.getContentsMargins()
-        effective_rect = rect.adjusted(left, top, -right, -bottom)
+        margins = self.contentsMargins()
+        effective_rect = rect.adjusted(
+            margins.left(), margins.top(), -margins.right(), -margins.bottom()
+        )
         x = effective_rect.x()
         y = effective_rect.y()
         line_height = 0
@@ -151,7 +154,7 @@ class FlowLayout(QLayout):
             x = next_x
             line_height = max(line_height, item.sizeHint().height())
 
-        return y + line_height - rect.y() + bottom
+        return y + line_height - rect.y() + margins.bottom()
 
 
 class TagManager(QWidget):
@@ -280,6 +283,8 @@ class TagManager(QWidget):
 
     def _toggle_tag_filter(self, tag: Tag):
         """Toggle tag in filter selection"""
+        if tag.id is None:
+            return
         if tag.id in self._selected_tag_ids:
             self._selected_tag_ids.remove(tag.id)
         else:
@@ -311,9 +316,11 @@ class TagManager(QWidget):
         menu = QMenu(self)
 
         edit_action = menu.addAction("Edit")
+        assert edit_action is not None
         edit_action.triggered.connect(lambda: self._edit_tag(tag))
 
         delete_action = menu.addAction("Delete")
+        assert delete_action is not None
         delete_action.triggered.connect(lambda: self._delete_tag(tag))
 
         menu.exec(badge.mapToGlobal(pos))
@@ -335,6 +342,8 @@ class TagManager(QWidget):
 
     def _delete_tag(self, tag: Tag):
         """Delete a tag"""
+        if tag.id is None:
+            return
         self.db.delete_tag(tag.id)
         self._selected_tag_ids.discard(tag.id)
         self.refresh_tags()
@@ -359,7 +368,10 @@ class TagManager(QWidget):
     def _update_tag_container_height(self) -> None:
         if not self._tags_scroll:
             return
-        width = self._tags_scroll.viewport().width()
+        viewport = self._tags_scroll.viewport()
+        if viewport is None:
+            return
+        width = viewport.width()
         if width <= 0:
             return
         height = self._calculate_tag_container_height(width)
@@ -472,12 +484,16 @@ class TagAssigner(QWidget):
 
     def _add_tag(self, tag: Tag):
         """Add a tag to the audio file"""
+        if tag.id is None:
+            return
         self.db.add_tag_to_audio_file(self.audio_file_id, tag.id)
         self.refresh_tags()
         self.tags_changed.emit()
 
     def _remove_tag(self, tag: Tag):
         """Remove a tag from the audio file"""
+        if tag.id is None:
+            return
         self.db.remove_tag_from_audio_file(self.audio_file_id, tag.id)
         self.refresh_tags()
         self.tags_changed.emit()

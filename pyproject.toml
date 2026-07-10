@@ -29,9 +29,7 @@ ignore = ["E501"]
 "tests/*" = ["B017"]
 
 [tool.mypy]
-# Advisory only for now: run in CI but non-blocking. The codebase has ~200
-# pre-existing type findings (mostly Optional/None-guard union-attr in the
-# audio layer); tighten these incrementally rather than gating the build.
+# Blocking in CI: the baseline was driven to zero, keep it there.
 python_version = "3.13"
 files = ["app"]
 ignore_missing_imports = true   # python-vlc / mutagen ship no type stubs

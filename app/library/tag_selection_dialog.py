@@ -21,6 +21,13 @@ from ..shared.logging import get_logger
 from ..shared.styles import Styles
 from .tag_manager import FlowLayout, TagBadge
 
+
+def _tag_id(tag: Tag) -> int:
+    """The id of a persisted tag (tags here always come from the DB)."""
+    assert tag.id is not None
+    return tag.id
+
+
 log = get_logger(__name__)
 
 
@@ -39,7 +46,7 @@ class GetInfoDialog(QDialog):
         super().__init__(parent)
         self.db = db
         self._audio_files = audio_files
-        self._file_ids = [f.id for f in audio_files]
+        self._file_ids = [f.id for f in audio_files if f.id is not None]
         self._total = len(audio_files)
 
         self._tag_states: dict[int, TagState] = {}
@@ -117,12 +124,13 @@ class GetInfoDialog(QDialog):
             # Mixed — default to empty option with placeholder hint
             self._artist_combo.setCurrentIndex(0)
             line_edit = self._artist_combo.lineEdit()
-            line_edit.setPlaceholderText("Multiple values")
-            palette = line_edit.palette()
-            palette.setColor(
-                QPalette.ColorRole.PlaceholderText, QColor(Styles.TEXT_SUBTLE)
-            )
-            line_edit.setPalette(palette)
+            if line_edit is not None:
+                line_edit.setPlaceholderText("Multiple values")
+                palette = line_edit.palette()
+                palette.setColor(
+                    QPalette.ColorRole.PlaceholderText, QColor(Styles.TEXT_SUBTLE)
+                )
+                line_edit.setPalette(palette)
 
         # Connect AFTER setting initial value to avoid false positive
         self._artist_combo.currentTextChanged.connect(self._on_artist_changed)
@@ -149,19 +157,21 @@ class GetInfoDialog(QDialog):
         tags_by_file = self.db._batch_load_tags(self._file_ids)
         for _file_id, file_tags in tags_by_file.items():
             for tag in file_tags:
-                self._tag_counts[tag.id] = self._tag_counts.get(tag.id, 0) + 1
+                tid = _tag_id(tag)
+                self._tag_counts[tid] = self._tag_counts.get(tid, 0) + 1
 
         # Determine initial states
         for tag in self._all_tags:
-            count = self._tag_counts.get(tag.id, 0)
+            tid = _tag_id(tag)
+            count = self._tag_counts.get(tid, 0)
             if count == 0:
                 state = TagState.NONE
             elif count == self._total:
                 state = TagState.ALL
             else:
                 state = TagState.PARTIAL
-            self._tag_states[tag.id] = state
-            self._original_tag_states[tag.id] = state
+            self._tag_states[tid] = state
+            self._original_tag_states[tid] = state
 
         # Scrollable tag area
         scroll = QScrollArea()
@@ -175,14 +185,15 @@ class GetInfoDialog(QDialog):
             badge = TagBadge(tag, removable=False)
             badge.clicked.connect(self._on_tag_clicked)
             flow.addWidget(badge)
-            self._badges[tag.id] = badge
-            self._apply_tag_style(tag, self._tag_states[tag.id])
+            tid = _tag_id(tag)
+            self._badges[tid] = badge
+            self._apply_tag_style(tag, self._tag_states[tid])
 
         scroll.setWidget(container)
         parent_layout.addWidget(scroll, 1)
 
     def _apply_tag_style(self, tag: Tag, state: TagState):
-        badge = self._badges[tag.id]
+        badge = self._badges[_tag_id(tag)]
         color = tag.color or Styles.TAG_COLORS[0]
 
         if state == TagState.ALL:
@@ -193,7 +204,7 @@ class GetInfoDialog(QDialog):
             )
             badge.label.setText(tag.name)
         elif state == TagState.PARTIAL:
-            count = self._tag_counts.get(tag.id, 0)
+            count = self._tag_counts.get(_tag_id(tag), 0)
             badge.set_label_style(
                 Styles.tag_badge_style(
                     color, border_color=Styles.PRIMARY, border_style="dashed"
@@ -207,12 +218,13 @@ class GetInfoDialog(QDialog):
         badge.label.adjustSize()
 
     def _on_tag_clicked(self, tag: Tag):
-        current = self._tag_states[tag.id]
+        tid = _tag_id(tag)
+        current = self._tag_states[tid]
         if current in (TagState.NONE, TagState.PARTIAL):
-            self._tag_states[tag.id] = TagState.ALL
+            self._tag_states[tid] = TagState.ALL
             self._apply_tag_style(tag, TagState.ALL)
         else:
-            self._tag_states[tag.id] = TagState.NONE
+            self._tag_states[tid] = TagState.NONE
             self._apply_tag_style(tag, TagState.NONE)
 
     def _on_artist_changed(self, text: str):

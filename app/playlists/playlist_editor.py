@@ -194,8 +194,8 @@ class PlaylistTrackListContainer(QWidget):
         track_ids: list[int] = []
         for i in range(layout.count()):
             item = layout.itemAt(i)
-            widget = item.widget()
-            if isinstance(widget, PlaylistTrackItem):
+            widget = item.widget() if item else None
+            if isinstance(widget, PlaylistTrackItem) and widget.track.id is not None:
                 track_ids.append(widget.track.id)
         return track_ids
 
@@ -242,7 +242,7 @@ class PlaylistTrackListContainer(QWidget):
             return 0
         for i in range(layout.count()):
             item = layout.itemAt(i)
-            widget = item.widget()
+            widget = item.widget() if item else None
             if not isinstance(widget, PlaylistTrackItem):
                 continue
             midpoint = widget.y() + (widget.height() / 2)
@@ -457,6 +457,7 @@ class PlaylistEditor(QWidget):
 
     def _add_track_item(self, track: PlaylistTrack, position: int):
         """Add a track item widget"""
+        assert track.id is not None
         item = PlaylistTrackItem(track, position=position)
         item.remove_requested.connect(self._remove_track)
 
@@ -492,6 +493,8 @@ class PlaylistEditor(QWidget):
 
     def _remove_track(self, track_id: int):
         """Remove a track from the playlist"""
+        if not self._current_playlist:
+            return
         # If the currently playing track is being removed, advance first
         removed_track = None
         for t in self._current_playlist.tracks:
@@ -553,6 +556,7 @@ class PlaylistEditor(QWidget):
             track_ids = self.tracks_container.track_ids_in_order()
         if not track_ids:
             return
+        assert self._current_playlist.id is not None
         self.db.reorder_playlist_tracks(self._current_playlist.id, track_ids)
 
     # -- Playback controls --
@@ -596,7 +600,7 @@ class PlaylistEditor(QWidget):
         is set when playback starts and survives pause (paused = active with
         is_playing False), so browsing the sidebar doesn't affect it.
         """
-        if self._active_playlist is None:
+        if self._active_playlist is None or self._active_playlist.id is None:
             return None
         return (self._active_playlist.id, self._is_playing)
 
@@ -828,7 +832,7 @@ class PlaylistEditor(QWidget):
             )
             item.set_now_playing(is_current)
 
-    def _is_playing_this_playlist(self, playlist_id: int) -> bool:
+    def _is_playing_this_playlist(self, playlist_id: int | None) -> bool:
         """Check if the given playlist is the active one"""
         return (
             self._active_playlist is not None

@@ -73,8 +73,7 @@ jobs:
       - name: Ruff format check
         run: ruff format --check
 
-      - name: Mypy (advisory, non-blocking)
-        continue-on-error: true
+      - name: Mypy
         run: mypy
 
       - name: Run tests

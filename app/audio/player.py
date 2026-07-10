@@ -22,9 +22,9 @@ class TrackPlayer(QObject):
         self.file_path = file_path
         self.available = self.engine.available
 
-        # Volume settings (0-100)
+        # Volume settings (0-100; current holds fractional values mid-fade)
         self._target_volume = 100
-        self._current_volume = 100
+        self._current_volume: float = 100
 
         # Fade timer
         self._fade_timer: QTimer | None = None
@@ -49,6 +49,7 @@ class TrackPlayer(QObject):
             self.media_player = self.engine.create_player()
             self.media = self.engine.create_media(file_path)
             if self.media_player and self.media:
+                assert vlc is not None  # available implies the import succeeded
                 self.media_player.set_media(self.media)
                 self._apply_volume(self._current_volume)
 
@@ -170,7 +171,7 @@ class TrackPlayer(QObject):
 
     def _start_fade(
         self,
-        from_volume: int,
+        from_volume: float,
         to_volume: int,
         duration_ms: int,
         callback: Callable | None = None,

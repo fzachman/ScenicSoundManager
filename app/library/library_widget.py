@@ -249,9 +249,12 @@ class LibraryWidget(QWidget):
             dialog.exec()
 
     # Drag and drop support
-    def dragEnterEvent(self, event: QDragEnterEvent):
+    def dragEnterEvent(self, event: QDragEnterEvent | None):
         """Handle drag enter"""
-        if event.mimeData().hasUrls():
+        if event is None:
+            return
+        mime_data = event.mimeData()
+        if mime_data is not None and mime_data.hasUrls():
             event.acceptProposedAction()
             self.drop_hint.setStyleSheet(Styles.empty_state_style(active=True))
 
@@ -259,12 +262,18 @@ class LibraryWidget(QWidget):
         """Handle drag leave"""
         self.drop_hint.setStyleSheet(Styles.empty_state_style())
 
-    def dropEvent(self, event: QDropEvent):
+    def dropEvent(self, event: QDropEvent | None):
         """Handle file drop"""
         self.drop_hint.setStyleSheet(Styles.empty_state_style())
 
+        if event is None:
+            return
+        mime_data = event.mimeData()
+        if mime_data is None:
+            return
+
         file_paths = []
-        for url in event.mimeData().urls():
+        for url in mime_data.urls():
             path = url.toLocalFile()
             if os.path.isfile(path):
                 file_paths.append(path)

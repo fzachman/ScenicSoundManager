@@ -2,6 +2,7 @@
 
 import colorsys
 import os
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -23,6 +24,10 @@ from PyQt6.QtWidgets import (
 from .icons import IconLibrary
 from .layouts import clear_layout
 from .styles import Styles
+
+if TYPE_CHECKING:
+    from ..audio import TrackPlayer
+    from ..database import AudioFile
 
 
 class FilePickerDialog(QFileDialog):
@@ -419,9 +424,9 @@ class AudioFileSearchDialog(QDialog):
         super().__init__(parent)
         self.db = db
         self.audio_engine = audio_engine
-        self.selected_files = []
+        self.selected_files: list[AudioFile] = []
         self._disabled_track_ids: set[int] = disabled_track_ids or set()
-        self._preview_player = None
+        self._preview_player: TrackPlayer | None = None
         self._preview_file_id: int | None = None
         self._preview_item: FileSelectItem | None = None
 

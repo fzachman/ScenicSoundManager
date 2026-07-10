@@ -56,7 +56,7 @@ def configure_logging() -> None:
 
     # Shared shape for both sinks; also applied to any stdlib-originated
     # records so third-party log lines come out in the same format.
-    pre_chain = [
+    pre_chain: list[structlog.typing.Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),

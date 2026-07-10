@@ -20,7 +20,11 @@ class MetadataExtractor:
         Returns:
             dict with keys: title, artist, duration_seconds
         """
-        result = {"title": None, "artist": None, "duration_seconds": None}
+        result: dict[str, str | float | None] = {
+            "title": None,
+            "artist": None,
+            "duration_seconds": None,
+        }
 
         try:
             audio = File(file_path, easy=True)

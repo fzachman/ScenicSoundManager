@@ -235,6 +235,7 @@ class FileTableWidget(QTableWidget):
         self.setItem(row, self.COL_DURATION, duration_item)
 
         # Tags
+        assert audio_file.id is not None
         tag_widget = TagAssigner(self.db, audio_file.id)
         tag_widget.tags_changed.connect(self.tags_bulk_assigned.emit)
         self.setCellWidget(row, self.COL_TAGS, tag_widget)
@@ -603,7 +604,10 @@ class FileTableWidget(QTableWidget):
 
     def get_selected_files(self) -> list[AudioFile]:
         """Get currently selected audio files"""
-        rows = self.selectionModel().selectedRows()
+        selection_model = self.selectionModel()
+        if selection_model is None:
+            return []
+        rows = selection_model.selectedRows()
         files = []
         for row in rows:
             audio_file = self._get_file_at_row(row.row())
@@ -654,7 +658,9 @@ class FileTableWidget(QTableWidget):
             self._sort_column = logical_index
             self._sort_order = Qt.SortOrder.AscendingOrder
 
-        self.horizontalHeader().setSortIndicator(self._sort_column, self._sort_order)
+        header = self.horizontalHeader()
+        if header is not None:
+            header.setSortIndicator(self._sort_column, self._sort_order)
         self.sort_requested.emit(self._sort_column, self._sort_order)
 
     # --- Column customization ---
@@ -709,6 +715,8 @@ class FileTableWidget(QTableWidget):
     def _on_section_moved(self, logical_index: int, old_visual: int, new_visual: int):
         """Enforce Play (visual 0) and Title (visual 1) stay locked"""
         header = self.horizontalHeader()
+        if header is None:
+            return
         play_visual = header.visualIndex(self.COL_PLAY)
         title_visual = header.visualIndex(self.COL_TITLE)
 

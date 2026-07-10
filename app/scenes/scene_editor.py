@@ -171,6 +171,7 @@ class SceneEditor(QWidget):
 
     def _add_track_control(self, track: SceneAudioFile, use_active_players: bool):
         """Add a track control widget"""
+        assert track.id is not None
         player = None
         created_player = False
         if use_active_players and track.audio_file:
@@ -222,6 +223,7 @@ class SceneEditor(QWidget):
 
     def _add_playlist_entry_control(self, entry: ScenePlaylistEntry):
         """Add a playlist entry control widget"""
+        assert entry.id is not None
         control = PlaylistEntryControl(entry)
         control.volume_changed.connect(self._on_playlist_entry_volume_changed)
         control.volume_committed.connect(self._on_playlist_entry_volume_committed)
@@ -351,6 +353,8 @@ class SceneEditor(QWidget):
 
     def _apply_playlist_entry_play_mode(self, entry_id: int, play_mode: bool):
         """Start or pause a playlist entry based on play mode"""
+        if not self._current_scene:
+            return
         if play_mode:
             entry = next(
                 (e for e in self._current_scene.playlist_entries if e.id == entry_id),
@@ -369,6 +373,7 @@ class SceneEditor(QWidget):
 
     def _start_playlist_entry(self, entry: ScenePlaylistEntry):
         """Create and start a ScenePlaylistPlayer for a playlist entry."""
+        assert entry.id is not None and entry.playlist_id is not None
         player = ScenePlaylistPlayer(
             playlist_id=entry.playlist_id,
             db=self.db,
@@ -396,7 +401,7 @@ class SceneEditor(QWidget):
     def _update_playlist_entry_now_playing(self, entry_id: int, audio_file_id: int):
         """Update the now-playing display for a playlist entry control."""
         control = self._playlist_entry_controls.get(entry_id)
-        if not control:
+        if not control or not self._current_scene:
             return
         # A new track is starting: zero the scrubber (the next position tick
         # repopulates it once the new track reports its length).
@@ -587,6 +592,7 @@ class SceneEditor(QWidget):
 
     def _play_track(self, track: SceneAudioFile):
         """Ensure a track has a player and start playback"""
+        assert track.id is not None
         if not track.audio_file:
             return
         if not os.path.exists(track.audio_file.file_path):
@@ -609,6 +615,8 @@ class SceneEditor(QWidget):
 
     def _apply_track_play_mode(self, track_id: int, play_mode: bool):
         """Start or pause a track based on play mode"""
+        if not self._current_scene:
+            return
         if play_mode:
             track = next(
                 (t for t in self._current_scene.tracks if t.id == track_id),
@@ -700,6 +708,7 @@ class SceneEditor(QWidget):
             track_ids = self.tracks_container.track_ids_in_order()
         if not track_ids:
             return
+        assert self._current_scene.id is not None
         self.db.reorder_tracks(self._current_scene.id, track_ids)
         track_by_id = {track.id: track for track in self._current_scene.tracks}
         new_tracks = []
@@ -734,8 +743,8 @@ class TrackListContainer(QWidget):
         track_ids: list[int] = []
         for i in range(layout.count()):
             item = layout.itemAt(i)
-            widget = item.widget()
-            if isinstance(widget, TrackControl):
+            widget = item.widget() if item else None
+            if isinstance(widget, TrackControl) and widget.track.id is not None:
                 track_ids.append(widget.track.id)
         return track_ids
 
@@ -782,7 +791,7 @@ class TrackListContainer(QWidget):
             return 0
         for i in range(layout.count()):
             item = layout.itemAt(i)
-            widget = item.widget()
+            widget = item.widget() if item else None
             if not isinstance(widget, TrackControl):
                 continue
             midpoint = widget.y() + (widget.height() / 2)

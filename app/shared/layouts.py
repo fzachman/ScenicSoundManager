@@ -7,6 +7,8 @@ def clear_layout(layout: QLayout, keep_trailing_items: int = 0) -> None:
     """Remove child widgets from a layout and detach them from the parent tree."""
     while layout.count() > keep_trailing_items:
         item = layout.takeAt(0)
+        if item is None:
+            continue
         widget = item.widget()
         child_layout = item.layout()
 
