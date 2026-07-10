@@ -352,3 +352,39 @@ class TestDrag:
         mime = FakeDrag.created[-1].mime_data
         assert PLAYLIST_MIME in mime.formats()
         assert mime_payload(mime, PLAYLIST_MIME) == "9"
+
+
+class TestSilentSetters:
+    """set_volume / set_repeat / set_shuffle update state + UI without
+    emitting (preset apply)."""
+
+    def test_set_volume_updates_ui_and_model_without_emitting(self, qapp, entry):
+        control = PlaylistEntryControl(entry)
+        rec_live = record(control.volume_changed)
+        rec_committed = record(control.volume_committed)
+
+        control.set_volume(0.75)
+
+        assert rec_live == []
+        assert rec_committed == []
+        assert entry.volume == pytest.approx(0.75)
+        assert control.volume_slider.value() == 75
+
+    def test_set_repeat_updates_ui_and_model_without_emitting(self, qapp, entry):
+        control = PlaylistEntryControl(entry)
+        rec = record(control.repeat_changed)
+
+        control.set_repeat(True)
+
+        assert rec == []
+        assert entry.is_repeat is True
+
+    def test_set_shuffle_updates_ui_and_model_without_emitting(self, qapp, entry):
+        control = PlaylistEntryControl(entry)
+        rec = record(control.shuffle_changed)
+
+        control.set_shuffle(True)
+
+        assert rec == []
+        assert entry.is_shuffle is True
+        assert control._shuffle_mode is True

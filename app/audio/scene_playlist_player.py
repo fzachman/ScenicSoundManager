@@ -80,6 +80,12 @@ class ScenePlaylistPlayer(QObject):
         if self._player:
             self._player.target_volume = volume
 
+    def fade_to_volume(self, volume: int, duration_ms: int = 500) -> None:
+        """Ramp to a volume (0-100); later tracks start at the new level."""
+        self._volume = volume
+        if self._player:
+            self._player.fade_to_volume(volume, duration_ms)
+
     def set_shuffle(self, enabled: bool) -> None:
         """Update shuffle mode (can be toggled during playback)."""
         self._is_shuffle = enabled

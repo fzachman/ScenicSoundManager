@@ -320,18 +320,37 @@ class TestFades:
         player.fade_to_volume(500, duration_ms=500)
         assert player.target_volume == 100
 
-    def test_target_volume_does_not_apply_while_fading(self, qapp, mock_engine):
+    def test_target_volume_mid_fade_retargets_without_snapping(self, qapp, mock_engine):
+        # A slider drag during a fade (e.g. a preset transition ramp) must
+        # win: the fade retargets from its current level instead of either
+        # snapping audibly or being silently discarded.
         player = _make_player(mock_engine)
-        # Start a fade so _is_fading() is True
         player.fade_to_volume(0, duration_ms=1000)
         assert player._is_fading()
         before = player._current_volume
         player.media_player.audio_set_volume.reset_mock()
-        # Setting target_volume while fading must NOT snap current volume or apply
+
         player.target_volume = 70
+
         assert player.target_volume == 70
-        assert player._current_volume == before
+        assert player._current_volume == before  # no snap
         player.media_player.audio_set_volume.assert_not_called()
+        assert player._is_fading()
+
+        _drive_fade_to_completion(player)
+        assert player._current_volume == 70
+
+    def test_target_volume_mid_fade_preserves_pending_pause(self, qapp, mock_engine):
+        # Retargeting during a fade-out must not cancel the pause it was
+        # going to perform, or a track could keep playing in a paused scene.
+        player = _make_player(mock_engine)
+        player.fade_out(duration_ms=1000, pause_after=True)
+        player.media_player.pause.reset_mock()
+
+        player.target_volume = 70
+        _drive_fade_to_completion(player)
+
+        player.media_player.pause.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

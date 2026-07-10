@@ -165,6 +165,21 @@ class SceneControlCard(QFrame):
         self._model.play_mode = self._play_mode
         self._update_play_mode_ui()
 
+    def set_volume(self, volume: float) -> None:
+        """Update volume state/UI WITHOUT emitting or touching audio.
+
+        For preset apply: the editor drives the audio itself (ramped, not
+        snapped), so ``_on_volume_applied`` is deliberately skipped.
+        """
+        self._model.volume = volume
+        self.volume.set_volume_silently(volume)
+
+    def set_repeat(self, is_repeat: bool) -> None:
+        """Update repeat state/UI WITHOUT emitting or touching audio."""
+        self._repeat_mode = bool(is_repeat)
+        self._model.is_repeat = self._repeat_mode
+        self._update_repeat_button()
+
     def _update_play_mode_ui(self) -> None:
         self.play_btn.setIcon(self._icons.icon("play-solid"))
         if self._play_mode:

@@ -82,7 +82,15 @@ class TrackPlayer(QObject):
     def target_volume(self, value: int) -> None:
         """Set the target volume (0-100)"""
         self._target_volume = max(0, min(100, value))
-        if not self._is_fading():
+        if self._is_fading():
+            # Retarget the in-flight fade from wherever the ramp currently
+            # is; without this the change is silently discarded until the
+            # fade completes at its precomputed endpoint. The pending
+            # callback (e.g. pause after a fade-out) is preserved.
+            callback = self._fade_callback
+            self._stop_fade()
+            self._start_fade(self._current_volume, self._target_volume, 200, callback)
+        else:
             self._current_volume = self._target_volume
             self._apply_volume(self._current_volume)
 

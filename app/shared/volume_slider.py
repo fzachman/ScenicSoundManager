@@ -52,6 +52,20 @@ class VolumeSlider(QWidget):
         )
         layout.addWidget(self.value_label)
 
+    def set_volume_silently(self, volume: float) -> None:
+        """Set the slider without emitting changed/committed.
+
+        For programmatic state swaps (preset apply): a plain setValue would
+        emit both signals (the handle isn't down) and write the value back
+        to persistence. blockSignals also suppresses the label update, so
+        the label is set manually.
+        """
+        value = round(volume * 100)
+        self.slider.blockSignals(True)
+        self.slider.setValue(value)
+        self.slider.blockSignals(False)
+        self.value_label.setText(f"{value}%")
+
     def _on_changed(self, value: int) -> None:
         self.value_label.setText(f"{value}%")
         volume = value / 100.0

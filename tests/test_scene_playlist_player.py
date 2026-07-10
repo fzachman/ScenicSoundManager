@@ -575,3 +575,30 @@ class TestMissingFiles:
             assert not player.is_playing
             assert player.current_audio_file_id is None
             assert finished == [True]
+
+
+class TestFadeToVolume:
+    def test_fade_to_volume_ramps_live_player(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        playlist_id, _ = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+        inner = MagicMock()
+        player._player = inner
+
+        player.fade_to_volume(40, duration_ms=1500)
+
+        assert player._volume == 40
+        inner.fade_to_volume.assert_called_once_with(40, 1500)
+
+    def test_fade_to_volume_without_player_just_records_level(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        # The new level must still stick so the next track starts at it.
+        playlist_id, _ = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+        assert player._player is None
+
+        player.fade_to_volume(30)
+
+        assert player._volume == 30

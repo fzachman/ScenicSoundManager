@@ -65,3 +65,23 @@ class TestCommit:
         vs.slider.sliderReleased.emit()
         assert len(rec) == 1
         assert rec[0] == pytest.approx((0.2,))
+
+
+class TestSilentSet:
+    def test_set_volume_silently_emits_nothing(self, qapp):
+        vs = VolumeSlider(0.5)
+        changed = record(vs.changed)
+        committed = record(vs.committed)
+
+        vs.set_volume_silently(0.8)
+
+        assert changed == []
+        assert committed == []
+        assert vs.slider.value() == 80
+        assert vs.value_label.text() == "80%"
+
+    def test_set_volume_silently_rounds_not_truncates(self, qapp):
+        vs = VolumeSlider(0.5)
+        vs.set_volume_silently(0.29)
+        assert vs.slider.value() == 29
+        assert vs.value_label.text() == "29%"

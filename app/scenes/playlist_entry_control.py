@@ -212,6 +212,12 @@ class PlaylistEntryControl(SceneControlCard):
         self._update_shuffle_button()
         self.shuffle_changed.emit(self.entry.id, self._shuffle_mode)
 
+    def set_shuffle(self, is_shuffle: bool) -> None:
+        """Update shuffle state/UI WITHOUT emitting (preset apply)."""
+        self._shuffle_mode = bool(is_shuffle)
+        self.entry.is_shuffle = self._shuffle_mode
+        self._update_shuffle_button()
+
     def _update_shuffle_button(self):
         """Update shuffle button appearance"""
         self.shuffle_btn.setStyleSheet(

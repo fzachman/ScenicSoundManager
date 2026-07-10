@@ -328,3 +328,34 @@ class TestPlayerIntegration:
         control.position_slider.setValue(500)
         control.position_slider.sliderReleased.emit()
         assert player.set_position_calls == [30000]
+
+
+class TestSilentSetters:
+    """set_volume / set_repeat mirror set_play_mode: state + UI update with no
+    signal emission and no direct audio push (preset apply drives audio via
+    the editor's ramped transition, not the card)."""
+
+    def test_set_volume_updates_ui_and_model_without_emitting(self, qapp, track):
+        player = FakeTrackPlayer()
+        control = TrackControl(track, player)
+        live, committed = _capture(control)
+        player.target_volume = 55  # sentinel: silent set must not touch audio
+
+        control.set_volume(0.8)
+
+        assert live == []
+        assert committed == []
+        assert track.volume == pytest.approx(0.8)
+        assert control.volume_slider.value() == 80
+        assert player.target_volume == 55
+
+    def test_set_repeat_updates_ui_and_model_without_emitting(self, qapp, track):
+        player = FakeTrackPlayer()
+        control = TrackControl(track, player)
+        rec = record(control.repeat_changed)
+
+        control.set_repeat(True)
+
+        assert rec == []
+        assert track.is_repeat is True
+        assert player.repeat is False  # audio untouched
