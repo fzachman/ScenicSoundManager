@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -120,7 +121,7 @@ class SceneEditor(QWidget):
             btn.clicked.connect(lambda _checked, s=slot: self._on_preset_clicked(s))
             btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             btn.customContextMenuRequested.connect(
-                lambda _pos, s=slot: self._rename_preset(s)
+                lambda pos, s=slot: self._show_preset_menu(s, pos)
             )
             self._preset_buttons[slot] = btn
             add_layout.addWidget(btn)
@@ -566,6 +567,24 @@ class SceneEditor(QWidget):
             self._sync_preset_buttons()
             return
         self._switch_preset(slot)
+
+    def _show_preset_menu(self, slot: int, pos):
+        """Right-click menu for a preset button.
+
+        The modal rename dialog must NOT open directly inside the
+        context-menu signal (mid right-press): re-entering the event loop
+        there can leave the mouse grab stuck on the button and deaden the
+        whole window. Routing through a QMenu popup first — the pattern the
+        rest of the app uses — releases the grab before the dialog opens.
+        """
+        if not self._current_scene:
+            return
+        btn = self._preset_buttons[slot]
+        menu = QMenu(btn)
+        rename_action = menu.addAction("Rename Preset…")
+        assert rename_action is not None
+        rename_action.triggered.connect(lambda: self._rename_preset(slot))
+        menu.exec(btn.mapToGlobal(pos))
 
     def _rename_preset(self, slot: int):
         if not self._current_scene or self._current_scene.id is None:

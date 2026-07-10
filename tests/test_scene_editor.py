@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtCore import QPoint
 
 from app.database import AudioFile, DatabaseConnection, Playlist, Scene
 from app.scenes.scene_editor import SceneEditor
@@ -132,6 +133,33 @@ class TestPresetButtons:
 
         assert db.get_scene_preset_names(scene.scene_id) == {3: "Ambush!"}
         assert editor._preset_buttons[3].text() == "Ambush!"
+
+    def test_right_click_routes_rename_through_a_menu(self, editor, db, scene):
+        # The rename dialog must open from a QMenu action, never directly
+        # inside the customContextMenuRequested handler — the modal exec
+        # mid-right-press left the mouse grab stuck and froze the whole UI.
+        _load(editor, db, scene.scene_id)
+        dialog = MagicMock()
+        dialog.exec.return_value = True
+        dialog.get_text.return_value = "Night Watch"
+        menu = MagicMock()
+        action = MagicMock()
+        menu.addAction.return_value = action
+
+        with (
+            patch("app.scenes.scene_editor.QMenu", return_value=menu),
+            patch("app.scenes.scene_editor.TextInputDialog", return_value=dialog),
+        ):
+            editor._show_preset_menu(2, QPoint(0, 0))
+            # Only the popup menu ran; the dialog waits for the action.
+            menu.exec.assert_called_once()
+            dialog.exec.assert_not_called()
+
+            trigger = action.triggered.connect.call_args[0][0]
+            trigger()
+
+        assert db.get_scene_preset_names(scene.scene_id) == {2: "Night Watch"}
+        assert editor._preset_buttons[2].text() == "Night Watch"
 
     def test_rename_cancelled_changes_nothing(self, editor, db, scene):
         _load(editor, db, scene.scene_id)
