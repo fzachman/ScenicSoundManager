@@ -3,6 +3,7 @@
 import sqlite3
 from pathlib import Path
 
+from ..shared.logging import get_logger
 from .models import (
     AudioFile,
     Playlist,
@@ -12,6 +13,12 @@ from .models import (
     ScenePlaylistEntry,
     Tag,
 )
+
+_log = get_logger(__name__)
+
+# Every scene has exactly these preset slots; each holds a full copy of the
+# per-track/per-entry settings.
+PRESET_SLOTS = (1, 2, 3)
 
 
 class DatabaseConnection:
@@ -43,10 +50,9 @@ class DatabaseConnection:
             schema = f.read()
         self._conn.executescript(schema)
         self._ensure_scene_positions()
-        self._ensure_scene_track_play_mode()
-        self._ensure_scene_playlist_entry_play_mode()
-        self._ensure_scene_playlist_entry_volume()
         self._ensure_playlist_shuffle()
+        self._ensure_scene_active_preset_slot()
+        self._migrate_scene_settings_to_presets()
         self._conn.commit()
 
     def _ensure_scene_positions(self) -> None:
@@ -69,38 +75,70 @@ class DatabaseConnection:
                     "UPDATE scenes SET position = ? WHERE id = ?", (index, row["id"])
                 )
 
-    def _ensure_scene_track_play_mode(self) -> None:
-        """Ensure scene tracks have a play_mode column"""
-        cursor = self._conn.execute("PRAGMA table_info(scene_audio_files)")
+    def _ensure_scene_active_preset_slot(self) -> None:
+        """Ensure scenes track which preset slot is active"""
+        cursor = self._conn.execute("PRAGMA table_info(scenes)")
         columns = {row["name"] for row in cursor.fetchall()}
-        if "play_mode" not in columns:
+        if "active_preset_slot" not in columns:
             self._conn.execute(
-                "ALTER TABLE scene_audio_files ADD COLUMN play_mode INTEGER NOT NULL DEFAULT 1"
+                "ALTER TABLE scenes ADD COLUMN active_preset_slot INTEGER NOT NULL DEFAULT 1"
             )
-        self._conn.execute(
-            "UPDATE scene_audio_files SET play_mode = 1 WHERE play_mode IS NULL"
-        )
 
-    def _ensure_scene_playlist_entry_play_mode(self) -> None:
-        """Ensure scene playlist entries have a play_mode column"""
-        cursor = self._conn.execute("PRAGMA table_info(scene_playlist_entries)")
-        columns = {row["name"] for row in cursor.fetchall()}
-        if "play_mode" not in columns:
-            self._conn.execute(
-                "ALTER TABLE scene_playlist_entries ADD COLUMN play_mode INTEGER NOT NULL DEFAULT 1"
-            )
-        self._conn.execute(
-            "UPDATE scene_playlist_entries SET play_mode = 1 WHERE play_mode IS NULL"
-        )
+    def _migrate_scene_settings_to_presets(self) -> None:
+        """Move per-item scene settings into the preset tables (one-time).
 
-    def _ensure_scene_playlist_entry_volume(self) -> None:
-        """Ensure scene playlist entries have a volume column"""
-        cursor = self._conn.execute("PRAGMA table_info(scene_playlist_entries)")
-        columns = {row["name"] for row in cursor.fetchall()}
-        if "volume" not in columns:
-            self._conn.execute(
-                "ALTER TABLE scene_playlist_entries ADD COLUMN volume REAL NOT NULL DEFAULT 1.0"
-            )
+        Pre-preset databases stored volume/repeat/shuffle/play_mode directly
+        on scene_audio_files / scene_playlist_entries. Copy those values into
+        all three preset slots, then drop the old columns. Gated on the old
+        columns still existing, so fresh and already-migrated databases skip
+        it entirely.
+        """
+        track_columns = {
+            row["name"]
+            for row in self._conn.execute(
+                "PRAGMA table_info(scene_audio_files)"
+            ).fetchall()
+        }
+        if "volume" in track_columns:
+            _log.info("migrating_scene_track_settings_to_presets")
+            for slot in PRESET_SLOTS:
+                self._conn.execute(
+                    """
+                    INSERT INTO scene_track_presets
+                        (scene_audio_file_id, slot, volume, is_repeat, play_mode)
+                    SELECT id, ?, volume, is_repeat, play_mode
+                    FROM scene_audio_files
+                    """,
+                    (slot,),
+                )
+            for column in ("volume", "is_repeat", "play_mode"):
+                self._conn.execute(
+                    f"ALTER TABLE scene_audio_files DROP COLUMN {column}"
+                )
+
+        entry_columns = {
+            row["name"]
+            for row in self._conn.execute(
+                "PRAGMA table_info(scene_playlist_entries)"
+            ).fetchall()
+        }
+        if "volume" in entry_columns:
+            _log.info("migrating_scene_playlist_entry_settings_to_presets")
+            for slot in PRESET_SLOTS:
+                self._conn.execute(
+                    """
+                    INSERT INTO scene_playlist_entry_presets
+                        (scene_playlist_entry_id, slot, volume, is_shuffle,
+                         is_repeat, play_mode)
+                    SELECT id, ?, volume, is_shuffle, is_repeat, play_mode
+                    FROM scene_playlist_entries
+                    """,
+                    (slot,),
+                )
+            for column in ("volume", "is_shuffle", "is_repeat", "play_mode"):
+                self._conn.execute(
+                    f"ALTER TABLE scene_playlist_entries DROP COLUMN {column}"
+                )
 
     def _ensure_playlist_shuffle(self) -> None:
         """Ensure playlists have an is_shuffle column"""
@@ -476,6 +514,7 @@ class DatabaseConnection:
             scene = self._row_to_scene(row)
             scene.tracks = self.get_scene_tracks(scene_id)
             scene.playlist_entries = self.get_scene_playlist_entries(scene_id)
+            scene.preset_names = self.get_scene_preset_names(scene_id)
             return scene
         return None
 
@@ -513,6 +552,7 @@ class DatabaseConnection:
             id=row["id"],
             title=row["title"],
             position=row["position"],
+            active_preset_slot=row["active_preset_slot"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -525,6 +565,138 @@ class DatabaseConnection:
             )
         self._conn.commit()
 
+    def duplicate_scene(self, scene_id: int, new_title: str) -> Scene | None:
+        """Deep-copy a scene: tracks, playlist entries, every preset slot's
+        settings, custom preset names, and the active slot."""
+        source = self._conn.execute(
+            "SELECT * FROM scenes WHERE id = ?", (scene_id,)
+        ).fetchone()
+        if source is None:
+            return None
+
+        self._conn.execute("UPDATE scenes SET position = position + 1")
+        cursor = self._conn.execute(
+            "INSERT INTO scenes (title, position, active_preset_slot) VALUES (?, 0, ?)",
+            (new_title, source["active_preset_slot"]),
+        )
+        new_scene_id = self._insert_id(cursor)
+
+        self._conn.execute(
+            """
+            INSERT INTO scene_presets (scene_id, slot, name)
+            SELECT ?, slot, name FROM scene_presets WHERE scene_id = ?
+            """,
+            (new_scene_id, scene_id),
+        )
+
+        tracks = self._conn.execute(
+            "SELECT id, audio_file_id, position FROM scene_audio_files WHERE scene_id = ?",
+            (scene_id,),
+        ).fetchall()
+        for row in tracks:
+            cursor = self._conn.execute(
+                "INSERT INTO scene_audio_files (scene_id, audio_file_id, position) VALUES (?, ?, ?)",
+                (new_scene_id, row["audio_file_id"], row["position"]),
+            )
+            new_track_id = self._insert_id(cursor)
+            self._conn.execute(
+                """
+                INSERT INTO scene_track_presets
+                    (scene_audio_file_id, slot, volume, is_repeat, play_mode)
+                SELECT ?, slot, volume, is_repeat, play_mode
+                FROM scene_track_presets WHERE scene_audio_file_id = ?
+                """,
+                (new_track_id, row["id"]),
+            )
+
+        entries = self._conn.execute(
+            "SELECT id, playlist_id, position FROM scene_playlist_entries WHERE scene_id = ?",
+            (scene_id,),
+        ).fetchall()
+        for row in entries:
+            cursor = self._conn.execute(
+                "INSERT INTO scene_playlist_entries (scene_id, playlist_id, position) VALUES (?, ?, ?)",
+                (new_scene_id, row["playlist_id"], row["position"]),
+            )
+            new_entry_id = self._insert_id(cursor)
+            self._conn.execute(
+                """
+                INSERT INTO scene_playlist_entry_presets
+                    (scene_playlist_entry_id, slot, volume, is_shuffle,
+                     is_repeat, play_mode)
+                SELECT ?, slot, volume, is_shuffle, is_repeat, play_mode
+                FROM scene_playlist_entry_presets WHERE scene_playlist_entry_id = ?
+                """,
+                (new_entry_id, row["id"]),
+            )
+
+        self._conn.commit()
+        _log.info(
+            "scene_duplicated", source_scene_id=scene_id, new_scene_id=new_scene_id
+        )
+        return self.get_scene(new_scene_id)
+
+    # Scene preset operations
+    def _get_active_preset_slot(self, scene_id: int) -> int:
+        """The scene's active preset slot (1 if the scene is unknown)"""
+        row = self._conn.execute(
+            "SELECT active_preset_slot FROM scenes WHERE id = ?", (scene_id,)
+        ).fetchone()
+        return row["active_preset_slot"] if row else 1
+
+    def _get_track_active_slot(self, track_id: int) -> int:
+        """The active preset slot of the scene owning a scene track"""
+        row = self._conn.execute(
+            """
+            SELECT s.active_preset_slot AS slot
+            FROM scenes s
+            JOIN scene_audio_files saf ON saf.scene_id = s.id
+            WHERE saf.id = ?
+            """,
+            (track_id,),
+        ).fetchone()
+        return row["slot"] if row else 1
+
+    def _get_entry_active_slot(self, entry_id: int) -> int:
+        """The active preset slot of the scene owning a scene playlist entry"""
+        row = self._conn.execute(
+            """
+            SELECT s.active_preset_slot AS slot
+            FROM scenes s
+            JOIN scene_playlist_entries spe ON spe.scene_id = s.id
+            WHERE spe.id = ?
+            """,
+            (entry_id,),
+        ).fetchone()
+        return row["slot"] if row else 1
+
+    def set_active_preset_slot(self, scene_id: int, slot: int) -> None:
+        """Persist which preset slot is active for a scene"""
+        self._conn.execute(
+            "UPDATE scenes SET active_preset_slot = ?, updated_at = datetime('now') WHERE id = ?",
+            (slot, scene_id),
+        )
+        self._conn.commit()
+
+    def get_scene_preset_names(self, scene_id: int) -> dict[int, str]:
+        """Custom preset names by slot (slots never renamed are absent)"""
+        cursor = self._conn.execute(
+            "SELECT slot, name FROM scene_presets WHERE scene_id = ?", (scene_id,)
+        )
+        return {row["slot"]: row["name"] for row in cursor.fetchall()}
+
+    def rename_scene_preset(self, scene_id: int, slot: int, name: str) -> None:
+        """Set a custom name for one of a scene's preset slots"""
+        self._conn.execute(
+            """
+            INSERT INTO scene_presets (scene_id, slot, name)
+            VALUES (?, ?, ?)
+            ON CONFLICT (scene_id, slot) DO UPDATE SET name = excluded.name
+            """,
+            (scene_id, slot, name),
+        )
+        self._conn.commit()
+
     # Scene track operations
     def add_track_to_scene(
         self,
@@ -533,28 +705,53 @@ class DatabaseConnection:
         position: int = 0,
         play_mode: bool = True,
     ) -> int:
-        """Add an audio file to a scene, return the scene_audio_file ID"""
-        cursor = self._conn.execute(
-            """
-            INSERT INTO scene_audio_files (scene_id, audio_file_id, position, play_mode)
-            VALUES (?, ?, ?, ?)
-            """,
-            (scene_id, audio_file_id, position, int(play_mode)),
-        )
-        self._conn.commit()
-        return self._insert_id(cursor)
+        """Add an audio file to a scene, return the scene_audio_file ID.
 
-    def get_scene_tracks(self, scene_id: int) -> list[SceneAudioFile]:
-        """Get all tracks in a scene with their audio file data"""
+        Seeds identical settings rows for every preset slot so switching a
+        never-customized preset doesn't change the new track.
+        """
         cursor = self._conn.execute(
             """
-            SELECT saf.*, af.file_path, af.title, af.artist, af.duration_seconds
+            INSERT INTO scene_audio_files (scene_id, audio_file_id, position)
+            VALUES (?, ?, ?)
+            """,
+            (scene_id, audio_file_id, position),
+        )
+        track_id = self._insert_id(cursor)
+        for slot in PRESET_SLOTS:
+            self._conn.execute(
+                """
+                INSERT INTO scene_track_presets (scene_audio_file_id, slot, play_mode)
+                VALUES (?, ?, ?)
+                """,
+                (track_id, slot, int(play_mode)),
+            )
+        self._conn.commit()
+        return track_id
+
+    def get_scene_tracks(
+        self, scene_id: int, slot: int | None = None
+    ) -> list[SceneAudioFile]:
+        """Get all tracks in a scene with their audio file data.
+
+        Settings come from the given preset slot (default: the scene's
+        active one).
+        """
+        if slot is None:
+            slot = self._get_active_preset_slot(scene_id)
+        cursor = self._conn.execute(
+            """
+            SELECT saf.id, saf.scene_id, saf.audio_file_id, saf.position,
+                   stp.volume, stp.is_repeat, stp.play_mode,
+                   af.file_path, af.title, af.artist, af.duration_seconds
             FROM scene_audio_files saf
             JOIN audio_files af ON saf.audio_file_id = af.id
+            JOIN scene_track_presets stp
+                 ON stp.scene_audio_file_id = saf.id AND stp.slot = ?
             WHERE saf.scene_id = ?
             ORDER BY saf.position
             """,
-            (scene_id,),
+            (slot, scene_id),
         )
         tracks = []
         for row in cursor.fetchall():
@@ -579,19 +776,24 @@ class DatabaseConnection:
         return tracks
 
     def update_track_settings(self, track: SceneAudioFile) -> None:
-        """Update a track's volume, repeat, position, and play mode settings"""
+        """Update a track's position plus its settings in the active preset"""
+        self._conn.execute(
+            "UPDATE scene_audio_files SET position = ? WHERE id = ?",
+            (track.position, track.id),
+        )
+        assert track.id is not None
         self._conn.execute(
             """
-            UPDATE scene_audio_files
-            SET volume = ?, is_repeat = ?, position = ?, play_mode = ?
-            WHERE id = ?
+            UPDATE scene_track_presets
+            SET volume = ?, is_repeat = ?, play_mode = ?
+            WHERE scene_audio_file_id = ? AND slot = ?
             """,
             (
                 track.volume,
                 int(track.is_repeat),
-                track.position,
                 int(track.play_mode),
                 track.id,
+                self._get_track_active_slot(track.id),
             ),
         )
         self._conn.commit()
@@ -603,12 +805,13 @@ class DatabaseConnection:
         volume: float | None = None,
         is_repeat: bool | None = None,
         play_mode: bool | None = None,
+        slot: int | None = None,
     ) -> None:
         """Update individual settings for one scene track, by id.
 
         Targeted single-row UPDATE that only writes the fields passed (a value
-        of ``None`` means "leave unchanged"). Avoids fetching/rewriting the
-        whole track when a single setting changes. Column names are hard-coded
+        of ``None`` means "leave unchanged") to the given preset slot
+        (default: the owning scene's active one). Column names are hard-coded
         literals; all values are parameterized.
         """
         assignments = []
@@ -625,9 +828,12 @@ class DatabaseConnection:
         if not assignments:
             return  # nothing to update
 
-        params.append(track_id)
+        if slot is None:
+            slot = self._get_track_active_slot(track_id)
+        params.extend([track_id, slot])
         self._conn.execute(
-            f"UPDATE scene_audio_files SET {', '.join(assignments)} WHERE id = ?",
+            f"UPDATE scene_track_presets SET {', '.join(assignments)} "
+            "WHERE scene_audio_file_id = ? AND slot = ?",
             params,
         )
         self._conn.commit()
@@ -657,37 +863,63 @@ class DatabaseConnection:
         is_repeat: bool = False,
         play_mode: bool = True,
     ) -> int:
-        """Add a playlist entry to a scene, return the entry ID"""
-        cursor = self._conn.execute(
-            """
-            INSERT INTO scene_playlist_entries (scene_id, playlist_id, position, volume, is_shuffle, is_repeat, play_mode)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                scene_id,
-                playlist_id,
-                position,
-                volume,
-                int(is_shuffle),
-                int(is_repeat),
-                int(play_mode),
-            ),
-        )
-        self._conn.commit()
-        return self._insert_id(cursor)
+        """Add a playlist entry to a scene, return the entry ID.
 
-    def get_scene_playlist_entries(self, scene_id: int) -> list[ScenePlaylistEntry]:
-        """Get all playlist entries in a scene with their playlist data"""
+        Seeds identical settings rows for every preset slot so switching a
+        never-customized preset doesn't change the new entry.
+        """
         cursor = self._conn.execute(
             """
-            SELECT spe.*, p.name, p.position AS playlist_position,
+            INSERT INTO scene_playlist_entries (scene_id, playlist_id, position)
+            VALUES (?, ?, ?)
+            """,
+            (scene_id, playlist_id, position),
+        )
+        entry_id = self._insert_id(cursor)
+        for slot in PRESET_SLOTS:
+            self._conn.execute(
+                """
+                INSERT INTO scene_playlist_entry_presets
+                    (scene_playlist_entry_id, slot, volume, is_shuffle,
+                     is_repeat, play_mode)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    entry_id,
+                    slot,
+                    volume,
+                    int(is_shuffle),
+                    int(is_repeat),
+                    int(play_mode),
+                ),
+            )
+        self._conn.commit()
+        return entry_id
+
+    def get_scene_playlist_entries(
+        self, scene_id: int, slot: int | None = None
+    ) -> list[ScenePlaylistEntry]:
+        """Get all playlist entries in a scene with their playlist data.
+
+        Settings come from the given preset slot (default: the scene's
+        active one).
+        """
+        if slot is None:
+            slot = self._get_active_preset_slot(scene_id)
+        cursor = self._conn.execute(
+            """
+            SELECT spe.id, spe.scene_id, spe.playlist_id, spe.position,
+                   spep.volume, spep.is_shuffle, spep.is_repeat, spep.play_mode,
+                   p.name, p.position AS playlist_position,
                    p.created_at AS playlist_created_at, p.updated_at AS playlist_updated_at
             FROM scene_playlist_entries spe
             JOIN playlists p ON spe.playlist_id = p.id
+            JOIN scene_playlist_entry_presets spep
+                 ON spep.scene_playlist_entry_id = spe.id AND spep.slot = ?
             WHERE spe.scene_id = ?
             ORDER BY spe.position
             """,
-            (scene_id,),
+            (slot, scene_id),
         )
         rows = cursor.fetchall()
         playlist_ids = [row["playlist_id"] for row in rows]
@@ -718,21 +950,70 @@ class DatabaseConnection:
         return entries
 
     def update_scene_playlist_entry(self, entry: ScenePlaylistEntry) -> None:
-        """Update a scene playlist entry's settings"""
+        """Update an entry's position plus its settings in the active preset"""
+        self._conn.execute(
+            "UPDATE scene_playlist_entries SET position = ? WHERE id = ?",
+            (entry.position, entry.id),
+        )
+        assert entry.id is not None
         self._conn.execute(
             """
-            UPDATE scene_playlist_entries
-            SET volume = ?, is_shuffle = ?, is_repeat = ?, position = ?, play_mode = ?
-            WHERE id = ?
+            UPDATE scene_playlist_entry_presets
+            SET volume = ?, is_shuffle = ?, is_repeat = ?, play_mode = ?
+            WHERE scene_playlist_entry_id = ? AND slot = ?
             """,
             (
                 entry.volume,
                 int(entry.is_shuffle),
                 int(entry.is_repeat),
-                entry.position,
                 int(entry.play_mode),
                 entry.id,
+                self._get_entry_active_slot(entry.id),
             ),
+        )
+        self._conn.commit()
+
+    def update_scene_playlist_entry_setting(
+        self,
+        entry_id: int,
+        *,
+        volume: float | None = None,
+        is_shuffle: bool | None = None,
+        is_repeat: bool | None = None,
+        play_mode: bool | None = None,
+        slot: int | None = None,
+    ) -> None:
+        """Update individual settings for one scene playlist entry, by id.
+
+        Targeted single-row UPDATE that only writes the fields passed (a value
+        of ``None`` means "leave unchanged") to the given preset slot
+        (default: the owning scene's active one). Column names are hard-coded
+        literals; all values are parameterized.
+        """
+        assignments = []
+        params: list[object] = []
+        if volume is not None:
+            assignments.append("volume = ?")
+            params.append(volume)
+        if is_shuffle is not None:
+            assignments.append("is_shuffle = ?")
+            params.append(int(is_shuffle))
+        if is_repeat is not None:
+            assignments.append("is_repeat = ?")
+            params.append(int(is_repeat))
+        if play_mode is not None:
+            assignments.append("play_mode = ?")
+            params.append(int(play_mode))
+        if not assignments:
+            return  # nothing to update
+
+        if slot is None:
+            slot = self._get_entry_active_slot(entry_id)
+        params.extend([entry_id, slot])
+        self._conn.execute(
+            f"UPDATE scene_playlist_entry_presets SET {', '.join(assignments)} "
+            "WHERE scene_playlist_entry_id = ? AND slot = ?",
+            params,
         )
         self._conn.commit()
 

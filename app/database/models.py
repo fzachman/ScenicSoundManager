@@ -54,10 +54,13 @@ class Scene:
     id: int | None = None
     title: str = ""
     position: int = 0
+    active_preset_slot: int = 1
     created_at: datetime | None = None
     updated_at: datetime | None = None
     tracks: list["SceneAudioFile"] = field(default_factory=list)
     playlist_entries: list["ScenePlaylistEntry"] = field(default_factory=list)
+    # slot -> custom name; slots without a row display as "Preset N"
+    preset_names: dict[int, str] = field(default_factory=dict)
 
 
 @dataclass

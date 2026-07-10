@@ -38,19 +38,17 @@ CREATE TABLE IF NOT EXISTS scenes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
+    active_preset_slot INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
 
--- Audio files in scenes with per-scene settings
+-- Audio files in scenes (membership + order; settings live in scene_track_presets)
 CREATE TABLE IF NOT EXISTS scene_audio_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     scene_id INTEGER NOT NULL,
     audio_file_id INTEGER NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
-    volume REAL NOT NULL DEFAULT 1.0,
-    is_repeat INTEGER NOT NULL DEFAULT 0,
-    play_mode INTEGER NOT NULL DEFAULT 1,
     FOREIGN KEY (scene_id) REFERENCES scenes(id) ON DELETE CASCADE,
     FOREIGN KEY (audio_file_id) REFERENCES audio_files(id) ON DELETE CASCADE,
     UNIQUE (scene_id, audio_file_id)
@@ -58,21 +56,55 @@ CREATE TABLE IF NOT EXISTS scene_audio_files (
 
 CREATE INDEX IF NOT EXISTS idx_scene_audio_files_scene_id ON scene_audio_files(scene_id, position);
 
--- Playlist entries within scenes (playlist as a track type in a scene)
+-- Playlist entries within scenes (membership + order; settings live in
+-- scene_playlist_entry_presets)
 CREATE TABLE IF NOT EXISTS scene_playlist_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     scene_id INTEGER NOT NULL,
     playlist_id INTEGER NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
-    volume REAL NOT NULL DEFAULT 1.0,
-    is_shuffle INTEGER NOT NULL DEFAULT 0,
-    is_repeat INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (scene_id) REFERENCES scenes(id) ON DELETE CASCADE,
     FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
     UNIQUE (scene_id, playlist_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_scene_playlist_entries_scene_id ON scene_playlist_entries(scene_id, position);
+
+-- Custom preset names per scene slot (a row exists only once a preset is
+-- renamed; absent rows display as "Preset N")
+CREATE TABLE IF NOT EXISTS scene_presets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scene_id INTEGER NOT NULL,
+    slot INTEGER NOT NULL CHECK (slot IN (1, 2, 3)),
+    name TEXT NOT NULL,
+    FOREIGN KEY (scene_id) REFERENCES scenes(id) ON DELETE CASCADE,
+    UNIQUE (scene_id, slot)
+);
+
+-- Per-track settings, one row per (track, preset slot)
+CREATE TABLE IF NOT EXISTS scene_track_presets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scene_audio_file_id INTEGER NOT NULL,
+    slot INTEGER NOT NULL CHECK (slot IN (1, 2, 3)),
+    volume REAL NOT NULL DEFAULT 1.0,
+    is_repeat INTEGER NOT NULL DEFAULT 0,
+    play_mode INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (scene_audio_file_id) REFERENCES scene_audio_files(id) ON DELETE CASCADE,
+    UNIQUE (scene_audio_file_id, slot)
+);
+
+-- Per-playlist-entry settings, one row per (entry, preset slot)
+CREATE TABLE IF NOT EXISTS scene_playlist_entry_presets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scene_playlist_entry_id INTEGER NOT NULL,
+    slot INTEGER NOT NULL CHECK (slot IN (1, 2, 3)),
+    volume REAL NOT NULL DEFAULT 1.0,
+    is_shuffle INTEGER NOT NULL DEFAULT 0,
+    is_repeat INTEGER NOT NULL DEFAULT 0,
+    play_mode INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (scene_playlist_entry_id) REFERENCES scene_playlist_entries(id) ON DELETE CASCADE,
+    UNIQUE (scene_playlist_entry_id, slot)
+);
 
 -- Playlist definitions
 CREATE TABLE IF NOT EXISTS playlists (

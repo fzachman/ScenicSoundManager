@@ -668,3 +668,257 @@ class TestBulkAudioFileMethods:
 
         paths = db.get_all_audio_file_paths()
         assert paths == {"/paths/single.mp3", "/paths/bulk.mp3"}
+
+
+class TestScenePresets:
+    """Per-scene preset slots: settings live in the preset tables, resolved
+    through the scene's active slot by default."""
+
+    def _make_scene_with_track(self, db):
+        file_id = db.add_audio_file(AudioFile(file_path="/p/a.mp3", title="A"))
+        scene_id = db.add_scene(Scene(title="Preset Scene"))
+        track_id = db.add_track_to_scene(scene_id, file_id)
+        return scene_id, track_id
+
+    def _make_entry(self, db, scene_id):
+        playlist_id = db.add_playlist(Playlist(name="Preset Playlist"))
+        return db.add_playlist_to_scene(scene_id, playlist_id)
+
+    def test_active_slot_defaults_to_one(self, db):
+        scene_id = db.add_scene(Scene(title="S"))
+        assert db.get_scene(scene_id).active_preset_slot == 1
+
+    def test_set_active_preset_slot_roundtrip(self, db):
+        scene_id = db.add_scene(Scene(title="S"))
+        db.set_active_preset_slot(scene_id, 3)
+        assert db.get_scene(scene_id).active_preset_slot == 3
+
+    def test_add_track_seeds_all_three_slots_identically(self, db):
+        scene_id, _ = self._make_scene_with_track(db)
+        for slot in (1, 2, 3):
+            tracks = db.get_scene_tracks(scene_id, slot=slot)
+            assert len(tracks) == 1
+            assert tracks[0].volume == 1.0
+            assert tracks[0].is_repeat is False
+            assert tracks[0].play_mode is True
+
+    def test_add_entry_seeds_all_three_slots_identically(self, db):
+        scene_id = db.add_scene(Scene(title="S"))
+        self._make_entry(db, scene_id)
+        for slot in (1, 2, 3):
+            entries = db.get_scene_playlist_entries(scene_id, slot=slot)
+            assert len(entries) == 1
+            assert entries[0].volume == 1.0
+            assert entries[0].is_shuffle is False
+            assert entries[0].is_repeat is False
+            assert entries[0].play_mode is True
+
+    def test_track_update_targets_active_slot_only(self, db):
+        scene_id, track_id = self._make_scene_with_track(db)
+        db.set_active_preset_slot(scene_id, 2)
+
+        db.update_scene_track_setting(track_id, volume=0.4, is_repeat=True)
+
+        assert db.get_scene_tracks(scene_id, slot=2)[0].volume == 0.4
+        assert db.get_scene_tracks(scene_id, slot=2)[0].is_repeat is True
+        for untouched in (1, 3):
+            track = db.get_scene_tracks(scene_id, slot=untouched)[0]
+            assert track.volume == 1.0
+            assert track.is_repeat is False
+
+    def test_entry_update_targets_active_slot_only(self, db):
+        scene_id = db.add_scene(Scene(title="S"))
+        entry_id = self._make_entry(db, scene_id)
+        db.set_active_preset_slot(scene_id, 3)
+
+        db.update_scene_playlist_entry_setting(
+            entry_id, volume=0.25, is_shuffle=True, play_mode=False
+        )
+
+        entry = db.get_scene_playlist_entries(scene_id, slot=3)[0]
+        assert entry.volume == 0.25
+        assert entry.is_shuffle is True
+        assert entry.play_mode is False
+        for untouched in (1, 2):
+            entry = db.get_scene_playlist_entries(scene_id, slot=untouched)[0]
+            assert entry.volume == 1.0
+            assert entry.is_shuffle is False
+            assert entry.play_mode is True
+
+    def test_default_read_follows_active_slot(self, db):
+        scene_id, track_id = self._make_scene_with_track(db)
+        db.update_scene_track_setting(track_id, volume=0.9, slot=2)
+
+        assert db.get_scene_tracks(scene_id)[0].volume == 1.0  # slot 1 active
+        db.set_active_preset_slot(scene_id, 2)
+        assert db.get_scene_tracks(scene_id)[0].volume == 0.9
+
+    def test_get_scene_hydrates_from_active_slot(self, db):
+        scene_id, track_id = self._make_scene_with_track(db)
+        db.update_scene_track_setting(track_id, volume=0.7, slot=2)
+        db.set_active_preset_slot(scene_id, 2)
+
+        scene = db.get_scene(scene_id)
+        assert scene.tracks[0].volume == 0.7
+
+    def test_preset_names_default_to_empty(self, db):
+        scene_id = db.add_scene(Scene(title="S"))
+        assert db.get_scene(scene_id).preset_names == {}
+
+    def test_rename_scene_preset_upserts(self, db):
+        scene_id = db.add_scene(Scene(title="S"))
+
+        db.rename_scene_preset(scene_id, 2, "Bar Fight")
+        assert db.get_scene_preset_names(scene_id) == {2: "Bar Fight"}
+
+        db.rename_scene_preset(scene_id, 2, "Calm Tavern")
+        db.rename_scene_preset(scene_id, 1, "Default")
+        assert db.get_scene_preset_names(scene_id) == {
+            1: "Default",
+            2: "Calm Tavern",
+        }
+        assert db.get_scene(scene_id).preset_names[2] == "Calm Tavern"
+
+    def test_preset_rows_cascade_on_scene_delete(self, db):
+        scene_id, _ = self._make_scene_with_track(db)
+        self._make_entry(db, scene_id)
+        db.rename_scene_preset(scene_id, 1, "Named")
+
+        db.delete_scene(scene_id)
+
+        for table in (
+            "scene_presets",
+            "scene_track_presets",
+            "scene_playlist_entry_presets",
+        ):
+            count = db.connection.execute(
+                f"SELECT COUNT(*) AS n FROM {table}"
+            ).fetchone()["n"]
+            assert count == 0, table
+
+    def test_preset_rows_cascade_on_track_removal(self, db):
+        scene_id, track_id = self._make_scene_with_track(db)
+
+        db.remove_track_from_scene(track_id)
+
+        count = db.connection.execute(
+            "SELECT COUNT(*) AS n FROM scene_track_presets"
+        ).fetchone()["n"]
+        assert count == 0
+
+    def test_legacy_database_migrated_to_presets(self, db):
+        # Rebuild the pre-preset shape (settings columns on the item tables,
+        # no preset tables, no scenes.active_preset_slot), then reconnect:
+        # the migration must seed all 3 slots from the legacy values and
+        # drop the old columns.
+        scene_id, track_id = self._make_scene_with_track(db)
+        entry_id = self._make_entry(db, scene_id)
+
+        raw = db.connection
+        for table in (
+            "scene_track_presets",
+            "scene_playlist_entry_presets",
+            "scene_presets",
+        ):
+            raw.execute(f"DROP TABLE {table}")
+        raw.execute("ALTER TABLE scenes DROP COLUMN active_preset_slot")
+        raw.execute(
+            "ALTER TABLE scene_audio_files ADD COLUMN volume REAL NOT NULL DEFAULT 1.0"
+        )
+        raw.execute(
+            "ALTER TABLE scene_audio_files ADD COLUMN is_repeat INTEGER NOT NULL DEFAULT 0"
+        )
+        raw.execute(
+            "ALTER TABLE scene_audio_files ADD COLUMN play_mode INTEGER NOT NULL DEFAULT 1"
+        )
+        raw.execute(
+            "UPDATE scene_audio_files SET volume = 0.35, is_repeat = 1, play_mode = 0"
+        )
+        raw.execute(
+            "ALTER TABLE scene_playlist_entries ADD COLUMN volume REAL NOT NULL DEFAULT 1.0"
+        )
+        raw.execute(
+            "ALTER TABLE scene_playlist_entries ADD COLUMN is_shuffle INTEGER NOT NULL DEFAULT 0"
+        )
+        raw.execute(
+            "ALTER TABLE scene_playlist_entries ADD COLUMN is_repeat INTEGER NOT NULL DEFAULT 0"
+        )
+        raw.execute(
+            "ALTER TABLE scene_playlist_entries ADD COLUMN play_mode INTEGER NOT NULL DEFAULT 1"
+        )
+        raw.execute("UPDATE scene_playlist_entries SET volume = 0.6, is_shuffle = 1")
+        raw.commit()
+        db.close()
+
+        db.connect()
+
+        assert db.get_scene(scene_id).active_preset_slot == 1
+        for slot in (1, 2, 3):
+            track = db.get_scene_tracks(scene_id, slot=slot)[0]
+            assert track.id == track_id
+            assert track.volume == 0.35
+            assert track.is_repeat is True
+            assert track.play_mode is False
+            entry = db.get_scene_playlist_entries(scene_id, slot=slot)[0]
+            assert entry.id == entry_id
+            assert entry.volume == 0.6
+            assert entry.is_shuffle is True
+        # Legacy columns are gone from the item tables
+        track_cols = {
+            row["name"]
+            for row in db.connection.execute(
+                "PRAGMA table_info(scene_audio_files)"
+            ).fetchall()
+        }
+        assert track_cols == {"id", "scene_id", "audio_file_id", "position"}
+        entry_cols = {
+            row["name"]
+            for row in db.connection.execute(
+                "PRAGMA table_info(scene_playlist_entries)"
+            ).fetchall()
+        }
+        assert entry_cols == {"id", "scene_id", "playlist_id", "position"}
+
+    def test_reconnect_is_a_noop_after_migration(self, db):
+        scene_id, track_id = self._make_scene_with_track(db)
+        db.update_scene_track_setting(track_id, volume=0.5)
+        db.close()
+
+        db.connect()
+        db.close()
+        db.connect()
+
+        tracks = db.get_scene_tracks(scene_id)
+        assert len(tracks) == 1
+        assert tracks[0].volume == 0.5
+        count = db.connection.execute(
+            "SELECT COUNT(*) AS n FROM scene_track_presets"
+        ).fetchone()["n"]
+        assert count == 3  # one row per slot, no duplicates
+
+    def test_duplicate_scene_copies_presets_and_entries(self, db):
+        scene_id, track_id = self._make_scene_with_track(db)
+        entry_id = self._make_entry(db, scene_id)
+        db.update_scene_track_setting(track_id, volume=0.2, slot=1)
+        db.update_scene_track_setting(track_id, volume=0.8, is_repeat=True, slot=2)
+        db.update_scene_playlist_entry_setting(entry_id, is_shuffle=True, slot=3)
+        db.rename_scene_preset(scene_id, 2, "Bar Fight")
+        db.set_active_preset_slot(scene_id, 2)
+
+        copy = db.duplicate_scene(scene_id, "Preset Scene (copy)")
+
+        assert copy is not None
+        assert copy.id != scene_id
+        assert copy.title == "Preset Scene (copy)"
+        assert copy.active_preset_slot == 2
+        assert copy.preset_names == {2: "Bar Fight"}
+        # Playlist entries survive duplication (they used to be dropped)
+        assert len(copy.playlist_entries) == 1
+        # Per-slot settings are deep-copied
+        assert db.get_scene_tracks(copy.id, slot=1)[0].volume == 0.2
+        assert db.get_scene_tracks(copy.id, slot=2)[0].volume == 0.8
+        assert db.get_scene_tracks(copy.id, slot=2)[0].is_repeat is True
+        assert db.get_scene_playlist_entries(copy.id, slot=3)[0].is_shuffle is True
+        # Copies are independent of the source
+        db.update_scene_track_setting(track_id, volume=0.99, slot=1)
+        assert db.get_scene_tracks(copy.id, slot=1)[0].volume == 0.2
