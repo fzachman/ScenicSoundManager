@@ -3,12 +3,14 @@
 import os
 
 from PyQt6.QtCore import QByteArray, QEvent, QSettings, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QHeaderView,
     QMenu,
     QPushButton,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QWidget,
@@ -23,6 +25,35 @@ from ..shared.styles import Styles
 from .tag_manager import TagAssigner
 
 _log = get_logger(__name__)
+
+
+class TitleProgressDelegate(QStyledItemDelegate):
+    """Paints a playback-progress fill over the playing row's title cell.
+
+    Painting only — the scrub mouse handling lives in FileTableWidget, which
+    owns the player and playing-file state. The fill is a translucent overlay
+    on top of the normally-rendered cell so the title text, selection, and
+    alternating-row backgrounds all stay intact beneath it.
+    """
+
+    FILL_ALPHA = 70
+
+    def __init__(self, table: "FileTableWidget"):
+        super().__init__(table)
+        self._table = table
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        fraction = self._table.title_progress_fraction(index)
+        if fraction is None or fraction <= 0:
+            return
+        rect = option.rect
+        width = round(rect.width() * min(fraction, 1.0))
+        if width <= 0:
+            return
+        fill = QColor(Styles.PRIMARY)
+        fill.setAlpha(self.FILL_ALPHA)
+        painter.fillRect(rect.adjusted(0, 0, width - rect.width(), 0), fill)
 
 
 class FileTableWidget(QTableWidget):
@@ -71,6 +102,8 @@ class FileTableWidget(QTableWidget):
         self._current_player: TrackPlayer | None = None
         self._playing_row: int = -1
         self._playing_file_id: int | None = None
+        self._title_progress: float = 0.0  # 0..1 fraction of the playing track
+        self._scrubbing: bool = False
         self._icons = IconLibrary()
         self._visible_columns: set[int] = set(self.DEFAULT_VISIBLE)
         self._sort_column: int = -1
@@ -144,9 +177,8 @@ class FileTableWidget(QTableWidget):
         # Selection change
         self.itemSelectionChanged.connect(self._on_selection_changed)
 
-        # Enable drag for adding to scenes
-        self.setDragEnabled(True)
-        self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
+        # Progress fill + scrubbing on the playing row's title cell
+        self.setItemDelegateForColumn(self.COL_TITLE, TitleProgressDelegate(self))
 
     def set_files(self, files: list[AudioFile]):
         """Set the files to display"""
@@ -250,7 +282,9 @@ class FileTableWidget(QTableWidget):
             if file_id == self._playing_file_id:
                 self._playing_row = -1
                 self._playing_file_id = None
+                self._reset_title_progress()
                 return
+            self._reset_title_progress()
 
         # Start new playback
         audio_file = self._get_file_by_id(file_id)
@@ -266,6 +300,7 @@ class FileTableWidget(QTableWidget):
             self._current_player.end_reached.connect(
                 lambda: self._on_playback_ended(file_id)
             )
+            self._current_player.position_changed.connect(self._on_position_changed)
             self._current_player.fade_in(500)
             self._playing_file_id = file_id
             self._playing_row = self._find_row_for_file_id(file_id)
@@ -302,6 +337,120 @@ class FileTableWidget(QTableWidget):
             self._current_player = None
         self._playing_row = -1
         self._playing_file_id = None
+        self._reset_title_progress()
+
+    # --- Title-cell progress bar / scrubbing ---
+
+    def title_progress_fraction(self, index) -> float | None:
+        """Progress (0..1) to paint for this index, or None to paint nothing.
+
+        Called by TitleProgressDelegate for every title cell; only the playing
+        row's title gets a fill.
+        """
+        if (
+            self._playing_file_id is None
+            or index.column() != self.COL_TITLE
+            or index.data(Qt.ItemDataRole.UserRole) != self._playing_file_id
+        ):
+            return None
+        return self._title_progress
+
+    def _on_position_changed(self, position_ms: int):
+        """Advance the title fill as the preview plays"""
+        if self._scrubbing or self._playing_file_id is None:
+            return
+        duration = self._playing_duration_ms()
+        if duration <= 0:
+            return
+        self._title_progress = min(position_ms / duration, 1.0)
+        self._repaint_playing_title()
+
+    def _playing_duration_ms(self) -> int:
+        """Duration of the playing file, preferring VLC's own timeline.
+
+        VLC reports 0/-1 until the media is parsed; fall back to the metadata
+        duration so the bar and seeking work from the first moment.
+        """
+        if not self._current_player or self._playing_file_id is None:
+            return 0
+        duration = self._current_player.get_duration()
+        if duration > 0:
+            return duration
+        audio_file = self._get_file_by_id(self._playing_file_id)
+        if audio_file and audio_file.duration_seconds:
+            return int(audio_file.duration_seconds * 1000)
+        return 0
+
+    def _reset_title_progress(self):
+        self._title_progress = 0.0
+        self._scrubbing = False
+        self.viewport().update()
+
+    def _repaint_playing_title(self):
+        row = self._find_row_for_file_id(self._playing_file_id)
+        if row >= 0:
+            self.viewport().update(self.visualItemRect(self.item(row, self.COL_TITLE)))
+
+    def _is_scrub_target(self, pos) -> bool:
+        """True if pos (viewport coords) is over the playing row's title cell"""
+        index = self.indexAt(pos)
+        return (
+            index.isValid()
+            and index.column() == self.COL_TITLE
+            and self._playing_file_id is not None
+            and index.data(Qt.ItemDataRole.UserRole) == self._playing_file_id
+        )
+
+    def _update_scrub_position(self, pos):
+        """Move the fill to the mouse x within the title cell (clamped)"""
+        row = self._find_row_for_file_id(self._playing_file_id)
+        if row < 0:
+            return
+        rect = self.visualItemRect(self.item(row, self.COL_TITLE))
+        if rect.width() <= 0:
+            return
+        fraction = (pos.x() - rect.left()) / rect.width()
+        self._title_progress = max(0.0, min(1.0, fraction))
+        self.viewport().update(rect)
+
+    def mousePressEvent(self, event):
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._is_scrub_target(event.position().toPoint())
+            and self._playing_duration_ms() > 0
+        ):
+            self._scrubbing = True
+            self._update_scrub_position(event.position().toPoint())
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._scrubbing:
+            self._update_scrub_position(event.position().toPoint())
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._scrubbing:
+            self._scrubbing = False
+            duration = self._playing_duration_ms()
+            if self._current_player and duration > 0:
+                self._current_player.set_position(int(self._title_progress * duration))
+            return
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        # A double-click lands on the playing title as a second seek, not as
+        # the inline-rename editor — renaming that cell resumes once playback
+        # stops (or via Get Info anytime).
+        if event.button() == Qt.MouseButton.LeftButton and self._is_scrub_target(
+            event.position().toPoint()
+        ):
+            if self._playing_duration_ms() > 0:
+                self._scrubbing = True
+                self._update_scrub_position(event.position().toPoint())
+            return
+        super().mouseDoubleClickEvent(event)
 
     def _get_file_at_row(self, row: int) -> AudioFile | None:
         """Get audio file for a row"""
@@ -471,6 +620,7 @@ class FileTableWidget(QTableWidget):
             self._clear_playing_button()
             self._playing_row = -1
             self._playing_file_id = None
+            self._reset_title_progress()
 
     def _clear_playing_button(self):
         """Clear the currently highlighted play button"""
