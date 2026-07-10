@@ -2,7 +2,7 @@
 
 from PyQt6.QtCore import pyqtSignal
 
-from ..database import DatabaseConnection, Scene, SceneAudioFile
+from ..database import DatabaseConnection, Scene
 from ..shared.base_list_widget import BaseListWidget
 
 
@@ -53,29 +53,7 @@ class SceneListWidget(BaseListWidget):
         self.db.delete_scene(item_id)
 
     def _duplicate_item(self, scene):
-        new_scene = Scene(title=f"{scene.title} (copy)")
-        new_scene.id = self.db.add_scene(new_scene)
-
-        tracks = self.db.get_scene_tracks(scene.id)
-        for track in tracks:
-            new_track_id = self.db.add_track_to_scene(
-                new_scene.id,
-                track.audio_file_id,
-                track.position,
-                play_mode=track.play_mode,
-            )
-            new_track = SceneAudioFile(
-                id=new_track_id,
-                scene_id=new_scene.id,
-                audio_file_id=track.audio_file_id,
-                position=track.position,
-                volume=track.volume,
-                is_repeat=track.is_repeat,
-                play_mode=track.play_mode,
-            )
-            self.db.update_track_settings(new_track)
-
-        return new_scene
+        return self.db.duplicate_scene(scene.id, f"{scene.title} (copy)")
 
     def _reorder_items(self, ids):
         self.db.reorder_scenes(ids)
