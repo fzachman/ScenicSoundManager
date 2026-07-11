@@ -297,3 +297,128 @@ class TestActiveOpenDecoupling:
         assert playlist.tracks[1].audio_file_id not in remaining
         editor.next_track()
         assert editor._current_audio_file_id in remaining
+
+
+class TestPerTrackVolume:
+    """Per-track volume: card slider persists and follows live playback."""
+
+    def test_card_slider_reflects_stored_volume(self, editor, playlist, db):
+        db.update_playlist_track_volume(playlist.tracks[0].id, 0.4)
+
+        editor.load_playlist(db.get_playlist(playlist.id))
+
+        item = editor._track_items[playlist.tracks[0].id]
+        assert item.volume_slider.slider.value() == 40
+
+    def test_slider_commit_persists_and_updates_model(self, editor, playlist, db):
+        editor.load_playlist(playlist)
+        item = editor._track_items[playlist.tracks[0].id]
+
+        item.volume_slider.slider.setValue(35)  # discrete change -> commit
+
+        assert db.get_playlist(playlist.id).tracks[0].volume == 0.35
+        assert item.track.volume == 0.35
+
+    def test_playback_starts_at_track_volume(self, editor, playlist, db):
+        db.update_playlist_track_volume(playlist.tracks[0].id, 0.5)
+        editor.load_playlist(db.get_playlist(playlist.id))
+
+        editor.toggle_playback()
+
+        assert editor._player.target_volume == 50
+
+    def test_live_volume_follows_playing_cards_slider(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        editor._track_items[playlist.tracks[0].id].volume_slider.slider.setValue(25)
+
+        assert editor._player.target_volume == 25
+
+    def test_other_cards_slider_leaves_playback_alone(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        editor._track_items[playlist.tracks[1].id].volume_slider.slider.setValue(10)
+
+        assert editor._player.target_volume == 100  # track 0's own volume
+
+    def test_edited_volume_applies_when_track_is_reached(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor._track_items[playlist.tracks[1].id].volume_slider.slider.setValue(20)
+
+        editor.next_track()
+
+        assert editor._player.target_volume == 20
+
+
+class TestTrackScrubber:
+    """Scrubber row: live only on the playing card, drives seeks by fraction."""
+
+    def test_scrubber_enabled_only_on_playing_card(self, editor, playlist):
+        editor.load_playlist(playlist)
+        assert all(
+            not item.scrubber.slider.isEnabled()
+            for item in editor._track_items.values()
+        )
+
+        editor.toggle_playback()
+
+        playing_id = playlist.tracks[0].id
+        for track_id, item in editor._track_items.items():
+            assert item.scrubber.slider.isEnabled() is (track_id == playing_id)
+
+    def test_position_updates_drive_playing_scrubber(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor._player.get_duration.return_value = 120_000
+
+        editor._on_player_position(60_000)
+
+        item = editor._track_items[playlist.tracks[0].id]
+        assert item.scrubber.slider.value() == 500
+        assert item.scrubber.position_label.text() == "1:00"
+        assert item.scrubber.duration_label.text() == "2:00"
+
+    def test_scrubber_resets_when_track_advances(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor._player.get_duration.return_value = 120_000
+        editor._on_player_position(30_000)
+        first = editor._track_items[playlist.tracks[0].id]
+        assert first.scrubber.slider.value() == 250
+
+        editor.next_track()
+
+        assert first.scrubber.slider.value() == 0
+        assert first.scrubber.slider.isEnabled() is False
+
+    def test_seek_maps_fraction_to_ms(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor._player.get_duration.return_value = 120_000
+
+        editor._track_items[playlist.tracks[0].id].scrubber.seek.emit(0.5)
+
+        editor._player.set_position.assert_called_once_with(60_000)
+
+    def test_seek_falls_back_to_metadata_duration(self, editor, playlist):
+        # VLC reports 0 before the media is parsed; the fixture files carry
+        # 120s of metadata duration.
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor._player.get_duration.return_value = 0
+
+        editor._track_items[playlist.tracks[0].id].scrubber.seek.emit(0.25)
+
+        editor._player.set_position.assert_called_once_with(30_000)
+
+    def test_seek_on_non_playing_card_is_ignored(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor._player.get_duration.return_value = 120_000
+
+        editor._track_items[playlist.tracks[1].id].scrubber.seek.emit(0.5)
+
+        editor._player.set_position.assert_not_called()

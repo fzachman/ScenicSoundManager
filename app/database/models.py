@@ -113,4 +113,5 @@ class PlaylistTrack:
     playlist_id: int | None = None
     audio_file_id: int | None = None
     position: int = 0
+    volume: float = 1.0
     audio_file: AudioFile | None = None

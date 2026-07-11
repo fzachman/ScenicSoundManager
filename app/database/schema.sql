@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS playlist_tracks (
     playlist_id INTEGER NOT NULL,
     audio_file_id INTEGER NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
+    volume REAL NOT NULL DEFAULT 1.0,
     FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
     FOREIGN KEY (audio_file_id) REFERENCES audio_files(id) ON DELETE CASCADE,
     UNIQUE (playlist_id, audio_file_id)

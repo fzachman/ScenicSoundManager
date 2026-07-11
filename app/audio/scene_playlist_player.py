@@ -75,16 +75,29 @@ class ScenePlaylistPlayer(QObject):
         return self._current_audio_file_id
 
     def set_volume(self, volume: int) -> None:
-        """Update volume (0-100). Applies immediately to the current player."""
+        """Update entry volume (0-100). Applies immediately to the current player."""
         self._volume = volume
         if self._player:
-            self._player.target_volume = volume
+            self._player.target_volume = self._current_effective_volume()
 
     def fade_to_volume(self, volume: int, duration_ms: int = 500) -> None:
-        """Ramp to a volume (0-100); later tracks start at the new level."""
+        """Ramp to an entry volume (0-100); later tracks start at the new level."""
         self._volume = volume
         if self._player:
-            self._player.fade_to_volume(volume, duration_ms)
+            self._player.fade_to_volume(self._current_effective_volume(), duration_ms)
+
+    def _current_effective_volume(self) -> int:
+        """Entry volume scaled by the current track's own stored volume.
+
+        The entry slider acts as a master over the playlist's per-track
+        (normalization) volumes, so tracks keep their relative levels.
+        """
+        track = (
+            self._find_track(self._current_audio_file_id)
+            if self._current_audio_file_id is not None
+            else None
+        )
+        return round(self._volume * (track.volume if track else 1.0))
 
     def set_shuffle(self, enabled: bool) -> None:
         """Update shuffle mode (can be toggled during playback)."""
@@ -192,7 +205,7 @@ class ScenePlaylistPlayer(QObject):
         self._release_player()
 
         self._player = TrackPlayer(track.audio_file.file_path, self._engine)
-        self._player.target_volume = self._volume
+        self._player.target_volume = round(self._volume * track.volume)
         self._player.end_reached.connect(self._on_track_ended)
         # Forward the active track's position so the scene's playlist card can
         # show a scrubber. The prior player is released in _release_player above,

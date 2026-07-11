@@ -393,6 +393,50 @@ class TestPlaylists:
         assert db.db_path == path
         assert db.get_playlist(playlist_id).is_shuffle is False
 
+    def test_playlist_track_volume_defaults_to_full(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+        file_id = db.add_audio_file(AudioFile(file_path="/t.mp3", title="T"))
+
+        db.add_track_to_playlist(playlist_id, file_id)
+
+        assert db.get_playlist(playlist_id).tracks[0].volume == 1.0
+
+    def test_add_track_with_explicit_volume(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+        file_id = db.add_audio_file(AudioFile(file_path="/t.mp3", title="T"))
+
+        db.add_track_to_playlist(playlist_id, file_id, volume=0.6)
+
+        assert db.get_playlist(playlist_id).tracks[0].volume == 0.6
+
+    def test_update_playlist_track_volume(self, db):
+        playlist_id = db.add_playlist(Playlist(name="Test Playlist"))
+        file_id = db.add_audio_file(AudioFile(file_path="/t.mp3", title="T"))
+        track_id = db.add_track_to_playlist(playlist_id, file_id)
+
+        db.update_playlist_track_volume(track_id, 0.35)
+
+        # Both loaders must hydrate the stored volume: the single-playlist
+        # one and the batch one used by scene playlist entries.
+        assert db.get_playlist_tracks(playlist_id)[0].volume == 0.35
+        scene_id = db.add_scene(Scene(title="S"))
+        db.add_playlist_to_scene(scene_id, playlist_id)
+        entry = db.get_scene_playlist_entries(scene_id)[0]
+        assert entry.playlist.tracks[0].volume == 0.35
+
+    def test_track_volume_column_added_to_legacy_database(self, db):
+        # Simulate a pre-volume database, then reconnect: the
+        # _ensure_playlist_track_volume migration must restore the column.
+        playlist_id = db.add_playlist(Playlist(name="Legacy Playlist"))
+        file_id = db.add_audio_file(AudioFile(file_path="/t.mp3", title="T"))
+        db.add_track_to_playlist(playlist_id, file_id)
+        db.connection.execute("ALTER TABLE playlist_tracks DROP COLUMN volume")
+        db.connection.commit()
+        db.close()
+
+        db.connect()
+        assert db.get_playlist(playlist_id).tracks[0].volume == 1.0
+
     def test_delete_playlist(self, db):
         playlist_id = db.add_playlist(Playlist(name="Delete Me"))
 

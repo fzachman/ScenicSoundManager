@@ -51,6 +51,7 @@ class DatabaseConnection:
         self._conn.executescript(schema)
         self._ensure_scene_positions()
         self._ensure_playlist_shuffle()
+        self._ensure_playlist_track_volume()
         self._ensure_scene_active_preset_slot()
         self._migrate_scene_settings_to_presets()
         self._conn.commit()
@@ -147,6 +148,15 @@ class DatabaseConnection:
         if "is_shuffle" not in columns:
             self._conn.execute(
                 "ALTER TABLE playlists ADD COLUMN is_shuffle INTEGER NOT NULL DEFAULT 0"
+            )
+
+    def _ensure_playlist_track_volume(self) -> None:
+        """Ensure playlist tracks have a per-track volume column"""
+        cursor = self._conn.execute("PRAGMA table_info(playlist_tracks)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if "volume" not in columns:
+            self._conn.execute(
+                "ALTER TABLE playlist_tracks ADD COLUMN volume REAL NOT NULL DEFAULT 1.0"
             )
 
     def close(self) -> None:
@@ -1126,6 +1136,7 @@ class DatabaseConnection:
         playlist_id: int,
         audio_file_id: int,
         position: int | None = None,
+        volume: float = 1.0,
     ) -> int:
         """Add an audio file to a playlist, return the playlist_track ID"""
         if position is None:
@@ -1135,11 +1146,20 @@ class DatabaseConnection:
             )
             position = cursor.fetchone()["next_pos"]
         cursor = self._conn.execute(
-            "INSERT INTO playlist_tracks (playlist_id, audio_file_id, position) VALUES (?, ?, ?)",
-            (playlist_id, audio_file_id, position),
+            "INSERT INTO playlist_tracks (playlist_id, audio_file_id, position, volume)"
+            " VALUES (?, ?, ?, ?)",
+            (playlist_id, audio_file_id, position, volume),
         )
         self._conn.commit()
         return self._insert_id(cursor)
+
+    def update_playlist_track_volume(self, track_id: int, volume: float) -> None:
+        """Update a playlist track's stored volume (0.0-1.0)"""
+        self._conn.execute(
+            "UPDATE playlist_tracks SET volume = ? WHERE id = ?",
+            (volume, track_id),
+        )
+        self._conn.commit()
 
     def get_playlist_tracks(self, playlist_id: int) -> list[PlaylistTrack]:
         """Get all tracks in a playlist with their audio file data and tags"""
@@ -1172,6 +1192,7 @@ class DatabaseConnection:
                 playlist_id=row["playlist_id"],
                 audio_file_id=row["audio_file_id"],
                 position=row["position"],
+                volume=row["volume"],
                 audio_file=audio_file,
             )
             tracks.append(track)
@@ -1220,6 +1241,7 @@ class DatabaseConnection:
                 playlist_id=row["playlist_id"],
                 audio_file_id=row["audio_file_id"],
                 position=row["position"],
+                volume=row["volume"],
                 audio_file=audio_file,
             )
             tracks_by_playlist[row["playlist_id"]].append(track)

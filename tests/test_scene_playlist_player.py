@@ -602,3 +602,67 @@ class TestFadeToVolume:
         player.fade_to_volume(30)
 
         assert player._volume == 30
+
+
+class TestPerTrackVolume:
+    """Entry volume must scale by each track's own stored (normalization)
+    volume — the entry slider is a master over the playlist's relative levels.
+
+    Real TrackPlayers are used (engine.available=False keeps them silent), so
+    target_volume reflects the full setter/fade retargeting path.
+    """
+
+    def _player_with_track_volume(
+        self, db, playlist_with_tracks, mock_engine, track_volume, entry_volume
+    ):
+        playlist_id, _ = playlist_with_tracks
+        tracks = db.get_playlist_tracks(playlist_id)
+        db.update_playlist_track_volume(tracks[0].id, track_volume)
+        player = _make_player(playlist_id, db, mock_engine)
+        player.set_volume(entry_volume)
+        with patch("app.audio.scene_playlist_player.os.path.exists", return_value=True):
+            player.start()
+        return player
+
+    def test_play_scales_entry_volume_by_track_volume(
+        self, qapp, db, playlist_with_tracks, mock_engine
+    ):
+        player = self._player_with_track_volume(
+            db, playlist_with_tracks, mock_engine, track_volume=0.5, entry_volume=80
+        )
+        assert player._player.target_volume == 40
+
+    def test_set_volume_rescales_current_track(
+        self, qapp, db, playlist_with_tracks, mock_engine
+    ):
+        player = self._player_with_track_volume(
+            db, playlist_with_tracks, mock_engine, track_volume=0.5, entry_volume=100
+        )
+        assert player._player.target_volume == 50
+
+        player.set_volume(60)
+        assert player._player.target_volume == 30
+
+    def test_fade_to_volume_rescales_current_track(
+        self, qapp, db, playlist_with_tracks, mock_engine
+    ):
+        player = self._player_with_track_volume(
+            db, playlist_with_tracks, mock_engine, track_volume=0.5, entry_volume=100
+        )
+
+        player.fade_to_volume(60, duration_ms=500)
+        assert player._player.target_volume == 30
+
+    def test_advance_applies_next_tracks_volume(
+        self, qapp, db, playlist_with_tracks, mock_engine
+    ):
+        playlist_id, _ = playlist_with_tracks
+        tracks = db.get_playlist_tracks(playlist_id)
+        db.update_playlist_track_volume(tracks[1].id, 0.25)
+        player = _make_player(playlist_id, db, mock_engine)
+        with patch("app.audio.scene_playlist_player.os.path.exists", return_value=True):
+            player.start()
+            assert player._player.target_volume == 100  # track 0 default
+
+            player.next_track()
+        assert player._player.target_volume == 25

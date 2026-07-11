@@ -1,5 +1,6 @@
 """Playlist editor for managing tracks in a playlist"""
 
+import contextlib
 import os
 
 from PyQt6.QtCore import QByteArray, QSize, Qt, pyqtSignal
@@ -21,7 +22,9 @@ from ..audio import AudioEngine, SmartShuffle, TrackPlayer
 from ..database import DatabaseConnection, Playlist, PlaylistTrack
 from ..shared.icons import IconLibrary
 from ..shared.layouts import clear_layout
+from ..shared.position_scrubber import PositionScrubber
 from ..shared.styles import Styles
+from ..shared.volume_slider import VolumeSlider
 
 _log = get_logger(__name__)
 
@@ -30,6 +33,9 @@ class PlaylistTrackItem(QFrame):
     """Display widget for a single track in a playlist"""
 
     remove_requested = pyqtSignal(int)  # track_id
+    volume_changed = pyqtSignal(int, float)  # track_id, volume 0-1 (live)
+    volume_committed = pyqtSignal(int, float)  # track_id, volume 0-1 (persist)
+    seek_requested = pyqtSignal(int, float)  # track_id, fraction 0-1
 
     def __init__(self, track: PlaylistTrack, position: int = 0, parent=None):
         super().__init__(parent)
@@ -70,6 +76,11 @@ class PlaylistTrackItem(QFrame):
             self.position_label.setStyleSheet(
                 Styles.subtle_text_style(size=13, extra="font-weight: 700;")
             )
+        # The scrubber only seeks the playing track; reset it when playback
+        # moves on so the fill doesn't freeze at a stale position.
+        self.scrubber.slider.setEnabled(playing)
+        if not playing:
+            self.scrubber.reset()
 
     def _setup_ui(self):
         layout = QHBoxLayout(self)
@@ -115,13 +126,33 @@ class PlaylistTrackItem(QFrame):
             title_label.setStyleSheet(Styles.title_style(size=14))
             info_layout.addWidget(title_label)
 
-        layout.addLayout(info_layout, 1)
+        # Volume + scrubber row. The scrubber's duration label replaces the
+        # old standalone duration label; its slider is live only while this
+        # track is the one playing (see set_now_playing).
+        controls_layout = QHBoxLayout()
+        controls_layout.setSpacing(12)
 
-        # Duration
+        self.volume_slider = VolumeSlider(self.track.volume)
+        self.volume_slider.changed.connect(
+            lambda volume: self.volume_changed.emit(self.track.id, volume)
+        )
+        self.volume_slider.committed.connect(
+            lambda volume: self.volume_committed.emit(self.track.id, volume)
+        )
+        controls_layout.addWidget(self.volume_slider)
+
+        self.scrubber = PositionScrubber()
         if self.track.audio_file:
-            duration_label = QLabel(self.track.audio_file.duration_formatted)
-            duration_label.setStyleSheet(Styles.subtle_text_style(size=12))
-            layout.addWidget(duration_label)
+            self.scrubber.set_duration_text(self.track.audio_file.duration_formatted)
+        self.scrubber.slider.setEnabled(False)
+        self.scrubber.seek.connect(
+            lambda fraction: self.seek_requested.emit(self.track.id, fraction)
+        )
+        controls_layout.addWidget(self.scrubber, 1)
+
+        info_layout.addLayout(controls_layout)
+
+        layout.addLayout(info_layout, 1)
 
         # Remove button
         remove_btn = QPushButton("×")
@@ -460,6 +491,9 @@ class PlaylistEditor(QWidget):
         assert track.id is not None
         item = PlaylistTrackItem(track, position=position)
         item.remove_requested.connect(self._remove_track)
+        item.volume_changed.connect(self._on_track_volume_changed)
+        item.volume_committed.connect(self._on_track_volume_committed)
+        item.seek_requested.connect(self._on_track_seek)
 
         self._track_items[track.id] = item
         self.tracks_container.register_track(track.id, item)
@@ -558,6 +592,86 @@ class PlaylistEditor(QWidget):
             return
         assert self._current_playlist.id is not None
         self.db.reorder_playlist_tracks(self._current_playlist.id, track_ids)
+
+    # -- Per-track volume + scrubber --
+
+    def _is_playing_card_track(self, track_id: int) -> bool:
+        """True if this card's row is the track currently owning playback.
+
+        Cards belong to the OPEN playlist, so live audio only applies when
+        the open playlist is also the active one.
+        """
+        item = self._track_items.get(track_id)
+        return (
+            item is not None
+            and self._player is not None
+            and self._current_playlist is not None
+            and self._is_playing_this_playlist(self._current_playlist.id)
+            and item.track.audio_file_id == self._current_audio_file_id
+        )
+
+    def _on_track_volume_changed(self, track_id: int, volume: float):
+        """Live slider tick — follow on the playing track's audio only."""
+        if self._is_playing_card_track(track_id):
+            assert self._player is not None
+            self._player.target_volume = round(volume * 100)
+
+    def _on_track_volume_committed(self, track_id: int, volume: float):
+        """Persist on settle (commit-on-release, one write per gesture)."""
+        item = self._track_items.get(track_id)
+        if item is None:
+            return
+        # item.track IS the dataclass inside _current_playlist.tracks (and
+        # _active_playlist's when open == active), so playback of later
+        # tracks picks the new value up without a reload.
+        item.track.volume = volume
+        self.db.update_playlist_track_volume(track_id, volume)
+
+    def _on_track_seek(self, track_id: int, fraction: float):
+        if not self._is_playing_card_track(track_id):
+            return
+        assert self._player is not None
+        duration = self._playing_duration_ms()
+        if duration > 0:
+            self._player.set_position(int(fraction * duration))
+
+    def _on_player_position(self, position_ms: int):
+        """Drive the playing card's scrubber from the player's position."""
+        item = self._playing_track_item()
+        if item is None:
+            return
+        duration = self._playing_duration_ms()
+        item.scrubber.set_progress(position_ms, duration)
+        if duration > 0:
+            item.scrubber.set_duration(duration)
+
+    def _playing_track_item(self) -> PlaylistTrackItem | None:
+        if (
+            self._current_playlist is None
+            or not self._is_playing_this_playlist(self._current_playlist.id)
+            or self._current_audio_file_id is None
+        ):
+            return None
+        for item in self._track_items.values():
+            if item.track.audio_file_id == self._current_audio_file_id:
+                return item
+        return None
+
+    def _playing_duration_ms(self) -> int:
+        """Duration of the playing track, preferring VLC's own timeline.
+
+        VLC reports 0/-1 until the media is parsed; fall back to the metadata
+        duration so the scrubber works from the first moment.
+        """
+        if not self._player:
+            return 0
+        duration = self._player.get_duration()
+        if duration > 0:
+            return duration
+        item = self._playing_track_item()
+        if item and item.track.audio_file and item.track.audio_file.duration_seconds:
+            return int(item.track.audio_file.duration_seconds * 1000)
+        return 0
 
     # -- Playback controls --
 
@@ -720,7 +834,9 @@ class PlaylistEditor(QWidget):
 
         # Create new player
         self._player = TrackPlayer(track.audio_file.file_path, self.audio_engine)
+        self._player.target_volume = round(track.volume * 100)
         self._player.end_reached.connect(self._on_track_ended)
+        self._player.position_changed.connect(self._on_player_position)
         self._player.fade_in(500)
         self._current_audio_file_id = audio_file_id
 
@@ -817,6 +933,14 @@ class PlaylistEditor(QWidget):
     def _release_player(self):
         """Release the current track player"""
         if self._player:
+            # Disconnect first: end_reached is QTimer-delivered, so a manual
+            # skip can race a just-posted end-of-media and advance twice; a
+            # released track must not drive the scrubber either (see
+            # ScenePlaylistPlayer._release_player).
+            with contextlib.suppress(TypeError):
+                self._player.end_reached.disconnect(self._on_track_ended)
+            with contextlib.suppress(TypeError):
+                self._player.position_changed.disconnect(self._on_player_position)
             self._player.stop()
             self._player.release()
             self._player = None
