@@ -272,9 +272,11 @@ class TestPlayerIntegration:
         assert control.position_slider.value() == 500
         assert control.position_label.text() == "0:30"
 
+        # A finished track parks the scrubber at the end (position ticks
+        # stop on a non-repeat end) instead of snapping back to 0.
         player.end_reached.emit()
-        assert control.position_slider.value() == 0
-        assert control.position_label.text() == "0:00"
+        assert control.position_slider.value() == 1000
+        assert control.position_label.text() == "1:00"
 
     def test_volume_change_pushes_exact_int_to_player(self, qapp):
         # Pins the CONTROL's own push in isolation (what this refactor changed:

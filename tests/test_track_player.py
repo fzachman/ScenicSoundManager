@@ -519,7 +519,7 @@ class TestEndedRevive:
         self, qapp, mock_engine
     ):
         # VLC parks an ended player where set_time() is silently dropped, so
-        # a scrub must stop+play and defer the seek until Playing arrives.
+        # a scrub must stop+play and defer the seek until playback is live.
         player = _make_player(mock_engine)
         player._handle_end_reached()
 
@@ -531,18 +531,84 @@ class TestEndedRevive:
         player.media_player.play.assert_called_once()
         player.media_player.set_time.assert_not_called()
 
-        player._handle_state_change(vlc.State.Playing)
+        player.media_player.is_playing.return_value = True
+        player.media_player.get_time.return_value = 0
+        player._update_position()
         player.media_player.set_time.assert_called_once_with(30_000)
 
-    def test_pending_seek_applied_only_once(self, qapp, mock_engine):
+        # Once VLC reports the target position, the pending seek is done.
+        player.media_player.get_time.return_value = 30_000
+        player._update_position()
+        assert player._pending_seek_ms is None
+
+    def test_pending_seek_retries_until_vlc_confirms_it(self, qapp, mock_engine):
+        # A set_time issued the moment VLC starts playing can still be
+        # dropped (MP3 demuxer isn't seek-ready yet) — keep re-issuing.
         player = _make_player(mock_engine)
         player._handle_end_reached()
         player.set_position(30_000)
+        player.media_player.is_playing.return_value = True
+        player.media_player.get_time.return_value = 0
 
-        player._handle_state_change(vlc.State.Playing)
+        for _ in range(3):
+            player._update_position()
+
+        assert player.media_player.set_time.call_count == 3
+        player.media_player.set_time.assert_called_with(30_000)
+
+    def test_pending_seek_gives_up_after_bounded_attempts(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player._handle_end_reached()
+        player.set_position(30_000)
+        player.media_player.is_playing.return_value = True
+        player.media_player.get_time.return_value = 0
+
+        for _ in range(30):
+            player._update_position()
+
+        assert player._pending_seek_ms is None
+        assert player.media_player.set_time.call_count <= 21
+
+    def test_position_emissions_suppressed_while_seek_pending(self, qapp, mock_engine):
+        # The pre-seek 0-position ticks must not yank the scrubber back.
+        player = _make_player(mock_engine)
+        player._handle_end_reached()
+        player.set_position(30_000)
+        player.media_player.is_playing.return_value = True
+        player.media_player.get_time.return_value = 0
+        emissions = []
+        player.position_changed.connect(emissions.append)
+
+        player._update_position()
+        assert emissions == []
+
+        player.media_player.get_time.return_value = 30_000
+        player._update_position()  # seek confirmed -> emits the real position
+        player._update_position()  # normal ticks resume
+        assert emissions == [30_000, 30_000]
+
+    def test_playing_state_change_issues_pending_seek_early(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player._handle_end_reached()
+        player.set_position(30_000)
+        player.media_player.is_playing.return_value = True
+        player.media_player.get_time.return_value = 0
+
         player._handle_state_change(vlc.State.Playing)
 
         player.media_player.set_time.assert_called_once_with(30_000)
+
+    def test_newer_seek_supersedes_pending_revive_seek(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player._handle_end_reached()
+        player.set_position(30_000)
+        player.media_player.is_playing.return_value = True
+        player.media_player.get_time.return_value = 0
+
+        player.set_position(60_000)  # user scrubs again before it lands
+        player._update_position()
+
+        player.media_player.set_time.assert_called_once_with(60_000)
 
     def test_set_position_while_not_ended_seeks_directly(self, qapp, mock_engine):
         player = _make_player(mock_engine)
@@ -560,8 +626,10 @@ class TestEndedRevive:
         player.stop()
 
         assert player.has_ended is False
-        player._handle_state_change(vlc.State.Playing)
-        # Only the restart's own set_time bookkeeping — nothing pending.
+        assert player._pending_seek_ms is None
+        player.media_player.is_playing.return_value = True
+        player.media_player.get_time.return_value = 0
+        player._update_position()
         player.media_player.set_time.assert_not_called()
 
     def test_restart_reapplies_current_volume(self, qapp, mock_engine):

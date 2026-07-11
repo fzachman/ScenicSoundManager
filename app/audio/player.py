@@ -36,6 +36,7 @@ class TrackPlayer(QObject):
         # play()/set_time() are no-ops; reviving needs an explicit restart().
         self._ended = False
         self._pending_seek_ms: int | None = None
+        self._pending_seek_attempts = 0
 
         # Position update timer
         self._position_timer = QTimer()
@@ -126,7 +127,7 @@ class TrackPlayer(QObject):
         if self.media_player:
             self.media_player.stop()
         self._ended = False
-        self._pending_seek_ms = None
+        self._set_pending_seek(None)
         self._position_timer.stop()
 
     def is_playing(self) -> bool:
@@ -153,6 +154,11 @@ class TrackPlayer(QObject):
             # track means "play again from here".
             self.restart(position_ms)
             return
+        if self._pending_seek_ms is not None:
+            # A newer seek supersedes a still-pending revive seek; the
+            # position timer keeps driving it until it lands.
+            self._set_pending_seek(position_ms)
+            return
         if self.media_player:
             self.media_player.set_time(position_ms)
 
@@ -160,17 +166,21 @@ class TrackPlayer(QObject):
         """Start playing again after the media ended.
 
         VLC needs a stop() before an Ended player accepts play(). The seek
-        (if any) is deferred until the Playing state actually arrives —
-        set_time() right after play() lands in a not-yet-playing player and
-        is dropped (see _handle_state_change).
+        (if any) is deferred and re-issued until VLC confirms it — a
+        set_time() on a player that isn't fully seek-ready yet is silently
+        dropped (see _apply_pending_seek).
         """
         self._ended = False
-        self._pending_seek_ms = position_ms if position_ms > 0 else None
+        self._set_pending_seek(position_ms if position_ms > 0 else None)
         if self.media_player:
             self.media_player.stop()
             self.media_player.play()
             self._apply_volume(self._current_volume)
         self._position_timer.start()
+
+    def _set_pending_seek(self, position_ms: int | None) -> None:
+        self._pending_seek_ms = position_ms
+        self._pending_seek_attempts = 20 if position_ms is not None else 0
 
     def get_duration(self) -> int:
         """Get media duration in milliseconds"""
@@ -258,9 +268,37 @@ class TrackPlayer(QObject):
 
     def _update_position(self) -> None:
         """Emit position update signal"""
+        if self._pending_seek_ms is not None:
+            self._apply_pending_seek()
+            if self._pending_seek_ms is not None:
+                # Suppress the misleading pre-seek positions — they'd yank
+                # the scrubber back to 0 while the revive seek is landing.
+                return
         position = self.get_position()
         if position >= 0:
             self.position_changed.emit(position)
+
+    def _apply_pending_seek(self) -> None:
+        """Drive a deferred seek home.
+
+        VLC silently drops set_time() on a player that isn't fully playing
+        yet, and the moment it becomes seek-ready varies by demuxer (MP3 is
+        the worst). So the seek is re-issued from the position timer until
+        get_time() confirms it landed, with a bounded number of attempts.
+        """
+        if self._pending_seek_ms is None or not self.media_player:
+            return
+        if not self.media_player.is_playing():
+            return  # not started yet; retry on the next tick
+        current = self.media_player.get_time()
+        if current >= 0 and abs(current - self._pending_seek_ms) <= 1000:
+            self._set_pending_seek(None)  # landed
+            return
+        self._pending_seek_attempts -= 1
+        if self._pending_seek_attempts < 0:
+            self._set_pending_seek(None)  # give up; play from where we are
+            return
+        self.media_player.set_time(self._pending_seek_ms)
 
     def _on_end_reached(self, event) -> None:
         """Handle end of media"""
@@ -291,14 +329,10 @@ class TrackPlayer(QObject):
 
     def _handle_state_change(self, state: Any) -> None:
         """Handle a state change in the main thread"""
-        if (
-            vlc is not None
-            and state == vlc.State.Playing
-            and self._pending_seek_ms is not None
-            and self.media_player
-        ):
-            self.media_player.set_time(self._pending_seek_ms)
-            self._pending_seek_ms = None
+        if vlc is not None and state == vlc.State.Playing:
+            # Fast path for a pending revive seek; confirmation (and retry
+            # on a dropped set_time) stays with the position timer.
+            self._apply_pending_seek()
         self.state_changed.emit(state)
 
     def release(self) -> None:

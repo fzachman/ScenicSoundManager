@@ -137,7 +137,7 @@ class TrackControl(SceneControlCard):
         """Connect to player signals if available"""
         if self.player:
             self.player.position_changed.connect(self._on_player_position)
-            self.player.end_reached.connect(self.scrubber.reset)
+            self.player.end_reached.connect(self._on_track_ended)
 
     def set_player(self, player: TrackPlayer):
         """Set the track player"""
@@ -152,6 +152,18 @@ class TrackControl(SceneControlCard):
         """Forward the player's position to the scrubber."""
         if self.player:
             self.scrubber.set_progress(position_ms, self.player.get_duration())
+
+    def _on_track_ended(self):
+        """Park the scrubber at the end when the track finishes.
+
+        Position ticks stop on a non-repeat end, so the fill stays put; it
+        moves again when the track is revived (scrub / repeat toggle) or
+        restarts on repeat.
+        """
+        if self.player:
+            duration = self.player.get_duration()
+            if duration > 0:
+                self.scrubber.set_progress(duration, duration)
 
     def _on_seek(self, fraction: float):
         """Map the scrubber's 0..1 release fraction to ms and seek the player."""
