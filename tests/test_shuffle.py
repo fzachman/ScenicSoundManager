@@ -172,3 +172,41 @@ class TestSmartShuffle:
 
         # At least 2 different orders out of 5 attempts
         assert len(orders) >= 2
+
+
+class TestMarkPlayed:
+    def test_marked_track_not_repeated_in_current_cycle(self):
+        shuffle = SmartShuffle([1, 2, 3, 4])
+        first = shuffle.next()
+        target = next(t for t in [1, 2, 3, 4] if t != first)
+
+        shuffle.mark_played(target)
+
+        rest = [shuffle.next() for _ in range(shuffle.remaining)]
+        assert target not in rest
+        assert {first, target, *rest} == {1, 2, 3, 4}
+
+    def test_marking_already_played_track_is_noop(self):
+        shuffle = SmartShuffle([1, 2, 3])
+        first = shuffle.next()
+        remaining_before = shuffle.remaining
+
+        shuffle.mark_played(first)
+
+        assert shuffle.remaining == remaining_before
+
+    def test_marking_unknown_track_is_noop(self):
+        shuffle = SmartShuffle([1, 2])
+
+        shuffle.mark_played(99)
+
+        assert shuffle.remaining == 2
+
+    def test_marking_counts_toward_cycle_completion(self):
+        shuffle = SmartShuffle([1, 2])
+        first = shuffle.next()
+        other = 2 if first == 1 else 1
+
+        shuffle.mark_played(other)
+
+        assert shuffle.cycle_complete is True

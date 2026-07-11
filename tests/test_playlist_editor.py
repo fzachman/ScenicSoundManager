@@ -299,6 +299,82 @@ class TestActiveOpenDecoupling:
         assert editor._current_audio_file_id in remaining
 
 
+class TestDoubleClickJump:
+    """Double-clicking a track card makes it the current track."""
+
+    def test_card_double_click_emits_play_requested(self, qapp, editor, playlist):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+
+        editor.load_playlist(playlist)
+        item = editor._track_items[playlist.tracks[1].id]
+        received = []
+        item.play_requested.connect(received.append)
+
+        QTest.mouseDClick(item, Qt.MouseButton.LeftButton)
+
+        assert received == [playlist.tracks[1].id]
+
+    def test_jump_while_playing_switches_current_track(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        editor._on_track_play_requested(playlist.tracks[2].id)
+
+        jumped_id = playlist.tracks[2].audio_file_id
+        assert editor._is_playing is True
+        assert editor._current_audio_file_id == jumped_id
+        assert _highlighted_audio_file_ids(editor) == [jumped_id]
+
+    def test_jump_while_stopped_starts_playlist_at_that_track(self, editor, playlist):
+        editor.load_playlist(playlist)
+
+        editor._on_track_play_requested(playlist.tracks[1].id)
+
+        assert editor.active_playback() == (playlist.id, True)
+        assert editor._current_audio_file_id == playlist.tracks[1].audio_file_id
+        # Sequential playback continues from the jumped-to position.
+        editor.next_track()
+        assert editor._current_audio_file_id == playlist.tracks[2].audio_file_id
+
+    def test_jump_while_paused_resumes(self, editor, playlist):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor.toggle_playback()  # pause
+        emissions = []
+        editor.playback_state_changed.connect(lambda *args: emissions.append(args))
+
+        editor._on_track_play_requested(playlist.tracks[1].id)
+
+        assert editor._is_playing is True
+        assert editor._current_audio_file_id == playlist.tracks[1].audio_file_id
+        assert emissions == [(playlist.id, playlist.name, True)]
+
+    def test_jump_in_browsed_playlist_takes_over_playback(
+        self, editor, playlist, second_playlist
+    ):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        editor.load_playlist(second_playlist)
+        editor._on_track_play_requested(second_playlist.tracks[1].id)
+
+        assert editor.active_playback() == (second_playlist.id, True)
+        assert editor._current_audio_file_id == second_playlist.tracks[1].audio_file_id
+
+    def test_shuffle_jump_counts_as_played_in_cycle(self, editor, playlist, db):
+        db.update_playlist_shuffle(playlist.id, True)
+        editor.load_playlist(db.get_playlist(playlist.id))
+
+        editor._on_track_play_requested(playlist.tracks[1].id)
+
+        played = [editor._current_audio_file_id]
+        for _ in range(2):  # exhaust the 3-track cycle
+            editor.next_track()
+            played.append(editor._current_audio_file_id)
+        assert set(played) == {t.audio_file_id for t in playlist.tracks}
+
+
 class TestPerTrackVolume:
     """Per-track volume: card slider persists and follows live playback."""
 

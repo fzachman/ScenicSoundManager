@@ -50,6 +50,24 @@ class SmartShuffle:
         self._index += 1
         return track_id
 
+    def mark_played(self, track_id: int) -> None:
+        """Count a track as played in the current cycle without drawing it.
+
+        Used when the user manually jumps to a track: it moves into the
+        played portion of the sequence so it won't come up again before the
+        cycle ends. No-op if the track is unknown or already played.
+        """
+        if track_id not in self._sequence:
+            return
+        pos = self._sequence.index(track_id)
+        if pos < self._index:
+            return
+        self._sequence[pos], self._sequence[self._index] = (
+            self._sequence[self._index],
+            self._sequence[pos],
+        )
+        self._index += 1
+
     def peek(self) -> int | None:
         """Return the next track ID without advancing the position."""
         if not self._sequence:

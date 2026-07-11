@@ -33,6 +33,7 @@ class PlaylistTrackItem(QFrame):
     """Display widget for a single track in a playlist"""
 
     remove_requested = pyqtSignal(int)  # track_id
+    play_requested = pyqtSignal(int)  # track_id (double-click: jump here)
     volume_changed = pyqtSignal(int, float)  # track_id, volume 0-1 (live)
     volume_committed = pyqtSignal(int, float)  # track_id, volume 0-1 (persist)
     seek_requested = pyqtSignal(int, float)  # track_id, fraction 0-1
@@ -200,6 +201,12 @@ class PlaylistTrackItem(QFrame):
     def mouseReleaseEvent(self, event):
         self._drag_start_pos = None
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.play_requested.emit(self.track.id)
+            return
+        super().mouseDoubleClickEvent(event)
 
 
 class PlaylistTrackListContainer(QWidget):
@@ -491,6 +498,7 @@ class PlaylistEditor(QWidget):
         assert track.id is not None
         item = PlaylistTrackItem(track, position=position)
         item.remove_requested.connect(self._remove_track)
+        item.play_requested.connect(self._on_track_play_requested)
         item.volume_changed.connect(self._on_track_volume_changed)
         item.volume_committed.connect(self._on_track_volume_committed)
         item.seek_requested.connect(self._on_track_seek)
@@ -592,6 +600,39 @@ class PlaylistEditor(QWidget):
             return
         assert self._current_playlist.id is not None
         self.db.reorder_playlist_tracks(self._current_playlist.id, track_ids)
+
+    def _on_track_play_requested(self, track_id: int):
+        """Double-click on a card: make that track the current one.
+
+        If the open playlist owns playback, jump within it (resuming if
+        paused); otherwise start the open playlist at that track.
+        """
+        item = self._track_items.get(track_id)
+        if item is None or self._current_playlist is None:
+            return
+        audio_file_id = item.track.audio_file_id
+        if audio_file_id is None:
+            return
+
+        if not self._is_playing_this_playlist(self._current_playlist.id):
+            self._start_playback(start_audio_file_id=audio_file_id)
+            return
+
+        # Highlighting is gated on _is_playing, so set it before playing;
+        # restore on failure (e.g. missing file — the old track keeps going).
+        was_paused = not self._is_playing
+        self._is_playing = True
+        if not self._play_audio_file(audio_file_id):
+            self._is_playing = not was_paused
+            return
+        assert self._active_playlist is not None
+        if self._active_playlist.is_shuffle:
+            self._shuffle.mark_played(audio_file_id)
+        if was_paused:
+            self._sync_play_button()
+            self.playback_state_changed.emit(
+                self._active_playlist.id, self._active_playlist.name, True
+            )
 
     # -- Per-track volume + scrubber --
 
@@ -731,8 +772,8 @@ class PlaylistEditor(QWidget):
         else:
             self._start_playback()
 
-    def _start_playback(self):
-        """Start playing the current playlist from the beginning"""
+    def _start_playback(self, start_audio_file_id: int | None = None):
+        """Start playing the current playlist (from the given track, if any)"""
         if not self._current_playlist or not self._current_playlist.tracks:
             return
 
@@ -749,7 +790,13 @@ class PlaylistEditor(QWidget):
         self._shuffle.update_tracks(audio_file_ids)
 
         # Pick first track
-        if self._active_playlist.is_shuffle:
+        audio_file_id: int | None
+        if start_audio_file_id is not None:
+            audio_file_id = start_audio_file_id
+            if self._active_playlist.is_shuffle:
+                # The chosen opener counts as played in this shuffle cycle.
+                self._shuffle.mark_played(audio_file_id)
+        elif self._active_playlist.is_shuffle:
             audio_file_id = self._shuffle.next()
         else:
             audio_file_id = audio_file_ids[0] if audio_file_ids else None
