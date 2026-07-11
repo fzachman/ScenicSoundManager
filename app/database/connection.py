@@ -247,49 +247,56 @@ class DatabaseConnection:
         return files
 
     def search_audio_files(
-        self, query: str, tag_ids: list[int] | None = None
+        self,
+        query: str,
+        tag_ids: list[int] | None = None,
+        excluded_tag_ids: list[int] | None = None,
     ) -> list[AudioFile]:
-        """Search audio files by title, artist, or tags"""
+        """Search audio files by title/artist, filtered by tags.
+
+        Included tags are ANDed: a file must carry every one of them.
+        Excluded tags drop any file carrying one of them. Tag id -1 is the
+        "No Tag" pseudo-tag: included = only untagged files, excluded = only
+        files with at least one tag.
+        """
         query_pattern = f"%{query}%"
+        conditions = ["(af.title LIKE ? OR af.artist LIKE ?)"]
+        params: list[object] = [query_pattern, query_pattern]
 
-        if tag_ids:
-            include_no_tag = -1 in tag_ids
-            real_tag_ids = [tag_id for tag_id in tag_ids if tag_id != -1]
+        include_ids = [t for t in (tag_ids or []) if t != -1]
+        include_no_tag = -1 in (tag_ids or [])
+        exclude_ids = [t for t in (excluded_tag_ids or []) if t != -1]
+        exclude_no_tag = -1 in (excluded_tag_ids or [])
 
-            # Filter by tags and rank by number of matched tags (descending).
-            if real_tag_ids:
-                placeholders = ",".join("?" * len(real_tag_ids))
-                join_type = "LEFT JOIN" if include_no_tag else "JOIN"
-                sql = f"""
-                    SELECT af.*, COUNT(DISTINCT aft.tag_id) AS match_count
-                    FROM audio_files af
-                    {join_type} audio_file_tags aft ON af.id = aft.audio_file_id
-                    WHERE (
-                        aft.tag_id IN ({placeholders})
-                        {"OR aft.tag_id IS NULL" if include_no_tag else ""}
-                    )
-                    AND (af.title LIKE ? OR af.artist LIKE ?)
-                    GROUP BY af.id
-                    ORDER BY match_count DESC, af.title COLLATE NOCASE
-                """
-                params = real_tag_ids + [query_pattern, query_pattern]
-            else:
-                sql = """
-                    SELECT af.* FROM audio_files af
-                    LEFT JOIN audio_file_tags aft ON af.id = aft.audio_file_id
-                    WHERE aft.tag_id IS NULL
-                    AND (af.title LIKE ? OR af.artist LIKE ?)
-                    ORDER BY af.title COLLATE NOCASE
-                """
-                params = [query_pattern, query_pattern]
-        else:
-            sql = """
-                SELECT * FROM audio_files
-                WHERE title LIKE ? OR artist LIKE ?
-                ORDER BY title COLLATE NOCASE
-            """
-            params = [query_pattern, query_pattern]
+        if include_ids:
+            placeholders = ",".join("?" * len(include_ids))
+            conditions.append(f"""af.id IN (
+                SELECT audio_file_id FROM audio_file_tags
+                WHERE tag_id IN ({placeholders})
+                GROUP BY audio_file_id
+                HAVING COUNT(DISTINCT tag_id) = ?
+            )""")
+            params.extend(include_ids)
+            params.append(len(include_ids))
+        if include_no_tag:
+            conditions.append(
+                "af.id NOT IN (SELECT audio_file_id FROM audio_file_tags)"
+            )
+        if exclude_ids:
+            placeholders = ",".join("?" * len(exclude_ids))
+            conditions.append(
+                "af.id NOT IN (SELECT audio_file_id FROM audio_file_tags"
+                f" WHERE tag_id IN ({placeholders}))"
+            )
+            params.extend(exclude_ids)
+        if exclude_no_tag:
+            conditions.append("af.id IN (SELECT audio_file_id FROM audio_file_tags)")
 
+        sql = f"""
+            SELECT af.* FROM audio_files af
+            WHERE {" AND ".join(conditions)}
+            ORDER BY af.title COLLATE NOCASE
+        """
         cursor = self._conn.execute(sql, params)
         files = [self._row_to_audio_file(row) for row in cursor.fetchall()]
         self._attach_tags(files)

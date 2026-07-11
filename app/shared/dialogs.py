@@ -497,8 +497,11 @@ class AudioFileSearchDialog(QDialog):
 
         # Load files
         tag_ids = self.tag_manager.get_selected_tag_ids()
-        if query or tag_ids:
-            files = self.db.search_audio_files(query, tag_ids if tag_ids else None)
+        excluded_tag_ids = self.tag_manager.get_excluded_tag_ids()
+        if query or tag_ids or excluded_tag_ids:
+            files = self.db.search_audio_files(
+                query, tag_ids or None, excluded_tag_ids or None
+            )
         else:
             files = self.db.get_all_audio_files()
 

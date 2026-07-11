@@ -2,17 +2,18 @@
 
 import os
 import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
 from app.database import AudioFile, DatabaseConnection, Tag
-from app.library.tag_manager import TagBadge, TagManager
+from app.library.tag_manager import NO_TAG_ID, TagBadge, TagManager
 from app.shared.dialogs import AudioFileSearchDialog, FileSelectItem
 
 
@@ -50,6 +51,34 @@ def _find_badge(widget: TagManager, tag_name: str) -> TagBadge:
 def _click(widget, qapp):
     QTest.mouseClick(widget, Qt.MouseButton.LeftButton)
     qapp.processEvents()
+
+
+def _right_click(widget, qapp):
+    QTest.mouseClick(widget, Qt.MouseButton.RightButton)
+    qapp.processEvents()
+
+
+@pytest.fixture
+def tagged_library(db):
+    """Two tags across three files: both, combat-only, urban-only."""
+    combat = Tag(name="Combat", color="#FF0000")
+    combat.id = db.add_tag(combat)
+    urban = Tag(name="Urban", color="#00FF00")
+    urban.id = db.add_tag(urban)
+
+    def add(title, *tags):
+        file_id = db.add_audio_file(AudioFile(file_path=f"/{title}.mp3", title=title))
+        for tag in tags:
+            db.add_tag_to_audio_file(file_id, tag.id)
+        return file_id
+
+    return {
+        "combat": combat,
+        "urban": urban,
+        "both": add("Both", combat, urban),
+        "combat_only": add("Combat Only", combat),
+        "urban_only": add("Urban Only", urban),
+    }
 
 
 def test_tag_manager_toggle_does_not_accumulate_stale_badges(db, qapp):
@@ -140,3 +169,155 @@ def test_audio_file_search_dialog_tag_filter_recovers_after_toggle(db, qapp):
     items = dialog.findChildren(FileSelectItem)
     assert len(items) == 1
     assert items[0].file.id == file_two
+
+
+class TestTagExclusion:
+    """Right-click exclusion + tri-state badge behavior in TagManager."""
+
+    def test_right_click_excludes_tag(self, db, tagged_library, qapp):
+        manager = TagManager(db, allow_manage=False)
+        manager.show()
+        qapp.processEvents()
+
+        _right_click(_find_badge(manager, "Urban"), qapp)
+
+        assert manager.get_excluded_tag_ids() == [tagged_library["urban"].id]
+        assert manager.get_selected_tag_ids() == []
+
+    def test_left_click_on_excluded_returns_to_neutral(self, db, tagged_library, qapp):
+        manager = TagManager(db, allow_manage=False)
+        manager.show()
+        qapp.processEvents()
+
+        _right_click(_find_badge(manager, "Urban"), qapp)
+        _click(_find_badge(manager, "Urban"), qapp)
+
+        assert manager.get_excluded_tag_ids() == []
+        assert manager.get_selected_tag_ids() == []
+
+    def test_right_click_on_included_moves_it_to_excluded(
+        self, db, tagged_library, qapp
+    ):
+        manager = TagManager(db, allow_manage=False)
+        manager.show()
+        qapp.processEvents()
+
+        _click(_find_badge(manager, "Combat"), qapp)
+        _right_click(_find_badge(manager, "Combat"), qapp)
+
+        assert manager.get_selected_tag_ids() == []
+        assert manager.get_excluded_tag_ids() == [tagged_library["combat"].id]
+
+    def test_excluded_badge_is_grayed_with_strikethrough(
+        self, db, tagged_library, qapp
+    ):
+        manager = TagManager(db, allow_manage=False)
+        manager.show()
+        qapp.processEvents()
+
+        _right_click(_find_badge(manager, "Urban"), qapp)
+
+        style = _find_badge(manager, "Urban").label.styleSheet()
+        assert "line-through" in style
+
+    def test_clear_filter_resets_exclusions(self, db, tagged_library, qapp):
+        manager = TagManager(db, allow_manage=False)
+        manager.show()
+        qapp.processEvents()
+
+        _click(_find_badge(manager, "Combat"), qapp)
+        _right_click(_find_badge(manager, "Urban"), qapp)
+        manager.clear_filter()
+
+        assert manager.get_selected_tag_ids() == []
+        assert manager.get_excluded_tag_ids() == []
+        assert manager.has_active_filter() is False
+
+    def test_no_tag_is_mutually_exclusive_with_real_included_tags(
+        self, db, tagged_library, qapp
+    ):
+        manager = TagManager(db, allow_manage=False)
+        manager.show()
+        qapp.processEvents()
+
+        _click(_find_badge(manager, "Combat"), qapp)
+        _click(_find_badge(manager, "No Tag"), qapp)
+        assert manager.get_selected_tag_ids() == [NO_TAG_ID]
+
+        _click(_find_badge(manager, "Urban"), qapp)
+        assert manager.get_selected_tag_ids() == [tagged_library["urban"].id]
+
+    def test_manage_mode_right_click_opens_menu_not_direct_exclusion(
+        self, db, tagged_library, qapp
+    ):
+        # In the library the badge right-click belongs to the manage menu;
+        # exclusion is offered as a menu action there instead.
+        manager = TagManager(db, allow_manage=True)
+        manager.show()
+        qapp.processEvents()
+
+        badge = _find_badge(manager, "Urban")
+        badge.right_clicked.emit(badge.tag)
+        assert manager.get_excluded_tag_ids() == []
+
+        menu = MagicMock()
+        actions = []
+        menu.addAction.side_effect = lambda text: (
+            actions.append((text, MagicMock())) or actions[-1][1]
+        )
+        with patch("app.library.tag_manager.QMenu", return_value=menu):
+            manager._show_tag_menu(badge.tag, badge, QPoint(0, 0))
+
+        labels = [text for text, _ in actions]
+        assert labels[0] == "Exclude from filter"
+        exclude_action = actions[0][1]
+        exclude_action.triggered.connect.call_args[0][0]()
+        assert manager.get_excluded_tag_ids() == [tagged_library["urban"].id]
+
+        # Once excluded, the menu offers to clear the exclusion instead.
+        actions.clear()
+        with patch("app.library.tag_manager.QMenu", return_value=menu):
+            manager._show_tag_menu(badge.tag, badge, QPoint(0, 0))
+        assert [text for text, _ in actions][0] == "Clear exclusion"
+        actions[0][1].triggered.connect.call_args[0][0]()
+        assert manager.get_excluded_tag_ids() == []
+
+
+class TestDialogTagFiltering:
+    """AND + NOT semantics end-to-end through AudioFileSearchDialog."""
+
+    def _visible_titles(self, dialog):
+        return {
+            item.file.title
+            for item in dialog.findChildren(FileSelectItem)
+            if not item.isHidden()
+        }
+
+    def test_two_included_tags_require_both(self, db, tagged_library, qapp):
+        dialog = AudioFileSearchDialog(db, audio_engine=None)
+        dialog.show()
+        qapp.processEvents()
+
+        _click(_find_badge(dialog.tag_manager, "Combat"), qapp)
+        _click(_find_badge(dialog.tag_manager, "Urban"), qapp)
+
+        assert self._visible_titles(dialog) == {"Both"}
+
+    def test_right_click_excludes_files_with_that_tag(self, db, tagged_library, qapp):
+        dialog = AudioFileSearchDialog(db, audio_engine=None)
+        dialog.show()
+        qapp.processEvents()
+
+        _right_click(_find_badge(dialog.tag_manager, "Urban"), qapp)
+
+        assert self._visible_titles(dialog) == {"Combat Only"}
+
+    def test_include_plus_exclude(self, db, tagged_library, qapp):
+        dialog = AudioFileSearchDialog(db, audio_engine=None)
+        dialog.show()
+        qapp.processEvents()
+
+        _click(_find_badge(dialog.tag_manager, "Combat"), qapp)
+        _right_click(_find_badge(dialog.tag_manager, "Urban"), qapp)
+
+        assert self._visible_titles(dialog) == {"Combat Only"}

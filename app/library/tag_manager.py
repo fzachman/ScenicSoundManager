@@ -28,6 +28,7 @@ class TagBadge(QWidget):
     """A clickable tag badge"""
 
     clicked = pyqtSignal(Tag)
+    right_clicked = pyqtSignal(Tag)
     remove_clicked = pyqtSignal(Tag)
 
     def __init__(self, tag: Tag, removable: bool = False, parent=None):
@@ -69,6 +70,8 @@ class TagBadge(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.tag)
+        elif event.button() == Qt.MouseButton.RightButton:
+            self.right_clicked.emit(self.tag)
 
     def set_label_style(self, style: str) -> None:
         """Override the tag label style"""
@@ -158,7 +161,12 @@ class FlowLayout(QLayout):
 
 
 class TagManager(QWidget):
-    """Widget for managing tags and filtering by tags"""
+    """Widget for managing tags and filtering by tags.
+
+    Each tag badge is tri-state: neutral, included (left-click; files must
+    carry EVERY included tag), or excluded (right-click; files carrying the
+    tag are dropped). Left-clicking an excluded badge returns it to neutral.
+    """
 
     tag_filter_changed = pyqtSignal(list)  # List of selected tag IDs
     tags_modified = pyqtSignal()  # Emitted when tags are created/deleted
@@ -175,6 +183,7 @@ class TagManager(QWidget):
         self._allow_manage = allow_manage
         self._header_text = header_text
         self._selected_tag_ids: set[int] = set()
+        self._excluded_tag_ids: set[int] = set()
         self._icons = IconLibrary()
         self._tags_scroll: QScrollArea | None = None
 
@@ -242,18 +251,22 @@ class TagManager(QWidget):
         no_tag = Tag(id=NO_TAG_ID, name="No Tag", color="#FFFFFF")
         no_tag_badge = TagBadge(no_tag, removable=False)
         no_tag_badge.clicked.connect(self._toggle_tag_filter)
-        no_tag_selected = no_tag.id in self._selected_tag_ids
-        border_color = Styles.PRIMARY if no_tag_selected else Styles.BORDER
-        no_tag_badge.set_label_style(f"""
-            background-color: #FFFFFF;
-            color: #222;
-            border: 1px solid {border_color};
-            padding: 3px 10px;
-            border-radius: 11px;
-            min-height: 18px;
-            font-size: 11px;
-            font-weight: 700;
-        """)
+        no_tag_badge.right_clicked.connect(self._exclude_tag_filter)
+        if no_tag.id in self._excluded_tag_ids:
+            no_tag_badge.set_label_style(Styles.tag_badge_excluded_style())
+        else:
+            no_tag_selected = no_tag.id in self._selected_tag_ids
+            border_color = Styles.PRIMARY if no_tag_selected else Styles.BORDER
+            no_tag_badge.set_label_style(f"""
+                background-color: #FFFFFF;
+                color: #222;
+                border: 1px solid {border_color};
+                padding: 3px 10px;
+                border-radius: 11px;
+                min-height: 18px;
+                font-size: 11px;
+                font-weight: 700;
+            """)
         self.tags_layout.addWidget(no_tag_badge)
 
         # Add tag badges
@@ -262,18 +275,22 @@ class TagManager(QWidget):
             badge = TagBadge(tag, removable=False)
             badge.clicked.connect(self._toggle_tag_filter)
             if self._allow_manage:
+                # Right-click opens the manage menu (which offers exclusion).
                 badge.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 badge.customContextMenuRequested.connect(
                     lambda pos, t=tag, b=badge: self._show_tag_menu(t, b, pos)
                 )
+            else:
+                badge.right_clicked.connect(self._exclude_tag_filter)
 
-            # Highlight if selected
             if tag.id in self._selected_tag_ids:
                 badge.set_label_style(
                     Styles.tag_badge_style(
                         tag.color or Styles.TAG_COLORS[0], Styles.PRIMARY
                     )
                 )
+            elif tag.id in self._excluded_tag_ids:
+                badge.set_label_style(Styles.tag_badge_excluded_style())
 
             self.tags_layout.addWidget(badge)
 
@@ -282,14 +299,33 @@ class TagManager(QWidget):
         QTimer.singleShot(0, self._update_tag_container_height)
 
     def _toggle_tag_filter(self, tag: Tag):
-        """Toggle tag in filter selection"""
+        """Left-click: excluded -> neutral, included -> neutral, neutral -> included"""
         if tag.id is None:
             return
-        if tag.id in self._selected_tag_ids:
+        if tag.id in self._excluded_tag_ids:
+            self._excluded_tag_ids.remove(tag.id)
+        elif tag.id in self._selected_tag_ids:
             self._selected_tag_ids.remove(tag.id)
         else:
+            # "No Tag" AND a real tag can never both match a file — keep the
+            # pseudo-tag mutually exclusive with real included tags.
+            if tag.id == NO_TAG_ID:
+                self._selected_tag_ids.clear()
+            else:
+                self._selected_tag_ids.discard(NO_TAG_ID)
             self._selected_tag_ids.add(tag.id)
 
+        self._emit_filter_changed()
+
+    def _exclude_tag_filter(self, tag: Tag):
+        """Right-click: exclude the tag from results (no-op if already excluded)"""
+        if tag.id is None or tag.id in self._excluded_tag_ids:
+            return
+        self._selected_tag_ids.discard(tag.id)
+        self._excluded_tag_ids.add(tag.id)
+        self._emit_filter_changed()
+
+    def _emit_filter_changed(self):
         self.refresh_tags()
         self.tag_filter_changed.emit(list(self._selected_tag_ids))
         self._update_tag_container_height()
@@ -314,6 +350,16 @@ class TagManager(QWidget):
     def _show_tag_menu(self, tag: Tag, badge: TagBadge, pos):
         """Show context menu for tag"""
         menu = QMenu(self)
+
+        if tag.id in self._excluded_tag_ids:
+            exclude_action = menu.addAction("Clear exclusion")
+            assert exclude_action is not None
+            exclude_action.triggered.connect(lambda: self._toggle_tag_filter(tag))
+        else:
+            exclude_action = menu.addAction("Exclude from filter")
+            assert exclude_action is not None
+            exclude_action.triggered.connect(lambda: self._exclude_tag_filter(tag))
+        menu.addSeparator()
 
         edit_action = menu.addAction("Edit")
         assert edit_action is not None
@@ -346,13 +392,15 @@ class TagManager(QWidget):
             return
         self.db.delete_tag(tag.id)
         self._selected_tag_ids.discard(tag.id)
+        self._excluded_tag_ids.discard(tag.id)
         self.refresh_tags()
         self.tags_modified.emit()
         self._update_tag_container_height()
 
     def clear_filter(self):
-        """Clear tag filter selection"""
+        """Clear tag filter selection (included and excluded)"""
         self._selected_tag_ids.clear()
+        self._excluded_tag_ids.clear()
         self.refresh_tags()
         self.tag_filter_changed.emit([])
         self._update_tag_container_height()
@@ -360,6 +408,14 @@ class TagManager(QWidget):
     def get_selected_tag_ids(self) -> list[int]:
         """Get currently selected tag IDs"""
         return list(self._selected_tag_ids)
+
+    def get_excluded_tag_ids(self) -> list[int]:
+        """Get currently excluded tag IDs"""
+        return list(self._excluded_tag_ids)
+
+    def has_active_filter(self) -> bool:
+        """True if any tag is included or excluded"""
+        return bool(self._selected_tag_ids or self._excluded_tag_ids)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

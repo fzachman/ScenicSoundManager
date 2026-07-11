@@ -103,12 +103,25 @@ class LibraryWidget(QWidget):
         self.pagination_bar.set_files(files)
 
         # Show/hide drop hint based on whether we have files
-        if not files and not self.search_bar.get_text():
+        if (
+            not files
+            and not self.search_bar.get_text()
+            and not self.tag_manager.has_active_filter()
+        ):
             self.drop_hint.show()
             self.file_table.hide()
         else:
             self.drop_hint.hide()
             self.file_table.show()
+
+    def _query_files(self) -> list[AudioFile]:
+        """Run the active search + tag filter query"""
+        query = self.search_bar.get_text()
+        tag_ids = self.tag_manager.get_selected_tag_ids()
+        excluded_tag_ids = self.tag_manager.get_excluded_tag_ids()
+        return self.db.search_audio_files(
+            query, tag_ids or None, excluded_tag_ids or None
+        )
 
     def _apply_page(self):
         """Apply current pagination page to file table"""
@@ -117,15 +130,11 @@ class LibraryWidget(QWidget):
 
     def _on_search(self, query: str):
         """Handle search query change"""
-        tag_ids = self.tag_manager.get_selected_tag_ids()
-        files = self.db.search_audio_files(query, tag_ids if tag_ids else None)
-        self._display_files(files)
+        self._display_files(self._query_files())
 
     def _on_tag_filter(self, tag_ids: list[int]):
         """Handle tag filter change"""
-        query = self.search_bar.get_text()
-        files = self.db.search_audio_files(query, tag_ids if tag_ids else None)
-        self._display_files(files)
+        self._display_files(self._query_files())
 
     def _on_tags_modified(self):
         """Handle tag creation/deletion"""
@@ -138,12 +147,14 @@ class LibraryWidget(QWidget):
 
     def _refresh_current_view(self, preserve_page: bool = False):
         """Re-run the active search/filter query and update display"""
-        query = self.search_bar.get_text()
-        tag_ids = self.tag_manager.get_selected_tag_ids()
-        files = self.db.search_audio_files(query, tag_ids if tag_ids else None)
+        files = self._query_files()
         self.pagination_bar.set_files(files, preserve_page=preserve_page)
 
-        if not files and not query:
+        if (
+            not files
+            and not self.search_bar.get_text()
+            and not self.tag_manager.has_active_filter()
+        ):
             self.drop_hint.show()
             self.file_table.hide()
         else:

@@ -396,6 +396,21 @@ class Styles:
         """
 
     @staticmethod
+    def tag_badge_excluded_style() -> str:
+        """Style for a tag badge excluded from the filter (NOT this tag)."""
+        return f"""
+            background-color: {Styles.BACKGROUND_LIGHTER};
+            color: {Styles.TEXT_SUBTLE};
+            text-decoration: line-through;
+            padding: 3px 10px;
+            border-radius: 11px;
+            min-height: 18px;
+            font-size: 11px;
+            font-weight: 700;
+            border: 2px solid {Styles.BORDER_STRONG};
+        """
+
+    @staticmethod
     def tag_remove_button_style(color: str) -> str:
         """Style for a tag badge remove button."""
         return f"""

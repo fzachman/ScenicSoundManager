@@ -129,6 +129,71 @@ class TestTags:
         assert files[0].title == "Test"
 
 
+class TestTagSearchFilters:
+    """AND semantics for included tags + NOT semantics for excluded tags."""
+
+    @pytest.fixture
+    def library(self, db):
+        """Four files: both tags, only Combat, only Urban, untagged."""
+        combat = db.add_tag(Tag(name="Combat"))
+        urban = db.add_tag(Tag(name="Urban"))
+
+        def add(title, *tag_ids):
+            file_id = db.add_audio_file(
+                AudioFile(file_path=f"/{title}.mp3", title=title)
+            )
+            for tag_id in tag_ids:
+                db.add_tag_to_audio_file(file_id, tag_id)
+            return file_id
+
+        return {
+            "combat": combat,
+            "urban": urban,
+            "both": add("Both", combat, urban),
+            "combat_only": add("Combat Only", combat),
+            "urban_only": add("Urban Only", urban),
+            "untagged": add("Untagged"),
+        }
+
+    @staticmethod
+    def _titles(files):
+        return {f.title for f in files}
+
+    def test_multiple_included_tags_require_all(self, db, library):
+        results = db.search_audio_files("", [library["combat"], library["urban"]])
+        assert self._titles(results) == {"Both"}
+
+    def test_single_included_tag(self, db, library):
+        results = db.search_audio_files("", [library["combat"]])
+        assert self._titles(results) == {"Both", "Combat Only"}
+
+    def test_excluded_tag_drops_files_carrying_it(self, db, library):
+        results = db.search_audio_files("", None, [library["urban"]])
+        assert self._titles(results) == {"Combat Only", "Untagged"}
+
+    def test_include_and_exclude_combined(self, db, library):
+        results = db.search_audio_files("", [library["combat"]], [library["urban"]])
+        assert self._titles(results) == {"Combat Only"}
+
+    def test_no_tag_included_returns_only_untagged(self, db, library):
+        results = db.search_audio_files("", [-1])
+        assert self._titles(results) == {"Untagged"}
+
+    def test_no_tag_excluded_returns_only_tagged(self, db, library):
+        results = db.search_audio_files("", None, [-1])
+        assert self._titles(results) == {"Both", "Combat Only", "Urban Only"}
+
+    def test_text_query_combines_with_tag_filters(self, db, library):
+        results = db.search_audio_files("only", [library["combat"]])
+        assert self._titles(results) == {"Combat Only"}
+
+    def test_results_are_title_ordered(self, db, library):
+        results = db.search_audio_files("", None, [library["urban"]])
+        assert [f.title for f in results] == sorted(
+            (f.title for f in results), key=str.casefold
+        )
+
+
 class TestScenes:
     def test_add_scene(self, db):
         scene = Scene(title="Test Scene")
