@@ -6,7 +6,7 @@ import pytest
 from PyQt6.QtCore import QCoreApplication
 
 from app.audio.engine import vlc
-from app.audio.player import TrackPlayer
+from app.audio.player import TrackPlayer, _retiring_players
 
 
 @pytest.fixture
@@ -351,6 +351,75 @@ class TestFades:
         _drive_fade_to_completion(player)
 
         player.media_player.pause.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# fade_out_and_release (transition crossfade teardown)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(vlc is None, reason="python-vlc not importable")
+class TestFadeOutAndRelease:
+    def test_playing_player_fades_then_releases(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player.media_player.is_playing.return_value = True
+        media_player = player.media_player
+
+        player.fade_out_and_release(1000)
+
+        # Fading, not yet released
+        assert player._is_fading()
+        media_player.release.assert_not_called()
+
+        _drive_fade_to_completion(player)
+
+        assert player._current_volume == 0
+        media_player.release.assert_called_once()
+        assert player.media_player is None
+        mock_engine.unregister_player.assert_called_once_with(player)
+
+    def test_holds_strong_reference_until_released(self, qapp, mock_engine):
+        # The engine registry is a WeakSet, so the retiring set is the only
+        # thing keeping an orphaned player (and its fade) alive.
+        player = _make_player(mock_engine)
+        player.media_player.is_playing.return_value = True
+
+        player.fade_out_and_release(1000)
+        assert player in _retiring_players
+
+        _drive_fade_to_completion(player)
+        assert player not in _retiring_players
+
+    def test_non_playing_player_releases_immediately(self, qapp, mock_engine):
+        # A paused/silent player has nothing to fade — no lingering timer.
+        player = _make_player(mock_engine)
+        player.media_player.is_playing.return_value = False
+        media_player = player.media_player
+
+        player.fade_out_and_release(1000)
+
+        assert not player._is_fading()
+        media_player.release.assert_called_once()
+        assert player not in _retiring_players
+
+    def test_supersedes_inflight_fade(self, qapp, mock_engine):
+        # e.g. a pause fade-out is in progress when the user switches away:
+        # the release fade takes over (and its release callback wins).
+        player = _make_player(mock_engine)
+        player.media_player.is_playing.return_value = True
+        media_player = player.media_player
+
+        player.fade_out(duration_ms=1000, pause_after=True)
+        player.fade_out_and_release(1000)
+        _drive_fade_to_completion(player)
+
+        media_player.pause.assert_not_called()
+        media_player.release.assert_called_once()
+
+    def test_unavailable_engine_is_safe(self, qapp, unavailable_engine):
+        player = _make_player(unavailable_engine)
+        player.fade_out_and_release(1000)  # must not raise
+        assert player not in _retiring_players
 
 
 # ---------------------------------------------------------------------------

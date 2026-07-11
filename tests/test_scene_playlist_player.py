@@ -384,6 +384,41 @@ class TestStartStop:
         player.resume()
         assert player.is_playing
 
+    def test_fade_out_and_release_detaches_and_fades_inner_player(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        playlist_id, file_ids = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+        player._is_playing = True
+        player._current_audio_file_id = file_ids[0]
+        inner = MagicMock(name="inner_track_player")
+        player._player = inner
+
+        player.fade_out_and_release(1500)
+
+        # Signals are cut so the fading track can't advance the playlist or
+        # drive the scrubber, then the inner player retires itself.
+        inner.end_reached.disconnect.assert_called_once_with(player._on_track_ended)
+        inner.position_changed.disconnect.assert_called_once_with(
+            player.position_changed
+        )
+        inner.fade_out_and_release.assert_called_once_with(1500)
+        inner.stop.assert_not_called()
+        inner.release.assert_not_called()
+        assert player._player is None
+        assert not player.is_playing
+        assert player.current_audio_file_id is None
+
+    def test_fade_out_and_release_without_player_is_safe(
+        self, db, playlist_with_tracks, mock_engine
+    ):
+        playlist_id, _ = playlist_with_tracks
+        player = _make_player(playlist_id, db, mock_engine)
+
+        player.fade_out_and_release(1500)  # must not raise
+
+        assert not player.is_playing
+
 
 class TestNextTrack:
     def test_advances_to_next_sequential(self, db, playlist_with_tracks, mock_engine):

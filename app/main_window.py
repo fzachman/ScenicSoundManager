@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .audio import AudioEngine
+from .audio import TRANSITION_FADE_MS, AudioEngine
 from .database import DatabaseConnection
 from .library import LibraryWidget
 from .playlists import PlaylistsWidget
@@ -400,7 +400,8 @@ class MainWindow(QMainWindow):
             # trusted here — a PAUSED playlist has type None but still holds a
             # resumable player. The editor's stop path only emits when
             # something was actually active, so this is a silent no-op when idle.
-            self.playlists_widget.stop_all_playback()
+            # The fade overlaps the scene's own fade-in: a crossfade, not a cut.
+            self.playlists_widget.stop_all_playback(TRANSITION_FADE_MS)
             self._current_scene_id = scene_id
             self._current_playing_type = "scene"
             self.current_scene_btn.setText(f"Scene: {scene_title or 'Untitled Scene'}")
@@ -418,7 +419,8 @@ class MainWindow(QMainWindow):
             # Mutual exclusivity: stop any active scene before activating the
             # playlist. Unconditional for the same reason as the scene handler:
             # a paused scene has type None but must still be torn down.
-            self.scenes_widget.stop_all_playback()
+            # The fade overlaps the playlist's fade-in: a crossfade, not a cut.
+            self.scenes_widget.stop_all_playback(TRANSITION_FADE_MS)
             self._current_playlist_playing_id = playlist_id
             self._current_playing_type = "playlist"
             self.current_scene_btn.setText(

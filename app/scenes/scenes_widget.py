@@ -70,9 +70,9 @@ class ScenesWidget(QWidget):
         """Handle scene deletion"""
         self.scene_editor.clear()
 
-    def stop_all_playback(self):
-        """Stop all audio playback"""
-        self.scene_editor.stop_all()
+    def stop_all_playback(self, fade_ms: int = 0):
+        """Stop all audio playback (immediately, or fading over ``fade_ms``)"""
+        self.scene_editor.stop_all(fade_ms)
 
     def active_playback(self) -> tuple[int, bool] | None:
         """(scene_id, is_playing) of the scene owning playback, or None."""

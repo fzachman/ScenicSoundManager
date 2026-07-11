@@ -16,7 +16,12 @@ from PyQt6.QtWidgets import (
 
 from app.shared.logging import get_logger
 
-from ..audio import AudioEngine, SceneMixer, ScenePlaylistPlayer
+from ..audio import (
+    TRANSITION_FADE_MS,
+    AudioEngine,
+    SceneMixer,
+    ScenePlaylistPlayer,
+)
 from ..database import (
     PRESET_SLOTS,
     DatabaseConnection,
@@ -488,10 +493,13 @@ class SceneEditor(QWidget):
         if player:
             player.release()
 
-    def _stop_all_playlist_players(self):
+    def _stop_all_playlist_players(self, fade_ms: int = 0):
         """Stop and release all scene playlist players."""
         for player in self._playlist_players.values():
-            player.release()
+            if fade_ms > 0:
+                player.fade_out_and_release(fade_ms)
+            else:
+                player.release()
         self._playlist_players.clear()
         # Clear now-playing labels and scrubbers
         for control in self._playlist_entry_controls.values():
@@ -831,19 +839,29 @@ class SceneEditor(QWidget):
                 player.fade_out(500, pause_after=True)
 
     def _activate_scene(self, scene: Scene):
-        """Set the active scene for playback, stopping any prior scene"""
+        """Set the active scene for playback, fading out any prior scene"""
         if self._active_scene_id is not None and self._active_scene_id != scene.id:
-            self._stop_active_scene()
+            # The old scene ramps down while the new one's tracks fade in
+            # on their own players — a scene-to-scene crossfade.
+            self._stop_active_scene(TRANSITION_FADE_MS)
 
         self._active_scene_id = scene.id
         self._active_scene_title = scene.title
 
-    def _stop_active_scene(self):
-        """Stop playback and clear the active scene"""
+    def _stop_active_scene(self, fade_ms: int = 0):
+        """Stop playback and clear the active scene.
+
+        With ``fade_ms`` > 0 the tracks fade to silence and release
+        themselves instead of cutting off (used when playback is moving to
+        another scene or playlist).
+        """
         was_active = self._active_scene_id is not None
-        self.mixer.stop_all()
-        self.mixer.clear()
-        self._stop_all_playlist_players()
+        if fade_ms > 0:
+            self.mixer.fade_out_and_clear(fade_ms)
+        else:
+            self.mixer.stop_all()
+            self.mixer.clear()
+        self._stop_all_playlist_players(fade_ms)
         self._scene_playing = False
         self._active_scene_id = None
         self._active_scene_title = None
@@ -872,9 +890,9 @@ class SceneEditor(QWidget):
             Styles.playback_button_style(is_active=is_playing)
         )
 
-    def stop_all(self):
-        """Stop all playback immediately"""
-        self._stop_active_scene()
+    def stop_all(self, fade_ms: int = 0):
+        """Stop all playback (immediately, or fading out over ``fade_ms``)"""
+        self._stop_active_scene(fade_ms)
 
     def clear(self):
         """Clear the editor"""

@@ -42,6 +42,7 @@ def patched_track_player(qapp):
         player = TrackPlayer(file_path, engine)
         player.fade_in = MagicMock(name="fade_in")
         player.fade_out = MagicMock(name="fade_out")
+        player.fade_out_and_release = MagicMock(name="fade_out_and_release")
         player.stop = MagicMock(name="stop")
         player.release = MagicMock(name="release")
         player.is_playing = MagicMock(name="is_playing", return_value=False)
@@ -182,6 +183,33 @@ class TestPlaybackControls:
         p1.stop.assert_called_once_with()
         p2.stop.assert_called_once_with()
         assert stopped_signals == [True]
+
+
+class TestFadeOutAndClear:
+    def test_fades_every_player_and_empties_mixer(self, mixer):
+        p1 = mixer.add_track(1, "/fake/a.mp3")
+        p2 = mixer.add_track(2, "/fake/b.mp3")
+
+        removed = []
+        mixer.track_removed.connect(lambda tid: removed.append(tid))
+        stopped_signals = []
+        mixer.all_stopped.connect(lambda: stopped_signals.append(True))
+
+        mixer.fade_out_and_clear(1500)
+
+        # Players retire via self-releasing fades, not hard stop/release
+        p1.fade_out_and_release.assert_called_once_with(1500)
+        p2.fade_out_and_release.assert_called_once_with(1500)
+        p1.stop.assert_not_called()
+        p1.release.assert_not_called()
+        # Mixer is empty immediately, with the usual removal signals
+        assert mixer.get_all_players() == {}
+        assert sorted(removed) == [1, 2]
+        assert stopped_signals == [True]
+
+    def test_empty_mixer_is_noop(self, mixer):
+        mixer.fade_out_and_clear(1500)  # must not raise
+        assert mixer.get_all_players() == {}
 
 
 class TestIsAnyPlaying:

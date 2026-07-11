@@ -184,6 +184,26 @@ class ScenePlaylistPlayer(QObject):
         self._current_audio_file_id = None
         self._tracks_played_count = 0
 
+    def fade_out_and_release(self, fade_ms: int) -> None:
+        """Detach the current track, let it fade to silence, and go idle.
+
+        Signals are disconnected first for the same reasons as
+        _release_player: the retiring track must not advance the playlist
+        or drive the scrubber while it fades. The TrackPlayer releases
+        itself when the fade completes.
+        """
+        player = self._player
+        if player is not None:
+            with contextlib.suppress(TypeError):
+                player.end_reached.disconnect(self._on_track_ended)
+            with contextlib.suppress(TypeError):
+                player.position_changed.disconnect(self.position_changed)
+            self._player = None
+            player.fade_out_and_release(fade_ms)
+        self._is_playing = False
+        self._current_audio_file_id = None
+        self._tracks_played_count = 0
+
     def release(self) -> None:
         """Release all resources."""
         self.stop()

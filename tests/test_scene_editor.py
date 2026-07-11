@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtCore import QPoint
 
+from app.audio.player import _retiring_players
 from app.database import AudioFile, DatabaseConnection, Playlist, Scene
 from app.scenes.scene_editor import SceneEditor
 from tests.control_helpers import record
@@ -73,6 +74,21 @@ def editor(qapp, db):
         editor.stop_all()
 
 
+@pytest.fixture
+def second_scene(db):
+    """A second scene with a single track (no playlist entry)."""
+    scene_id = db.add_scene(Scene(title="Other Scene"))
+    file_id = db.add_audio_file(
+        AudioFile(
+            file_path="/fake/other_0.mp3",
+            title="Other Track 0",
+            duration_seconds=60.0,
+        )
+    )
+    db.add_track_to_scene(scene_id, file_id, position=0)
+    return SimpleNamespace(scene_id=scene_id)
+
+
 def _load(editor, db, scene_id):
     editor.load_scene(db.get_scene(scene_id))
 
@@ -82,6 +98,54 @@ def _drive_fade_to_completion(player):
         if not player._is_fading():
             break
         player._fade_step()
+
+
+class TestSceneSwitchCrossfade:
+    """Starting another scene fades the old scene's tracks out (overlapping
+    the new tracks' fade-in = crossfade); the default stop stays a hard cut."""
+
+    def test_switching_scenes_fades_out_old_players(
+        self, editor, db, scene, second_scene
+    ):
+        _load(editor, db, scene.scene_id)
+        editor._toggle_scene_play()
+        old_players = list(editor.mixer.get_all_players().values())
+        assert old_players
+        # No VLC in tests (media_player is None, is_playing() False), so the
+        # retiring fade would short-circuit to an immediate release — fake an
+        # audibly-playing player.
+        for p in old_players:
+            p.media_player = MagicMock()
+            p.is_playing = MagicMock(return_value=True)
+
+        _load(editor, db, second_scene.scene_id)
+        editor._toggle_scene_play()
+
+        # Old players left the mixer but are still fading toward release,
+        # held alive by the retiring set (the engine registry is weak).
+        assert editor._active_scene_id == second_scene.scene_id
+        remaining = editor.mixer.get_all_players().values()
+        for p in old_players:
+            assert p not in remaining
+            assert p._is_fading()
+            assert p in _retiring_players
+            _drive_fade_to_completion(p)
+            assert p not in _retiring_players
+
+    def test_stop_all_default_is_hard_cut(self, editor, db, scene):
+        # App close must keep cutting immediately, not fade for 1.5s.
+        _load(editor, db, scene.scene_id)
+        editor._toggle_scene_play()
+        old_players = list(editor.mixer.get_all_players().values())
+        for p in old_players:
+            p.is_playing = MagicMock(return_value=True)
+
+        editor.stop_all()
+
+        assert editor.mixer.get_all_players() == {}
+        for p in old_players:
+            assert not p._is_fading()
+            assert p not in _retiring_players
 
 
 class TestPresetButtons:

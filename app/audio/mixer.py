@@ -71,6 +71,19 @@ class SceneMixer(QObject):
             player.stop()
         self.all_stopped.emit()
 
+    def fade_out_and_clear(self, fade_ms: int) -> None:
+        """Fade every track to silence and remove it from the mixer.
+
+        The mixer is empty as soon as this returns; each retired player
+        keeps itself alive just long enough to finish its fade and then
+        releases itself (see TrackPlayer.fade_out_and_release).
+        """
+        for track_id in list(self._players):
+            player = self._players.pop(track_id)
+            player.fade_out_and_release(fade_ms)
+            self.track_removed.emit(track_id)
+        self.all_stopped.emit()
+
     def is_any_playing(self) -> bool:
         """Check if any track is currently playing"""
         return any(player.is_playing() for player in self._players.values())

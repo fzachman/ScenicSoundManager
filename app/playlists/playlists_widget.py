@@ -75,9 +75,9 @@ class PlaylistsWidget(QWidget):
         """Handle playlist rename from editor"""
         self.playlist_list.refresh_playlists()
 
-    def stop_all_playback(self):
-        """Stop all playlist playback"""
-        self.playlist_editor.stop_all()
+    def stop_all_playback(self, fade_ms: int = 0):
+        """Stop all playlist playback (immediately, or fading over ``fade_ms``)"""
+        self.playlist_editor.stop_all(fade_ms)
 
     def active_playback(self) -> tuple[int, bool] | None:
         """(playlist_id, is_playing) of the playlist owning playback, or None."""

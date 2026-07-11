@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.audio import TRANSITION_FADE_MS
 from app.database import AudioFile, DatabaseConnection, Playlist
 from app.playlists.playlist_editor import PlaylistEditor
 
@@ -169,6 +170,42 @@ class TestActivePlaybackState:
         editor._stop_playback()
 
         assert emissions == []
+
+
+class TestSwitchCrossfade:
+    """Switching playback to another playlist fades the old track out
+    (overlapping the new track's fade-in = crossfade); explicit stop paths
+    keep the hard cut."""
+
+    def test_switching_playlists_fades_out_old_player(
+        self, editor, playlist, second_playlist
+    ):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        # The patched TrackPlayer class is one MagicMock, so old and new
+        # "instances" are the same object — reset to isolate the switch.
+        player = editor._player
+        player.reset_mock()
+
+        editor.load_playlist(second_playlist)
+        editor.toggle_playback()
+
+        player.fade_out_and_release.assert_called_once_with(TRANSITION_FADE_MS)
+        player.stop.assert_not_called()
+        player.release.assert_not_called()
+
+    def test_stop_all_default_is_hard_stop(self, editor, playlist):
+        # App close must keep cutting immediately, not fade for 1.5s.
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        player = editor._player
+        player.reset_mock()
+
+        editor.stop_all()
+
+        player.stop.assert_called_once()
+        player.release.assert_called_once()
+        player.fade_out_and_release.assert_not_called()
 
 
 class TestShufflePersistence:

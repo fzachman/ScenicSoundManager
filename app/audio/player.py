@@ -7,6 +7,15 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from .engine import AudioEngine, vlc
 
+# Duration of the crossfade when playback switches between scenes/playlists.
+TRANSITION_FADE_MS = 1500
+
+# Players fading to silence before self-releasing (fade_out_and_release).
+# The engine registry is a WeakSet, so once a mixer/editor drops its
+# reference this set is the only thing keeping the fade (and the eventual
+# release) alive against the garbage collector.
+_retiring_players: set["TrackPlayer"] = set()
+
 
 class TrackPlayer(QObject):
     """Individual track player with volume control and fade support"""
@@ -214,6 +223,21 @@ class TrackPlayer(QObject):
         callback = self.pause if pause_after else None
         self._start_fade(self._current_volume, 0, duration_ms, callback)
 
+    def fade_out_and_release(self, duration_ms: int = TRANSITION_FADE_MS) -> None:
+        """Fade to silence, then release; the caller may drop its reference.
+
+        This is how a player is retired when playback moves to another
+        scene/playlist: the replacement fades in on its own players while
+        this one ramps down, giving a crossfade instead of a hard cut. A
+        player that isn't audibly playing is released immediately.
+        """
+        if not self.media_player or not self.is_playing():
+            self.release()
+            return
+        _retiring_players.add(self)
+        self._stop_fade()
+        self._start_fade(self._current_volume, 0, duration_ms, self.release)
+
     def fade_to_volume(self, target_volume: int, duration_ms: int = 500) -> None:
         """Fade to a specific volume level"""
         self._stop_fade()
@@ -337,6 +361,7 @@ class TrackPlayer(QObject):
 
     def release(self) -> None:
         """Release player resources"""
+        _retiring_players.discard(self)
         self._stop_fade()
         self._position_timer.stop()
         if self.media_player:

@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 
 from app.shared.logging import get_logger
 
-from ..audio import AudioEngine, SmartShuffle, TrackPlayer
+from ..audio import TRANSITION_FADE_MS, AudioEngine, SmartShuffle, TrackPlayer
 from ..database import DatabaseConnection, Playlist, PlaylistTrack
 from ..shared.icons import IconLibrary
 from ..shared.layouts import clear_layout
@@ -777,8 +777,9 @@ class PlaylistEditor(QWidget):
         if not self._current_playlist or not self._current_playlist.tracks:
             return
 
-        # Stop any previous playback
-        self._stop_playback()
+        # Fade out any previous playback; the first track's fade-in overlaps
+        # it, so switching playlists crossfades instead of hard-cutting.
+        self._stop_playback(TRANSITION_FADE_MS)
 
         self._active_playlist = self._current_playlist
         self._current_track_index = 0
@@ -837,9 +838,9 @@ class PlaylistEditor(QWidget):
                 self._active_playlist.id, self._active_playlist.name, True
             )
 
-    def _stop_playback(self):
-        """Stop playback completely"""
-        self._release_player()
+    def _stop_playback(self, fade_ms: int = 0):
+        """Stop playback completely (fading the current track over ``fade_ms``)"""
+        self._release_player(fade_ms)
         self._is_playing = False
         self._current_audio_file_id = None
         old_playlist = self._active_playlist
@@ -977,8 +978,8 @@ class PlaylistEditor(QWidget):
             ]
             self._shuffle.update_tracks(audio_file_ids)
 
-    def _release_player(self):
-        """Release the current track player"""
+    def _release_player(self, fade_ms: int = 0):
+        """Release the current track player (fading out over ``fade_ms``)"""
         if self._player:
             # Disconnect first: end_reached is QTimer-delivered, so a manual
             # skip can race a just-posted end-of-media and advance twice; a
@@ -988,8 +989,13 @@ class PlaylistEditor(QWidget):
                 self._player.end_reached.disconnect(self._on_track_ended)
             with contextlib.suppress(TypeError):
                 self._player.position_changed.disconnect(self._on_player_position)
-            self._player.stop()
-            self._player.release()
+            if fade_ms > 0:
+                # Self-releasing fade: the old track ramps down while its
+                # replacement fades in (crossfade on playlist switches).
+                self._player.fade_out_and_release(fade_ms)
+            else:
+                self._player.stop()
+                self._player.release()
             self._player = None
 
     def _update_now_playing_highlight(self):
@@ -1038,9 +1044,9 @@ class PlaylistEditor(QWidget):
                 Styles.toggle_off_style(radius=10, extra="padding: 8px 16px;")
             )
 
-    def stop_all(self):
-        """Stop all playback immediately (called by MainWindow on close)"""
-        self._stop_playback()
+    def stop_all(self, fade_ms: int = 0):
+        """Stop all playback (immediately, or fading out over ``fade_ms``)"""
+        self._stop_playback(fade_ms)
 
     def clear(self):
         """Clear the editor"""

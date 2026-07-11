@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 import app.main_window as main_window_module
+from app.audio import TRANSITION_FADE_MS
 from app.database import DatabaseConnection, Playlist
 
 
@@ -62,14 +63,17 @@ def test_scene_stop_clears_state(main_window, qapp):
 
 
 def test_playlist_start_stops_active_scene(main_window, qapp, monkeypatch):
+    # The teardown of the losing side must fade (crossfade), not hard-cut.
     stopped = []
     monkeypatch.setattr(
-        main_window.scenes_widget, "stop_all_playback", lambda: stopped.append(True)
+        main_window.scenes_widget,
+        "stop_all_playback",
+        lambda fade_ms=0: stopped.append(fade_ms),
     )
     main_window.scenes_widget.playback_state_changed.emit(3, "Tavern", True)
     main_window.playlists_widget.playback_state_changed.emit(7, "Battle Mix", True)
     qapp.processEvents()
-    assert stopped == [True]
+    assert stopped == [TRANSITION_FADE_MS]
     assert main_window._current_playing_type == "playlist"
     assert main_window.current_scene_btn.text() == "Playlist: Battle Mix"
 
@@ -77,12 +81,14 @@ def test_playlist_start_stops_active_scene(main_window, qapp, monkeypatch):
 def test_scene_start_stops_active_playlist(main_window, qapp, monkeypatch):
     stopped = []
     monkeypatch.setattr(
-        main_window.playlists_widget, "stop_all_playback", lambda: stopped.append(True)
+        main_window.playlists_widget,
+        "stop_all_playback",
+        lambda fade_ms=0: stopped.append(fade_ms),
     )
     main_window.playlists_widget.playback_state_changed.emit(7, "Battle Mix", True)
     main_window.scenes_widget.playback_state_changed.emit(3, "Tavern", True)
     qapp.processEvents()
-    assert stopped == [True]
+    assert stopped == [TRANSITION_FADE_MS]
     assert main_window._current_playing_type == "scene"
     assert main_window.current_scene_btn.text() == "Scene: Tavern"
 
@@ -95,11 +101,13 @@ def test_playlist_start_stops_paused_scene(main_window, qapp, monkeypatch):
     editor._scene_playing = False
     stopped = []
     monkeypatch.setattr(
-        main_window.scenes_widget, "stop_all_playback", lambda: stopped.append(True)
+        main_window.scenes_widget,
+        "stop_all_playback",
+        lambda fade_ms=0: stopped.append(fade_ms),
     )
     main_window.playlists_widget.playback_state_changed.emit(7, "Battle Mix", True)
     qapp.processEvents()
-    assert stopped == [True]
+    assert stopped == [TRANSITION_FADE_MS]
     assert main_window._current_playing_type == "playlist"
 
 
@@ -109,11 +117,13 @@ def test_scene_start_stops_paused_playlist(main_window, qapp, monkeypatch):
     editor._is_playing = False
     stopped = []
     monkeypatch.setattr(
-        main_window.playlists_widget, "stop_all_playback", lambda: stopped.append(True)
+        main_window.playlists_widget,
+        "stop_all_playback",
+        lambda fade_ms=0: stopped.append(fade_ms),
     )
     main_window.scenes_widget.playback_state_changed.emit(3, "Tavern", True)
     qapp.processEvents()
-    assert stopped == [True]
+    assert stopped == [TRANSITION_FADE_MS]
     assert main_window._current_playing_type == "scene"
 
 
