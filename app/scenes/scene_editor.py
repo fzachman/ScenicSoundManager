@@ -529,6 +529,15 @@ class SceneEditor(QWidget):
         self.mixer.set_track_repeat(track_id, is_repeat)
         self.db.update_scene_track_setting(track_id, is_repeat=is_repeat)
 
+        # Turning repeat on for a track that already finished must restart
+        # it — the end-of-media event that would have looped it has already
+        # come and gone. Only while the scene is audibly playing.
+        if is_repeat and self._is_current_scene_active() and self._scene_playing:
+            player = self.mixer.get_player(track_id)
+            if player is not None and player.has_ended:
+                player.restart()
+                player.fade_in(500)
+
     def _on_track_play_mode_changed(self, track_id: int, play_mode: bool):
         """Handle track play mode change"""
         if not self._current_scene:
@@ -640,7 +649,15 @@ class SceneEditor(QWidget):
                 player = self.mixer.get_player(track.id)
                 if new.play_mode and was_on and player:
                     player.repeat = new.is_repeat
-                    player.fade_to_volume(round(new.volume * 100), PRESET_FADE_MS)
+                    if player.has_ended and new.is_repeat:
+                        # The end event that would have looped it already
+                        # fired under the old (repeat-off) preset; bring the
+                        # track back from silence like any fade-in.
+                        player.target_volume = round(new.volume * 100)
+                        player.restart()
+                        player.fade_in(PRESET_FADE_MS)
+                    else:
+                        player.fade_to_volume(round(new.volume * 100), PRESET_FADE_MS)
                 elif new.play_mode and not was_on:
                     self._play_track(track, fade_ms=PRESET_FADE_MS)
                 elif not new.play_mode and player:

@@ -484,3 +484,92 @@ class TestUnavailableEngine:
         player.release()
         player.release()
         unavailable_engine.unregister_player.assert_called_with(player)
+
+
+# ---------------------------------------------------------------------------
+# Ended-state revive (scrub / repeat-toggle after a non-repeat track finishes)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(vlc is None, reason="python-vlc not importable")
+class TestEndedRevive:
+    def test_end_without_repeat_marks_ended_and_stops_position_timer(
+        self, qapp, mock_engine
+    ):
+        player = _make_player(mock_engine)
+        player.play()
+        assert player._position_timer.isActive()
+
+        player._handle_end_reached()
+
+        assert player.has_ended is True
+        assert player._position_timer.isActive() is False
+
+    def test_end_with_repeat_restarts_and_does_not_mark_ended(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player.repeat = True
+
+        player._handle_end_reached()
+
+        assert player.has_ended is False
+        player.media_player.stop.assert_called_once()
+        player.media_player.play.assert_called_once()
+
+    def test_set_position_on_ended_player_restarts_at_that_spot(
+        self, qapp, mock_engine
+    ):
+        # VLC parks an ended player where set_time() is silently dropped, so
+        # a scrub must stop+play and defer the seek until Playing arrives.
+        player = _make_player(mock_engine)
+        player._handle_end_reached()
+
+        player.set_position(30_000)
+
+        assert player.has_ended is False
+        assert player._position_timer.isActive()
+        player.media_player.stop.assert_called_once()
+        player.media_player.play.assert_called_once()
+        player.media_player.set_time.assert_not_called()
+
+        player._handle_state_change(vlc.State.Playing)
+        player.media_player.set_time.assert_called_once_with(30_000)
+
+    def test_pending_seek_applied_only_once(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player._handle_end_reached()
+        player.set_position(30_000)
+
+        player._handle_state_change(vlc.State.Playing)
+        player._handle_state_change(vlc.State.Playing)
+
+        player.media_player.set_time.assert_called_once_with(30_000)
+
+    def test_set_position_while_not_ended_seeks_directly(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+
+        player.set_position(5_000)
+
+        player.media_player.set_time.assert_called_once_with(5_000)
+        player.media_player.stop.assert_not_called()
+
+    def test_stop_clears_ended_state_and_pending_seek(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player._handle_end_reached()
+        player.set_position(30_000)
+
+        player.stop()
+
+        assert player.has_ended is False
+        player._handle_state_change(vlc.State.Playing)
+        # Only the restart's own set_time bookkeeping — nothing pending.
+        player.media_player.set_time.assert_not_called()
+
+    def test_restart_reapplies_current_volume(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player.target_volume = 40
+        player.media_player.audio_set_volume.reset_mock()
+        player._handle_end_reached()
+
+        player.restart()
+
+        player.media_player.audio_set_volume.assert_called_once_with(40)

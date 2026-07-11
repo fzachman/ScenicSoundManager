@@ -32,6 +32,11 @@ class TrackPlayer(QObject):
         self._fade_volume_step = 0.0
         self._fade_callback: Callable | None = None
 
+        # End-of-media state. VLC parks the player in the Ended state where
+        # play()/set_time() are no-ops; reviving needs an explicit restart().
+        self._ended = False
+        self._pending_seek_ms: int | None = None
+
         # Position update timer
         self._position_timer = QTimer()
         self._position_timer.timeout.connect(self._update_position)
@@ -120,6 +125,8 @@ class TrackPlayer(QObject):
         """Stop playback"""
         if self.media_player:
             self.media_player.stop()
+        self._ended = False
+        self._pending_seek_ms = None
         self._position_timer.stop()
 
     def is_playing(self) -> bool:
@@ -134,10 +141,36 @@ class TrackPlayer(QObject):
             return self.media_player.get_time()
         return 0
 
+    @property
+    def has_ended(self) -> bool:
+        """True once the media finished with repeat off (until revived)."""
+        return self._ended
+
     def set_position(self, position_ms: int) -> None:
         """Set playback position in milliseconds"""
+        if self._ended:
+            # Ended players silently ignore set_time; a scrub on a finished
+            # track means "play again from here".
+            self.restart(position_ms)
+            return
         if self.media_player:
             self.media_player.set_time(position_ms)
+
+    def restart(self, position_ms: int = 0) -> None:
+        """Start playing again after the media ended.
+
+        VLC needs a stop() before an Ended player accepts play(). The seek
+        (if any) is deferred until the Playing state actually arrives —
+        set_time() right after play() lands in a not-yet-playing player and
+        is dropped (see _handle_state_change).
+        """
+        self._ended = False
+        self._pending_seek_ms = position_ms if position_ms > 0 else None
+        if self.media_player:
+            self.media_player.stop()
+            self.media_player.play()
+            self._apply_volume(self._current_volume)
+        self._position_timer.start()
 
     def get_duration(self) -> int:
         """Get media duration in milliseconds"""
@@ -241,6 +274,12 @@ class TrackPlayer(QObject):
             # Restart playback
             self.media_player.stop()
             self.media_player.play()
+        else:
+            # The player is parked in VLC's Ended state: play()/set_time()
+            # are no-ops until restart(). Remember that so a later scrub or
+            # repeat-toggle can revive the track instead of dying silently.
+            self._ended = True
+            self._position_timer.stop()
 
     def _on_state_change(self, event) -> None:
         """Handle state change events"""
@@ -248,7 +287,19 @@ class TrackPlayer(QObject):
             # Capture state immediately to avoid race condition if player is released
             # before the callback executes
             state = self.media_player.get_state()
-            QTimer.singleShot(0, lambda s=state: self.state_changed.emit(s))
+            QTimer.singleShot(0, lambda s=state: self._handle_state_change(s))
+
+    def _handle_state_change(self, state: Any) -> None:
+        """Handle a state change in the main thread"""
+        if (
+            vlc is not None
+            and state == vlc.State.Playing
+            and self._pending_seek_ms is not None
+            and self.media_player
+        ):
+            self.media_player.set_time(self._pending_seek_ms)
+            self._pending_seek_ms = None
+        self.state_changed.emit(state)
 
     def release(self) -> None:
         """Release player resources"""

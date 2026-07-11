@@ -334,3 +334,61 @@ class TestSwitchWhilePaused:
         # Resume comes up in the new preset
         editor.toggle_playback()
         assert player.target_volume == 45
+
+
+class TestEndedTrackRevive:
+    """A non-repeat track that finished must be revivable (bug: it stayed
+    dead — Ended VLC players ignore set_time and never fire another end
+    event for the repeat flag to act on)."""
+
+    def _end_track(self, editor, track_id):
+        player = editor.mixer.get_player(track_id)
+        assert player is not None
+        player._handle_end_reached()
+        assert player.has_ended is True
+        return player
+
+    def test_repeat_toggle_revives_ended_track_while_playing(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+        track_id = scene.track_ids[0]
+        player = self._end_track(editor, track_id)
+
+        editor._on_track_repeat_changed(track_id, True)
+
+        assert player.has_ended is False
+        assert player.repeat is True
+        assert player._position_timer.isActive()
+
+    def test_repeat_toggle_does_not_revive_while_paused(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+        track_id = scene.track_ids[0]
+        player = self._end_track(editor, track_id)
+        editor.toggle_playback()  # pause the scene
+
+        editor._on_track_repeat_changed(track_id, True)
+
+        assert player.has_ended is True
+
+    def test_repeat_toggle_off_leaves_ended_track_alone(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+        track_id = scene.track_ids[0]
+        player = self._end_track(editor, track_id)
+
+        editor._on_track_repeat_changed(track_id, False)
+
+        assert player.has_ended is True
+
+    def test_preset_switch_to_repeat_on_revives_ended_track(self, editor, db, scene):
+        track_id = scene.track_ids[0]
+        db.update_scene_track_setting(track_id, is_repeat=True, slot=2)
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+        player = self._end_track(editor, track_id)
+
+        editor._preset_buttons[2].click()
+
+        assert player.has_ended is False
+        assert player.repeat is True
