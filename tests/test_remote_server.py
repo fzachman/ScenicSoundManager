@@ -147,7 +147,14 @@ def test_get_scenes_round_trip(main_window, client):
     scene_id = main_window.db.add_scene(Scene(title="Tavern"))
     response = client.request("get_scenes")
     assert response["ok"] is True
-    assert {"id": scene_id, "name": "Tavern"} in response["result"]
+    (scene,) = [s for s in response["result"] if s["id"] == scene_id]
+    assert scene["name"] == "Tavern"
+    assert scene["active_preset"] == 1
+    assert scene["presets"] == [
+        {"slot": 1, "name": None},
+        {"slot": 2, "name": None},
+        {"slot": 3, "name": None},
+    ]
 
 
 # --- commands -------------------------------------------------------------------
@@ -166,6 +173,38 @@ def test_play_scene_dispatches_to_widgets(main_window, client, monkeypatch):
     assert response["ok"] is True
     assert selected == [scene_id]
     assert played == [True]
+
+
+def test_play_scene_forwards_preset_param(main_window, client, monkeypatch):
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    switched = []
+    monkeypatch.setattr(
+        main_window.scenes_widget, "switch_preset", lambda s: switched.append(s)
+    )
+    monkeypatch.setattr(main_window.scenes_widget, "play_current", lambda: None)
+    response = client.request("play_scene", {"scene_id": scene_id, "preset": 2})
+    assert response["ok"] is True
+    assert switched == [2]
+
+
+def test_set_preset_dispatches_to_active_scene(main_window, client, monkeypatch):
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    editor = main_window.scenes_widget.scene_editor
+    editor._active_scene_id = scene_id
+    editor._scene_playing = True
+    switched = []
+    monkeypatch.setattr(
+        main_window.scenes_widget, "switch_preset", lambda s: switched.append(s)
+    )
+    response = client.request("set_preset", {"preset": 3})
+    assert response["ok"] is True
+    assert switched == [3]
+
+
+def test_set_preset_idle_errors_no_active_scene(client):
+    response = client.request("set_preset", {"preset": 2})
+    assert response["ok"] is False
+    assert response["error"]["code"] == "no_active_scene"
 
 
 def test_play_scene_unknown_id_errors(client):
@@ -284,6 +323,7 @@ def test_pause_broadcasts_paused_state(main_window, qapp, client):
         "type": "scene",
         "id": scene_id,
         "name": "Tavern",
+        "preset": {"slot": 1, "name": None},
     }
 
 

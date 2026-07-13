@@ -49,6 +49,7 @@ class SceneEditor(QWidget):
     playback_state_changed = pyqtSignal(
         object, object, bool
     )  # scene_id, scene_title, is_playing
+    preset_changed = pyqtSignal(int, int)  # scene_id, slot
 
     def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
         super().__init__(parent)
@@ -717,6 +718,17 @@ class SceneEditor(QWidget):
                 entry_player.set_volume(round(new_entry.volume * 100))
 
         _log.info("preset_switched", scene_id=scene_id, slot=slot, live=live)
+        self.preset_changed.emit(scene_id, slot)
+
+    def switch_preset(self, slot: int) -> None:
+        """Activate a preset on the open scene (remote-control entry point).
+
+        Same-slot and unknown-slot calls are no-ops — no re-transition, no
+        ``preset_changed`` emission.
+        """
+        if slot not in PRESET_SLOTS or slot == self._preset_slot:
+            return
+        self._switch_preset(slot)
 
     # Public entry points for the application keyboard shortcuts (MainWindow).
     # They wrap the private play/pause logic so MainWindow needn't reach into

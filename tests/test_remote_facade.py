@@ -38,7 +38,25 @@ def _record(monkeypatch, obj, name):
 
 def test_get_scenes_maps_title_to_name(main_window, facade):
     scene_id = main_window.db.add_scene(Scene(title="Tavern"))
-    assert {"id": scene_id, "name": "Tavern"} in facade.get_scenes()
+    assert {
+        "id": scene_id,
+        "name": "Tavern",
+        "active_preset": 1,
+        "presets": [
+            {"slot": 1, "name": None},
+            {"slot": 2, "name": None},
+            {"slot": 3, "name": None},
+        ],
+    } in facade.get_scenes()
+
+
+def test_get_scenes_includes_preset_names_and_active_slot(main_window, facade):
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    main_window.db.rename_scene_preset(scene_id, 2, "Combat")
+    main_window.db.set_active_preset_slot(scene_id, 2)
+    (scene,) = [s for s in facade.get_scenes() if s["id"] == scene_id]
+    assert scene["active_preset"] == 2
+    assert scene["presets"][1] == {"slot": 2, "name": "Combat"}
 
 
 def test_get_playlists_returns_id_and_name(main_window, facade):
@@ -61,7 +79,19 @@ def test_get_state_reflects_playing_scene(main_window, facade, qapp):
         "type": "scene",
         "id": scene_id,
         "name": "Tavern",
+        "preset": {"slot": 1, "name": None},
     }
+
+
+def test_get_state_playing_scene_reports_named_active_preset(
+    main_window, facade, qapp
+):
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    main_window.db.rename_scene_preset(scene_id, 3, "Night")
+    main_window.db.set_active_preset_slot(scene_id, 3)
+    main_window.scenes_widget.playback_state_changed.emit(scene_id, "Tavern", True)
+    qapp.processEvents()
+    assert facade.get_state()["playing"]["preset"] == {"slot": 3, "name": "Night"}
 
 
 def test_get_state_reflects_playing_playlist(main_window, facade, qapp):
@@ -74,6 +104,7 @@ def test_get_state_reflects_playing_playlist(main_window, facade, qapp):
         "type": "playlist",
         "id": playlist_id,
         "name": "Battle Mix",
+        "preset": None,
     }
 
 
@@ -95,7 +126,12 @@ def test_get_state_reports_paused_scene(main_window, facade):
     _set_scene_editor_active(main_window, scene_id, is_playing=False)
     state = facade.get_state()
     assert state["playing"] is None
-    assert state["paused"] == {"type": "scene", "id": scene_id, "name": "Tavern"}
+    assert state["paused"] == {
+        "type": "scene",
+        "id": scene_id,
+        "name": "Tavern",
+        "preset": {"slot": 1, "name": None},
+    }
 
 
 def test_get_state_reports_paused_playlist(main_window, facade):
@@ -107,6 +143,7 @@ def test_get_state_reports_paused_playlist(main_window, facade):
         "type": "playlist",
         "id": playlist_id,
         "name": "Battle Mix",
+        "preset": None,
     }
 
 
@@ -138,6 +175,7 @@ def test_get_state_name_is_none_for_id_missing_from_db(main_window, facade, qapp
     playing = facade.get_state()["playing"]
     assert playing["id"] == 999
     assert playing["name"] is None
+    assert playing["preset"] is None
 
 
 # --- play_scene / play_playlist ---------------------------------------------
@@ -182,6 +220,122 @@ def test_play_playlist_unknown_id_raises_not_found(main_window, facade):
     with pytest.raises(RemoteError) as exc:
         facade.play_playlist(999)
     assert exc.value.code == "not_found"
+
+
+# --- presets -------------------------------------------------------------------
+
+
+def _record_named(monkeypatch, obj, events, *names):
+    """Monkeypatch each method to append (name, args) to one shared list."""
+    for name in names:
+        monkeypatch.setattr(
+            obj, name, lambda *a, _n=name: events.append((_n, a))
+        )
+
+
+def test_play_scene_with_preset_switches_before_playing(
+    main_window, facade, monkeypatch
+):
+    # Ordering matters: the preset must be active before playback starts so
+    # the scene comes up directly in it (no start-then-transition blip).
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    events = []
+    _record_named(
+        monkeypatch,
+        main_window.scenes_widget,
+        events,
+        "select_scene",
+        "switch_preset",
+        "play_current",
+    )
+    facade.play_scene(scene_id, preset=2)
+    assert events == [
+        ("select_scene", (scene_id,)),
+        ("switch_preset", (2,)),
+        ("play_current", ()),
+    ]
+
+
+def test_play_scene_without_preset_does_not_touch_presets(
+    main_window, facade, monkeypatch
+):
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    switched = _record(monkeypatch, main_window.scenes_widget, "switch_preset")
+    facade.play_scene(scene_id)
+    assert switched == []
+
+
+@pytest.mark.parametrize("bad_preset", ["2", 2.5, True, 0, 4, -1])
+def test_play_scene_rejects_bad_presets(main_window, facade, monkeypatch, bad_preset):
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    played = _record(monkeypatch, main_window.scenes_widget, "play_current")
+    with pytest.raises(RemoteError) as exc:
+        facade.play_scene(scene_id, preset=bad_preset)
+    assert exc.value.code == "invalid_params"
+    assert played == []
+
+
+def test_set_preset_targets_the_active_scene(main_window, facade, monkeypatch):
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    _set_scene_editor_active(main_window, scene_id, is_playing=True)
+    events = []
+    _record_named(
+        monkeypatch,
+        main_window.scenes_widget,
+        events,
+        "select_scene",
+        "switch_preset",
+        "play_current",
+    )
+    facade.set_preset(3)
+    assert main_window.tab_widget.currentWidget() is main_window.scenes_widget
+    assert events == [("select_scene", (scene_id,)), ("switch_preset", (3,))]
+
+
+def test_set_preset_works_on_a_paused_scene(main_window, facade, monkeypatch):
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    _set_scene_editor_active(main_window, scene_id, is_playing=False)
+    switched = _record(monkeypatch, main_window.scenes_widget, "switch_preset")
+    facade.set_preset(2)
+    assert switched == [(2,)]
+
+
+def test_set_preset_errors_when_no_scene_is_active(main_window, facade, monkeypatch):
+    switched = _record(monkeypatch, main_window.scenes_widget, "switch_preset")
+    with pytest.raises(RemoteError) as exc:
+        facade.set_preset(2)
+    assert exc.value.code == "no_active_scene"
+    assert switched == []
+
+
+def test_set_preset_errors_while_a_playlist_plays(main_window, facade, monkeypatch):
+    # A playing playlist means no scene is active — presets are scene-only.
+    playlist_id = main_window.db.add_playlist(Playlist(name="Battle Mix"))
+    _set_playlist_editor_active(main_window, playlist_id, is_playing=True)
+    with pytest.raises(RemoteError) as exc:
+        facade.set_preset(2)
+    assert exc.value.code == "no_active_scene"
+
+
+@pytest.mark.parametrize("bad_preset", ["2", 2.5, True, 0, 4, None])
+def test_set_preset_rejects_bad_slots(facade, bad_preset):
+    with pytest.raises(RemoteError) as exc:
+        facade.set_preset(bad_preset)
+    assert exc.value.code == "invalid_params"
+
+
+def test_preset_change_broadcasts_updated_state(main_window, facade, qapp):
+    # An in-app preset click must reach remote clients: the widget's
+    # preset_changed signal triggers a fresh snapshot with the new slot.
+    scene_id = main_window.db.add_scene(Scene(title="Tavern"))
+    main_window.scenes_widget.playback_state_changed.emit(scene_id, "Tavern", True)
+    qapp.processEvents()
+    main_window.db.set_active_preset_slot(scene_id, 2)
+    snapshots = []
+    facade.state_changed.connect(snapshots.append)
+    main_window.scenes_widget.preset_changed.emit(scene_id, 2)
+    assert snapshots
+    assert snapshots[-1]["playing"]["preset"]["slot"] == 2
 
 
 # --- transport delegation ----------------------------------------------------
@@ -238,6 +392,7 @@ def test_state_changed_on_scene_playback_sees_updated_state(main_window, facade)
         "type": "scene",
         "id": scene_id,
         "name": "Tavern",
+        "preset": {"slot": 1, "name": None},
     }
 
 
@@ -255,6 +410,7 @@ def test_state_changed_on_pause_reports_paused(main_window, facade):
         "type": "scene",
         "id": scene_id,
         "name": "Tavern",
+        "preset": {"slot": 1, "name": None},
     }
 
 

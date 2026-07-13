@@ -16,6 +16,7 @@ class ScenesWidget(QWidget):
         object, object, bool
     )  # scene_id, scene_title, is_playing
     scene_selection_changed = pyqtSignal(int)  # scene_id
+    preset_changed = pyqtSignal(int, int)  # scene_id, slot
 
     def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
         super().__init__(parent)
@@ -53,6 +54,7 @@ class ScenesWidget(QWidget):
         self.scene_editor.playback_state_changed.connect(
             self.playback_state_changed.emit
         )
+        self.scene_editor.preset_changed.connect(self.preset_changed.emit)
 
     def _on_scene_selected(self, scene: Scene):
         """Handle scene selection"""
@@ -99,6 +101,10 @@ class ScenesWidget(QWidget):
     def play_current(self):
         """Start the open scene unless it is already playing."""
         self.scene_editor.play_current()
+
+    def switch_preset(self, slot: int):
+        """Activate a preset on the open scene."""
+        self.scene_editor.switch_preset(slot)
 
     def select_relative(self, delta: int) -> int | None:
         """Step the scene-list selection by ``delta`` (next/prev)."""

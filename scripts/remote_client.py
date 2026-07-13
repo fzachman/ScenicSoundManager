@@ -9,6 +9,8 @@ Usage (with the app running):
     venv/bin/python scripts/remote_client.py scenes
     venv/bin/python scripts/remote_client.py playlists
     venv/bin/python scripts/remote_client.py play-scene 3
+    venv/bin/python scripts/remote_client.py play-scene 3 2   # ...in preset 2
+    venv/bin/python scripts/remote_client.py set-preset 2     # active scene
     venv/bin/python scripts/remote_client.py play-playlist 2
     venv/bin/python scripts/remote_client.py toggle
     venv/bin/python scripts/remote_client.py next
@@ -35,6 +37,7 @@ COMMANDS = {
     "playlists": ("get_playlists", None),
     "play-scene": ("play_scene", "scene_id"),
     "play-playlist": ("play_playlist", "playlist_id"),
+    "set-preset": ("set_preset", "preset"),
     "toggle": ("toggle_play_pause", None),
     "next": ("next_track", None),
     "volume": ("set_master_volume", "value"),
@@ -46,6 +49,9 @@ def parse_args():
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("command", choices=[*COMMANDS, "watch"])
     parser.add_argument("value", nargs="?", type=int, help="id / volume value")
+    parser.add_argument(
+        "preset", nargs="?", type=int, help="preset slot (play-scene only)"
+    )
     args = parser.parse_args()
     if args.command != "watch":
         _, param = COMMANDS[args.command]
@@ -72,6 +78,8 @@ def main() -> int:
             return
         cmd, param = COMMANDS[args.command]
         params = {param: args.value} if param is not None else {}
+        if args.command == "play-scene" and args.preset is not None:
+            params["preset"] = args.preset
         socket.sendTextMessage(json.dumps({"id": 1, "cmd": cmd, "params": params}))
 
     def on_message(text: str):

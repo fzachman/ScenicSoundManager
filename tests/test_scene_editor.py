@@ -148,6 +148,44 @@ class TestSceneSwitchCrossfade:
             assert p not in _retiring_players
 
 
+class TestPublicSwitchPreset:
+    """switch_preset() — the remote-control seam — and the preset_changed
+    signal the remote facade rebroadcasts state from."""
+
+    def test_switch_preset_activates_slot_and_emits(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        emitted = record(editor.preset_changed)
+
+        editor.switch_preset(2)
+
+        assert editor._preset_slot == 2
+        assert db.get_scene(scene.scene_id).active_preset_slot == 2
+        assert emitted == [(scene.scene_id, 2)]
+
+    def test_same_slot_is_a_no_op(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        emitted = record(editor.preset_changed)
+        editor.switch_preset(1)  # slot 1 is already active
+        assert emitted == []
+
+    def test_unknown_slot_is_a_no_op(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        emitted = record(editor.preset_changed)
+        editor.switch_preset(4)
+        assert editor._preset_slot == 1
+        assert emitted == []
+
+    def test_no_scene_loaded_is_safe(self, editor):
+        editor.switch_preset(2)  # must not raise
+
+    def test_button_click_also_emits_preset_changed(self, editor, db, scene):
+        # The facade listens for in-app clicks through this same signal.
+        emitted = record(editor.preset_changed)
+        _load(editor, db, scene.scene_id)
+        editor._preset_buttons[3].click()
+        assert emitted == [(scene.scene_id, 3)]
+
+
 class TestPresetButtons:
     def test_buttons_disabled_until_scene_loaded(self, editor):
         for btn in editor._preset_buttons.values():

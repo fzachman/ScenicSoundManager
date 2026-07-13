@@ -92,6 +92,23 @@ Test this milestone against the real app before writing any action.
 - Note: playing a scene from the deck intentionally changes the app's visible
   UI selection (tab + sidebar), exactly as if clicked in-app.
 
+## Milestone 3b — Scene presets
+
+Two complementary action types (the app exposes presets as fixed per-scene
+slots 1–3; `get_scenes` returns each scene's slot names + active slot):
+
+- **Play Scene w/ Preset**: same inspector as Play Scene plus a preset
+  dropdown (labels from `presets[].name`, falling back to "Preset {slot}").
+  Key press = `play_scene {scene_id, preset}` — the app makes this button
+  idempotent-ish: it starts the scene in that preset, or live-crossfades the
+  preset if the scene is already playing. Active look when `state.playing`
+  matches BOTH the scene id and `preset.slot`.
+- **Set Preset** (scene-agnostic): key press = `set_preset {preset}` — acts on
+  whatever scene is playing/paused. `showAlert()` on `no_active_scene`.
+- Folder layout idea: one folder per scene containing play/pause + the three
+  preset keys (slots always exist, so the layout is fixed; optionally hide
+  never-renamed slots).
+
 ## Milestone 4 — Master volume
 
 - **Dial (Stream Deck+)**: on rotate, adjust by `ticks * step` from the last
@@ -130,34 +147,42 @@ Errors never close the connection.
 Unparseable requests get `"id": null`.
 
 **Event** (unsolicited, no `id`):
-`{"event": "state", "data": {...}}` — pushed on connect and on any playback
-or master-volume change from any source. `data` schema (same as `get_state`):
+`{"event": "state", "data": {...}}` — pushed on connect and on any playback,
+preset, or master-volume change from any source. `data` schema (same as
+`get_state`):
 
 ```json
 {
-  "playing": {"type": "scene", "id": 3, "name": "Tavern"},
+  "playing": {"type": "scene", "id": 3, "name": "Tavern", "preset": {"slot": 2, "name": "Combat"}},
+  "paused": null,
   "master_volume": 80
 }
 ```
 
-`playing` is `null` when idle; `type` is `"scene"` or `"playlist"`; `name`
-can be `null` if unresolvable. Treat every event as a full re-render — a
-mutating command's `state` broadcast typically arrives *before* its response.
+`playing` is `null` when nothing is audibly playing; `type` is `"scene"` or
+`"playlist"`; `name` can be `null` if unresolvable. `preset` is the scene's
+active preset slot (`name` null for never-renamed slots — render as
+"Preset {slot}"); always `null` for playlists. `paused` has the same shape as
+`playing` and holds the resumable paused item; the two are mutually exclusive
+(at most one non-null). Treat every event as a full re-render — a mutating
+command's `state` broadcast typically arrives *before* its response.
 
 | `cmd` | `params` | `result` |
 |-------|----------|----------|
 | `get_state` | — | state snapshot (above) |
-| `get_scenes` | — | `[{"id": int, "name": str}, ...]` |
+| `get_scenes` | — | `[{"id": int, "name": str, "active_preset": int, "presets": [{"slot": int, "name": str\|null} ×3]}, ...]` |
 | `get_playlists` | — | `[{"id": int, "name": str}, ...]` |
-| `play_scene` | `{"scene_id": int}` | `null` |
+| `play_scene` | `{"scene_id": int, "preset": int?}` | `null` — optional `preset` 1–3: not-yet-playing scene starts in that preset; already-playing scene live-crossfades to it (no restart) |
 | `play_playlist` | `{"playlist_id": int}` | `null` |
+| `set_preset` | `{"preset": int}` | `null` — switch the active (playing/paused) scene's preset; `no_active_scene` error when idle or a playlist is active |
 | `toggle_play_pause` | — | `null` |
 | `next_track` | — | `null` (playing playlist only; no-op otherwise) |
 | `set_master_volume` | `{"value": int}` | `{"master_volume": int}` (clamped 0–100) |
 
 Error codes: `bad_request` (bad JSON / non-object frame or params),
-`unknown_command`, `invalid_params` (wrong type; ids and volume must be JSON
-integers — booleans are rejected), `not_found`, `internal_error`.
+`unknown_command`, `invalid_params` (wrong type or preset outside 1–3; ids and
+volume must be JSON integers — booleans are rejected), `not_found`,
+`no_active_scene`, `internal_error`.
 
 Only one scene *or* one playlist plays at a time (app-enforced mutual
 exclusivity). v1 is additive-versioned: ignore unknown fields in `state` and

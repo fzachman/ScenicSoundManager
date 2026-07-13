@@ -41,7 +41,7 @@ If a request can't be parsed at all (invalid JSON), the response carries
 **Event** (server → client, unsolicited, no `id`):
 
 ```json
-{"event": "state", "data": {"playing": {"type": "scene", "id": 3, "name": "Tavern"}, "paused": null, "master_volume": 80}}
+{"event": "state", "data": {"playing": {"type": "scene", "id": 3, "name": "Tavern", "preset": {"slot": 2, "name": "Combat"}}, "paused": null, "master_volume": 80}}
 ```
 
 ## The `state` event
@@ -49,8 +49,8 @@ If a request can't be parsed at all (invalid JSON), the response carries
 One coarse snapshot, pushed:
 
 - immediately on connect (so clients can render without polling), and
-- on any playback or master-volume change, regardless of source (remote
-  command, in-app click, keyboard shortcut).
+- on any playback, preset, or master-volume change, regardless of source
+  (remote command, in-app click, keyboard shortcut).
 
 Schema of `data` (identical to the `get_state` result):
 
@@ -60,6 +60,7 @@ Schema of `data` (identical to the `get_state` result):
 | `playing.type` | `"scene"` \| `"playlist"` | what kind of item is playing |
 | `playing.id` | int | database id of the playing item |
 | `playing.name` | string \| null | display name (`null` if unresolvable) |
+| `playing.preset` | object \| null | the scene's active preset, `{"slot": int, "name": str|null}`; always `null` for playlists (or if unresolvable). `name` is `null` for slots never renamed — render as "Preset {slot}" |
 | `paused` | object \| null | the previously-playing item now paused (resumable); same shape as `playing`; `null` when something is playing or the app is fully idle |
 | `master_volume` | int 0–100 | current master volume |
 
@@ -79,10 +80,11 @@ typically produces a `state` broadcast *before* its own response arrives.
 | `cmd` | `params` | `result` on success |
 |-------|----------|---------------------|
 | `get_state` | — | state snapshot (see above) |
-| `get_scenes` | — | `[{"id": int, "name": str}, ...]` |
+| `get_scenes` | — | `[{"id": int, "name": str, "active_preset": int, "presets": [{"slot": int, "name": str|null}, ...]}, ...]` — every scene lists all three preset slots; `name` is `null` for slots never renamed |
 | `get_playlists` | — | `[{"id": int, "name": str}, ...]` |
-| `play_scene` | `{"scene_id": int}` | `null` — selects the scene in the UI (tab + sidebar, like clicking it) and plays it |
+| `play_scene` | `{"scene_id": int, "preset": int?}` | `null` — selects the scene in the UI (tab + sidebar, like clicking it) and plays it. Optional `preset` (1–3) activates that slot first: a scene not yet playing starts directly in it; a scene already playing just live-crossfades the preset (no restart) — so one button per (scene, preset) pair always does the right thing |
 | `play_playlist` | `{"playlist_id": int}` | `null` — same for playlists |
+| `set_preset` | `{"preset": int}` | `null` — switches the active (playing **or paused**) scene to preset 1–3: live crossfade while playing; a paused scene resumes with the new preset's settings. Errors with `no_active_scene` when no scene is active (idle, or a playlist is playing). Selects that scene in the UI like `play_scene` does |
 | `toggle_play_pause` | — | `null` — pauses whatever is playing; if idle, starts the item open in the current Scenes/Playlists tab (Space-key semantics) |
 | `next_track` | — | `null` — advances the playing playlist; no-op when a scene is playing or idle (Right-key semantics) |
 | `set_master_volume` | `{"value": int}` | `{"master_volume": int}` — the applied value; out-of-range input is clamped to 0–100 |
@@ -94,8 +96,10 @@ Notes:
   display names.
 - Only one scene *or* one playlist is active at a time; `play_*` stops
   whatever else was playing **or paused** (the app's mutual-exclusivity rule).
-- `play_scene`/`play_playlist` intentionally change the visible UI selection,
-  exactly as if the item was clicked.
+- `play_scene`/`play_playlist`/`set_preset` intentionally change the visible
+  UI selection, exactly as if the item was clicked.
+- Presets are per-scene slots 1–3 (there are no preset ids); slots always
+  exist, custom names are optional. Playlists have no presets.
 
 ## Error codes
 
@@ -103,8 +107,9 @@ Notes:
 |------|---------|
 | `bad_request` | Frame isn't valid JSON, isn't an object, or `params` isn't an object |
 | `unknown_command` | `cmd` missing or not in the table above |
-| `invalid_params` | A parameter has the wrong type (e.g. non-integer id/value) |
+| `invalid_params` | A parameter has the wrong type or value (e.g. non-integer id, preset outside 1–3) |
 | `not_found` | No scene/playlist with the given id |
+| `no_active_scene` | `set_preset` when no scene is playing or paused |
 | `internal_error` | Unexpected server-side failure (logged app-side) |
 
 Errors never close the connection; clients may keep the socket and continue.

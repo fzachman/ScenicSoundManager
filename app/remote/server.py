@@ -47,8 +47,11 @@ class RemoteControlServer(QObject):
             "get_state": lambda p: self._facade.get_state(),
             "get_scenes": lambda p: self._facade.get_scenes(),
             "get_playlists": lambda p: self._facade.get_playlists(),
-            "play_scene": lambda p: self._facade.play_scene(p.get("scene_id")),
+            "play_scene": lambda p: self._facade.play_scene(
+                p.get("scene_id"), p.get("preset")
+            ),
             "play_playlist": lambda p: self._facade.play_playlist(p.get("playlist_id")),
+            "set_preset": lambda p: self._facade.set_preset(p.get("preset")),
             "toggle_play_pause": lambda p: self._facade.toggle_play_pause(),
             "next_track": lambda p: self._facade.next_track(),
             "set_master_volume": lambda p: {

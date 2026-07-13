@@ -9,6 +9,7 @@ See ``docs/remote-protocol.md`` for the wire protocol it backs.
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from ..database import PRESET_SLOTS
 from ..shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -30,6 +31,16 @@ def _require_id(value, what: str) -> int:
     return value
 
 
+def _require_slot(value) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RemoteError("invalid_params", "preset must be an integer")
+    if value not in PRESET_SLOTS:
+        raise RemoteError(
+            "invalid_params", f"preset must be one of {list(PRESET_SLOTS)}"
+        )
+    return value
+
+
 class RemoteControlFacade(QObject):
     """Command surface for remote clients.
 
@@ -44,6 +55,7 @@ class RemoteControlFacade(QObject):
         super().__init__(parent)
         self._window = window
         window.scenes_widget.playback_state_changed.connect(self._emit_state)
+        window.scenes_widget.preset_changed.connect(self._emit_state)
         window.playlists_widget.playback_state_changed.connect(self._emit_state)
         window.master_slider.valueChanged.connect(self._emit_state)
 
@@ -62,11 +74,7 @@ class RemoteControlFacade(QObject):
         current = self._window.current_playback()
         if current is not None:
             kind, item_id = current
-            playing = {
-                "type": kind,
-                "id": item_id,
-                "name": self._name_of(kind, item_id),
-            }
+            playing = self._item_state(kind, item_id)
         else:
             paused = self._paused_item()
         return {
@@ -76,10 +84,23 @@ class RemoteControlFacade(QObject):
         }
 
     def get_scenes(self) -> list[dict]:
-        return [
-            {"id": scene.id, "name": scene.title}
-            for scene in self._window.db.get_all_scenes()
-        ]
+        """All scenes with their preset slots (name is null for unnamed slots)."""
+        db = self._window.db
+        scenes = []
+        for scene in db.get_all_scenes():
+            names = db.get_scene_preset_names(scene.id) if scene.id else {}
+            scenes.append(
+                {
+                    "id": scene.id,
+                    "name": scene.title,
+                    "active_preset": scene.active_preset_slot,
+                    "presets": [
+                        {"slot": slot, "name": names.get(slot)}
+                        for slot in PRESET_SLOTS
+                    ],
+                }
+            )
+        return scenes
 
     def get_playlists(self) -> list[dict]:
         return [
@@ -89,14 +110,26 @@ class RemoteControlFacade(QObject):
 
     # --- commands ---------------------------------------------------------
 
-    def play_scene(self, scene_id) -> None:
-        """Select the scene (tab + sidebar, like clicking it) and play it."""
+    def play_scene(self, scene_id, preset=None) -> None:
+        """Select the scene (tab + sidebar, like clicking it) and play it.
+
+        With ``preset``, the slot is activated between selecting and playing:
+        a not-yet-playing scene starts directly in that preset (no double
+        transition), and one already playing just live-crossfades the preset —
+        ``play_current()`` skips the already-playing scene. So a controller
+        button bound to one (scene, preset) pair does the right thing whether
+        that scene is playing or not.
+        """
         scene_id = _require_id(scene_id, "scene_id")
+        if preset is not None:
+            preset = _require_slot(preset)
         if self._window.db.get_scene(scene_id) is None:
             raise RemoteError("not_found", f"no scene with id {scene_id}")
-        logger.info("remote_play_scene", scene_id=scene_id)
+        logger.info("remote_play_scene", scene_id=scene_id, preset=preset)
         self._window.tab_widget.setCurrentWidget(self._window.scenes_widget)
         self._window.scenes_widget.select_scene(scene_id)
+        if preset is not None:
+            self._window.scenes_widget.switch_preset(preset)
         self._window.scenes_widget.play_current()
 
     def play_playlist(self, playlist_id) -> None:
@@ -108,6 +141,24 @@ class RemoteControlFacade(QObject):
         self._window.tab_widget.setCurrentWidget(self._window.playlists_widget)
         self._window.playlists_widget.select_playlist(playlist_id)
         self._window.playlists_widget.play_current()
+
+    def set_preset(self, preset) -> None:
+        """Switch the active (playing or paused) scene to another preset.
+
+        Selects that scene in the UI first (like ``play_scene``) so the
+        editor — which preset switching runs through — has it loaded. A
+        playing scene gets the live crossfade; a paused one just picks up the
+        preset's settings for when it resumes.
+        """
+        preset = _require_slot(preset)
+        active = self._window.scenes_widget.active_playback()
+        if active is None:
+            raise RemoteError("no_active_scene", "no scene is playing or paused")
+        scene_id, _is_playing = active
+        logger.info("remote_set_preset", scene_id=scene_id, preset=preset)
+        self._window.tab_widget.setCurrentWidget(self._window.scenes_widget)
+        self._window.scenes_widget.select_scene(scene_id)
+        self._window.scenes_widget.switch_preset(preset)
 
     def toggle_play_pause(self) -> None:
         """Exactly the Space-key semantics."""
@@ -147,21 +198,30 @@ class RemoteControlFacade(QObject):
             if active is not None:
                 item_id, is_playing = active
                 if not is_playing:
-                    return {
-                        "type": kind,
-                        "id": item_id,
-                        "name": self._name_of(kind, item_id),
-                    }
+                    return self._item_state(kind, item_id)
         return None
 
-    def _name_of(self, kind: str, item_id) -> str | None:
+    def _item_state(self, kind: str, item_id) -> dict:
+        """The ``playing``/``paused`` wire shape for one item.
+
+        ``preset`` is the scene's active slot (always null for playlists, or
+        when the id can't be resolved, e.g. deleted mid-playback).
+        """
+        item: dict = {"type": kind, "id": item_id, "name": None, "preset": None}
         if item_id is None:
-            return None
+            return item
         if kind == "scene":
             scene = self._window.db.get_scene(item_id)
-            return scene.title if scene else None
-        playlist = self._window.db.get_playlist(item_id)
-        return playlist.name if playlist else None
+            if scene:
+                item["name"] = scene.title
+                item["preset"] = {
+                    "slot": scene.active_preset_slot,
+                    "name": scene.preset_names.get(scene.active_preset_slot),
+                }
+        else:
+            playlist = self._window.db.get_playlist(item_id)
+            item["name"] = playlist.name if playlist else None
+        return item
 
     def _emit_state(self, *_args):
         """Republish any playback/volume change as one full snapshot."""
