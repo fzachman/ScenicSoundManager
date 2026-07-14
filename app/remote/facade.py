@@ -95,8 +95,7 @@ class RemoteControlFacade(QObject):
                     "name": scene.title,
                     "active_preset": scene.active_preset_slot,
                     "presets": [
-                        {"slot": slot, "name": names.get(slot)}
-                        for slot in PRESET_SLOTS
+                        {"slot": slot, "name": names.get(slot)} for slot in PRESET_SLOTS
                     ],
                 }
             )

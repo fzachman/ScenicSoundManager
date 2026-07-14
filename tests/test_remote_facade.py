@@ -83,9 +83,7 @@ def test_get_state_reflects_playing_scene(main_window, facade, qapp):
     }
 
 
-def test_get_state_playing_scene_reports_named_active_preset(
-    main_window, facade, qapp
-):
+def test_get_state_playing_scene_reports_named_active_preset(main_window, facade, qapp):
     scene_id = main_window.db.add_scene(Scene(title="Tavern"))
     main_window.db.rename_scene_preset(scene_id, 3, "Night")
     main_window.db.set_active_preset_slot(scene_id, 3)
@@ -228,9 +226,7 @@ def test_play_playlist_unknown_id_raises_not_found(main_window, facade):
 def _record_named(monkeypatch, obj, events, *names):
     """Monkeypatch each method to append (name, args) to one shared list."""
     for name in names:
-        monkeypatch.setattr(
-            obj, name, lambda *a, _n=name: events.append((_n, a))
-        )
+        monkeypatch.setattr(obj, name, lambda *a, _n=name: events.append((_n, a)))
 
 
 def test_play_scene_with_preset_switches_before_playing(
