@@ -92,22 +92,40 @@ Test this milestone against the real app before writing any action.
 - Note: playing a scene from the deck intentionally changes the app's visible
   UI selection (tab + sidebar), exactly as if clicked in-app.
 
-## Milestone 3b — Scene presets
+## Milestone 3b — Scene presets (decided UX: tap = toggle, long-press = preset page)
 
-Two complementary action types (the app exposes presets as fixed per-scene
-slots 1–3; `get_scenes` returns each scene's slot names + active slot):
+The app exposes presets as fixed per-scene slots 1–3 (no ids); `get_scenes`
+returns each scene's slot names + active slot.
 
-- **Play Scene w/ Preset**: same inspector as Play Scene plus a preset
-  dropdown (labels from `presets[].name`, falling back to "Preset {slot}").
-  Key press = `play_scene {scene_id, preset}` — the app makes this button
-  idempotent-ish: it starts the scene in that preset, or live-crossfades the
-  preset if the scene is already playing. Active look when `state.playing`
-  matches BOTH the scene id and `preset.slot`.
-- **Set Preset** (scene-agnostic): key press = `set_preset {preset}` — acts on
-  whatever scene is playing/paused. `showAlert()` on `no_active_scene`.
-- Folder layout idea: one folder per scene containing play/pause + the three
-  preset keys (slots always exist, so the layout is fixed; optionally hide
-  never-renamed slots).
+**Scene key, tap** — toggle play/pause, never touches the preset:
+
+- If `state.playing` is this scene → `toggle_play_pause` (pauses it; safe
+  globally since only one item plays app-wide).
+- Otherwise → `play_scene {scene_id}` with NO preset param. App-verified
+  semantics: a paused scene RESUMES from position (same-scene start reuses
+  the paused players), a different playing item crossfades over, and the
+  active preset is untouched.
+- Do NOT use `toggle_play_pause` to resume/start: its Space-key semantics
+  act on whatever is open in the app's current tab, which drifts if the user
+  browsed in-app. `play_scene {scene_id}` is deterministic.
+
+**Scene key, long-press** — open the preset page:
+
+- No native long-press event: measure `keyDown`→`keyUp` duration and act on
+  `keyUp` only (a threshold-crossed hold must suppress the tap action).
+- Plugins can't open native folders programmatically; use `switchToProfile`
+  to a plugin-bundled "preset page" profile (3 preset keys + back). Store
+  the long-pressed scene id in plugin state; the page's keys render that
+  scene's labels from `get_scenes` (`presets[].name`, fallback
+  "Preset {slot}") and highlight `state.playing.preset.slot`.
+- Each preset key = `play_scene {scene_id, preset}` — starts the scene in
+  that preset if not playing (crossfading out whatever was), or
+  live-crossfades just the preset if it is (no restart). One command covers
+  both, so the keys need no conditional logic.
+
+Optional extra action, **Set Preset** (scene-agnostic key outside the page):
+`set_preset {preset}` acts on whatever scene is playing/paused;
+`showAlert()` on `no_active_scene`.
 
 ## Milestone 4 — Master volume
 
