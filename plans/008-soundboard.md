@@ -22,8 +22,8 @@
 - **Baseline**: `venv/bin/pytest tests/ -q` → **572 passed**
 - **Branch**: `feature/soundboard` off `main`
 - **Status**: IN PROGRESS — Phases 1 (dock shell; spike PASS), 2 (data
-  layer), and 3 (playback core; capacity spike: no ceiling, no caps) done
-  2026-07-15
+  layer), 3 (playback core; capacity spike: no ceiling, no caps), and 4
+  (board UI end-to-end) done 2026-07-15; Phase 5 (drag-reorder) remains
 
 ## Goal
 

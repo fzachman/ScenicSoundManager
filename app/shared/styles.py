@@ -364,6 +364,73 @@ class Styles:
         return body
 
     @staticmethod
+    def combobox_style() -> str:
+        """Dark-theme QComboBox (field, arrow, and popup list)."""
+        return f"""
+            QComboBox {{
+                background-color: {Styles.BACKGROUND_ELEVATED};
+                color: {Styles.TEXT};
+                border: 1px solid {Styles.BORDER};
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+            }}
+            QComboBox QLineEdit::placeholder {{
+                color: {Styles.TEXT_SUBTLE};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 20px;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid {Styles.TEXT_MUTED};
+                margin-right: 6px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {Styles.BACKGROUND_ELEVATED};
+                color: {Styles.TEXT};
+                border: 1px solid {Styles.BORDER};
+                selection-background-color: {Styles.PRIMARY};
+            }}
+        """
+
+    @staticmethod
+    def soundboard_button_style(playing: bool) -> str:
+        """Style for a soundboard trigger button; highlighted while playing."""
+        if playing:
+            return f"""
+                QPushButton {{
+                    background-color: {Styles.BACKGROUND_HOVER};
+                    color: {Styles.TEXT};
+                    border: 1px solid {Styles.PRIMARY};
+                    border-radius: 8px;
+                    padding: 0 10px;
+                    text-align: left;
+                    font-weight: 600;
+                }}
+            """
+        return f"""
+            QPushButton {{
+                background-color: {Styles.BACKGROUND_LIGHT};
+                color: {Styles.TEXT};
+                border: 1px solid {Styles.BORDER};
+                border-radius: 8px;
+                padding: 0 10px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background-color: {Styles.BACKGROUND_LIGHTER};
+                border-color: {Styles.BORDER_STRONG};
+            }}
+            QPushButton:pressed {{
+                background-color: {Styles.BACKGROUND_HOVER};
+            }}
+        """
+
+    @staticmethod
     def dock_title_bar_style(selector: str) -> str:
         """Flat full-width surface for a dock's custom title bar."""
         return f"""

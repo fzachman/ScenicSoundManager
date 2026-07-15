@@ -23,6 +23,10 @@ persistence.
   with **smart shuffle** (avoids immediate repeats).
 - **Live control** — only one scene *or* one playlist plays at a time; switching
   is coordinated automatically. A master volume applies across everything.
+- **Soundboard** — a collapsible panel below the main window (pop-out-able into
+  its own window) with named boards of one-shot sound effect buttons that play
+  *over* the active scene/playlist. One sound at a time: a new press cuts over,
+  pressing the playing button stops it.
 
 Your library and scenes are stored in a local SQLite database at
 `~/Library/Application Support/SoundManager/soundmanager.db` (macOS).

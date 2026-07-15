@@ -98,7 +98,7 @@ class GetInfoDialog(QDialog):
 
         self._artist_combo = QComboBox()
         self._artist_combo.setEditable(True)
-        self._artist_combo.setStyleSheet(self._combobox_style())
+        self._artist_combo.setStyleSheet(Styles.combobox_style())
 
         # Collect unique artist values (including None/empty as distinct)
         unique_values: set[str | None] = set()
@@ -258,36 +258,3 @@ class GetInfoDialog(QDialog):
             if state == TagState.NONE
             and self._original_tag_states[tag_id] != TagState.NONE
         ]
-
-    @staticmethod
-    def _combobox_style() -> str:
-        return f"""
-            QComboBox {{
-                background-color: {Styles.BACKGROUND_ELEVATED};
-                color: {Styles.TEXT};
-                border: 1px solid {Styles.BORDER};
-                border-radius: 6px;
-                padding: 6px 10px;
-                font-size: 13px;
-            }}
-            QComboBox QLineEdit::placeholder {{
-                color: {Styles.TEXT_SUBTLE};
-            }}
-            QComboBox::drop-down {{
-                border: none;
-                width: 20px;
-            }}
-            QComboBox::down-arrow {{
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 6px solid {Styles.TEXT_MUTED};
-                margin-right: 6px;
-            }}
-            QComboBox QAbstractItemView {{
-                background-color: {Styles.BACKGROUND_ELEVATED};
-                color: {Styles.TEXT};
-                border: 1px solid {Styles.BORDER};
-                selection-background-color: {Styles.PRIMARY};
-            }}
-        """

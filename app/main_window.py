@@ -20,14 +20,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .audio import TRANSITION_FADE_MS, AudioEngine
+from .audio import TRANSITION_FADE_MS, AudioEngine, SoundboardPlayer
 from .database import DatabaseConnection
 from .library import LibraryWidget
 from .playlists import PlaylistsWidget
 from .remote import DEFAULT_PORT, RemoteControlFacade, RemoteControlServer
 from .scenes import ScenesWidget
 from .shared.styles import Styles
-from .soundboard import SoundboardDock
+from .soundboard import SoundboardContent, SoundboardDock
 
 
 class MainWindow(QMainWindow):
@@ -157,7 +157,12 @@ class MainWindow(QMainWindow):
         # Soundboard panel: a permanent dock below the content, deliberately
         # outside the scene/playlist mutual-exclusivity chain (its sounds play
         # over whatever is active).
-        self.soundboard_dock = SoundboardDock()
+        self.soundboard_player = SoundboardPlayer(self.audio_engine)
+        self.soundboard_dock = SoundboardDock(
+            content=SoundboardContent(
+                self.db, self.audio_engine, self.soundboard_player
+            )
+        )
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.soundboard_dock)
 
         # Connect signals between modules
@@ -482,6 +487,7 @@ class MainWindow(QMainWindow):
         # Stop all audio
         self.scenes_widget.stop_all_playback()
         self.playlists_widget.stop_all_playback()
+        self.soundboard_player.clear()
 
         # Close database
         self.db.close()

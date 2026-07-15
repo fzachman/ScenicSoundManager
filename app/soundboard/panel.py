@@ -83,7 +83,7 @@ class SoundboardTitleBar(QWidget):
 
 
 class SoundboardDock(QDockWidget):
-    """Dock shell for the soundboard (content is a placeholder until Phase 4)."""
+    """Dock shell for the soundboard: hosts the given content widget."""
 
     SETTINGS_GROUP = "soundboard"
     SETTINGS_COLLAPSED = "collapsed"
@@ -92,7 +92,7 @@ class SoundboardDock(QDockWidget):
     DEFAULT_EXPANDED_HEIGHT = 240
     DEFAULT_POPOUT_WIDTH_FRACTION = 0.7
 
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, content: QWidget | None = None, parent: QWidget | None = None):
         super().__init__(parent)
         # objectName is required for QMainWindow.saveState() to include this
         # dock; without it the height/floating geometry silently isn't saved.
@@ -108,7 +108,7 @@ class SoundboardDock(QDockWidget):
         self._title_bar.popout_toggle_requested.connect(self._toggle_floating)
         self.topLevelChanged.connect(self._title_bar.set_floating)
 
-        self.setWidget(self._build_placeholder())
+        self.setWidget(content if content is not None else self._build_placeholder())
 
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_GROUP)
@@ -124,7 +124,7 @@ class SoundboardDock(QDockWidget):
         self._apply_collapsed()
 
     def _build_placeholder(self) -> QWidget:
-        """Phase 1 placeholder; replaced by the board UI in Phase 4."""
+        """Fallback content when none is supplied (tests, tooling)."""
         content = QWidget()
         layout = QVBoxLayout(content)
         label = QLabel("Soundboard coming soon")

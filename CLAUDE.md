@@ -32,17 +32,19 @@ python setup.py py2app -A     # development alias mode
 - **Scenes** layer multiple sounds simultaneously (ambient soundscapes). `SceneMixer` manages N `TrackPlayer` instances playing in parallel, each with independent volume/repeat/play-mode. Scenes can also contain playlist entries via `ScenePlaylistPlayer`.
 - **Playlists** play tracks sequentially through a single `TrackPlayer` with `SmartShuffle` support.
 - Only one scene OR one playlist plays at a time — `MainWindow` coordinates mutual exclusivity via `playback_state_changed` signals.
+- **Soundboards** play one-shot SFX *over* the active scene/playlist via `SoundboardPlayer` (single slot: new press cuts over, same press stops). Deliberately outside the mutual-exclusivity chain.
 
 ### Module layout
 
 Each tab follows a **splitter pattern**: `*Widget` (container) = `*ListWidget` (left sidebar with list + CRUD) + `*Editor` (right panel with detail editing/playback).
 
-- `app/audio/` — `AudioEngine` (singleton VLC factory), `TrackPlayer`, `SceneMixer`, `ScenePlaylistPlayer`, `SmartShuffle`
+- `app/audio/` — `AudioEngine` (singleton VLC factory), `TrackPlayer`, `SceneMixer`, `ScenePlaylistPlayer`, `SmartShuffle`, `SoundboardPlayer`
 - `app/database/` — `DatabaseConnection` (SQLite CRUD), dataclass models in `models.py`, schema in `schema.sql`
 - `app/library/` — Audio file import, metadata extraction (mutagen), tagging, search
 - `app/scenes/` — Scene management, multi-track mixing, playlist-in-scene support
 - `app/playlists/` — Playlist management, track ordering, playback
 - `app/remote/` — Remote control: `RemoteControlFacade` (validated commands over MainWindow/widgets + coarse `state_changed` snapshots) and `RemoteControlServer` (localhost `QWebSocketServer`, protocol in `docs/remote-protocol.md`, QSettings `remote/enabled` + `remote/port`)
+- `app/soundboard/` — Soundboard panel: `SoundboardDock` (collapsible/pop-out bottom `QDockWidget`), `SoundboardContent` (board combo + `FlowLayout` button grid), `SoundboardEditDialog`
 - `app/shared/` — Reusable UI components, dark theme styles, structlog config, icon library
 
 ### Key conventions
