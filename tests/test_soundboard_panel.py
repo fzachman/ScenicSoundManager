@@ -73,10 +73,26 @@ class TestCollapse:
         dock.titleBarWidget().collapse_btn.click()
         qapp.processEvents()
         assert dock.collapsed
-        assert not dock.widget().isVisible()
+        # Collapsed = content pinned to zero height (NOT hidden: a hidden
+        # content widget caps the dock's max width at the title bar's
+        # sizeHint, shrinking the dock out of its full-width span).
+        assert dock.widget().maximumHeight() == 0
+        assert dock.widget().height() == 0
         # min == max pins the height and disables the separator drag.
         assert dock.minimumHeight() == dock.maximumHeight()
         assert dock.height() <= dock.titleBarWidget().sizeHint().height()
+
+    def test_collapsed_dock_spans_full_width(self, qapp, host):
+        # Regression: the collapsed dock must keep spanning the window, with
+        # the title-bar buttons staying at the far right (not next to the
+        # title).
+        window, dock = host
+        dock.set_collapsed(True)
+        qapp.processEvents()
+        assert dock.width() == window.width()
+        bar = dock.titleBarWidget()
+        popout_x = bar.popout_btn.mapTo(dock, bar.popout_btn.rect().topLeft()).x()
+        assert popout_x > dock.width() - 60
 
     def test_expand_shows_content_and_unpins(self, qapp, host):
         _, dock = host
@@ -85,6 +101,7 @@ class TestCollapse:
         qapp.processEvents()
         assert not dock.collapsed
         assert dock.widget().isVisible()
+        assert dock.widget().maximumHeight() > 0
         assert dock.maximumHeight() > dock.minimumHeight()
 
     def test_collapse_captures_expanded_height(self, qapp, host):
@@ -146,6 +163,7 @@ class TestPopOut:
         assert dock.isFloating()
         assert not dock.collapsed
         assert dock.widget().isVisible()
+        assert dock.widget().maximumHeight() > 0
 
     def test_closing_floating_window_redocks(self, qapp, host):
         _, dock = host

@@ -157,7 +157,12 @@ class SoundboardDock(QDockWidget):
     def _apply_collapsed(self) -> None:
         content = self.widget()
         if content is not None:
-            content.setVisible(not self._collapsed)
+            # Collapse by pinning the content to zero height rather than
+            # hiding it: with the content widget hidden, QDockWidget's layout
+            # caps the dock's maximum width at the title bar's sizeHint, so
+            # the dock area stops stretching it full-width (and the title-bar
+            # stretch collapses, pulling the buttons next to the title).
+            content.setMaximumHeight(0 if self._collapsed else QWIDGETSIZE_MAX)
         if self._collapsed:
             # Pin to the title-bar line; min == max also disables the
             # separator drag while collapsed.
