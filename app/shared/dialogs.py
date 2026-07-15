@@ -415,8 +415,15 @@ class TextInputDialog(QDialog):
         return self.input_field.text().strip()
 
 
-class AudioFileSearchDialog(QDialog):
-    """Dialog for searching and selecting audio files"""
+class AudioFileSearchWidget(QWidget):
+    """Searchable, tag-filterable, multi-select audio file list with preview.
+
+    The embeddable body of ``AudioFileSearchDialog``, reusable by any dialog
+    that needs the standard track-picking flow (e.g. the soundboard editor).
+    ``disabled_track_ids`` greys out already-added files ("Already added").
+    """
+
+    selection_count_changed = pyqtSignal(int)
 
     def __init__(
         self, db, audio_engine, disabled_track_ids: set[int] | None = None, parent=None
@@ -430,8 +437,6 @@ class AudioFileSearchDialog(QDialog):
         self._preview_file_id: int | None = None
         self._preview_item: FileSelectItem | None = None
 
-        self.setWindowTitle("Add Audio Files")
-        self.setMinimumSize(500, 400)
         self._setup_ui()
         self._load_files()
 
@@ -439,6 +444,7 @@ class AudioFileSearchDialog(QDialog):
         from ..library import TagManager
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # Search bar
         search_layout = QHBoxLayout()
@@ -470,26 +476,6 @@ class AudioFileSearchDialog(QDialog):
 
         scroll.setWidget(self.files_container)
         layout.addWidget(scroll)
-
-        # Selected count
-        self.selected_label = QLabel("0 files selected")
-        self.selected_label.setStyleSheet(f"color: {Styles.TEXT_MUTED};")
-        layout.addWidget(self.selected_label)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
-
-        self.add_btn = QPushButton("Add Selected")
-        self.add_btn.clicked.connect(self.accept)
-        self.add_btn.setEnabled(False)
-        button_layout.addWidget(self.add_btn)
-
-        layout.addLayout(button_layout)
 
     def _load_files(self, query: str = ""):
         """Load files from database"""
@@ -537,9 +523,7 @@ class AudioFileSearchDialog(QDialog):
         else:
             self.selected_files = [f for f in self.selected_files if f.id != file.id]
 
-        count = len(self.selected_files)
-        self.selected_label.setText(f"{count} file{'s' if count != 1 else ''} selected")
-        self.add_btn.setEnabled(count > 0)
+        self.selection_count_changed.emit(len(self.selected_files))
 
     def get_selected_files(self):
         """Get selected files"""
@@ -589,12 +573,68 @@ class AudioFileSearchDialog(QDialog):
         self._preview_file_id = None
         self._preview_item = None
 
-    def accept(self):
+    def stop_preview(self):
+        """Public teardown hook for the owning dialog's accept/reject."""
         self._stop_preview()
+
+
+class AudioFileSearchDialog(QDialog):
+    """Dialog for searching and selecting audio files"""
+
+    def __init__(
+        self, db, audio_engine, disabled_track_ids: set[int] | None = None, parent=None
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Add Audio Files")
+        self.setMinimumSize(500, 400)
+
+        layout = QVBoxLayout(self)
+
+        self.search_widget = AudioFileSearchWidget(
+            db, audio_engine, disabled_track_ids, parent=self
+        )
+        self.search_widget.selection_count_changed.connect(self._on_count_changed)
+        layout.addWidget(self.search_widget)
+
+        # Aliases for callers/tests that reach into the pre-extraction
+        # flat structure.
+        self.search_input = self.search_widget.search_input
+        self.tag_manager = self.search_widget.tag_manager
+
+        # Selected count
+        self.selected_label = QLabel("0 files selected")
+        self.selected_label.setStyleSheet(f"color: {Styles.TEXT_MUTED};")
+        layout.addWidget(self.selected_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        self.add_btn = QPushButton("Add Selected")
+        self.add_btn.clicked.connect(self.accept)
+        self.add_btn.setEnabled(False)
+        button_layout.addWidget(self.add_btn)
+
+        layout.addLayout(button_layout)
+
+    def _on_count_changed(self, count: int):
+        self.selected_label.setText(f"{count} file{'s' if count != 1 else ''} selected")
+        self.add_btn.setEnabled(count > 0)
+
+    def get_selected_files(self):
+        """Get selected files"""
+        return self.search_widget.get_selected_files()
+
+    def accept(self):
+        self.search_widget.stop_preview()
         super().accept()
 
     def reject(self):
-        self._stop_preview()
+        self.search_widget.stop_preview()
         super().reject()
 
 

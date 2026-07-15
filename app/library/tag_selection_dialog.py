@@ -17,9 +17,10 @@ from PyQt6.QtWidgets import (
 )
 
 from ..database import AudioFile, DatabaseConnection, Tag
+from ..shared.layouts import FlowLayout
 from ..shared.logging import get_logger
 from ..shared.styles import Styles
-from .tag_manager import FlowLayout, TagBadge
+from .tag_manager import TagBadge
 
 
 def _tag_id(tag: Tag) -> int:
