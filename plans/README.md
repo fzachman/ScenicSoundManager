@@ -36,6 +36,7 @@ for future audio-test work: `python-vlc` IS importable in this env (so
 | 005 | Characterization tests for MainWindow mutual exclusivity | P1 | M | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `6e7caa6`) |
 | 006 | De-duplicate scene control cards (DEBT-01) | P2 | M | — | DONE (2026-06-29 on `advisor/006-dedupe-control-cards`; adversarially reviewed; see `006-deduplicate-scene-control-cards.md`) |
 | 007 | Stream Deck remote control: local WebSocket API (user-requested feature) | Feature | M–L | — | DONE (app side, 2026-07-07 on `feature/remote-control`; suite 251→297; plugin repo starts from `streamdeck-plugin-plan.md`) |
+| 008 | Soundboard: one-shot SFX panel docked below main window (user-requested feature) | Feature | M–L | — | TODO (planned 2026-07-15 at `6d6a3cc`, baseline 572 passed; branch `feature/soundboard`) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -154,10 +155,8 @@ Ordered by leverage; ask for plans for any of these in a future `improve` run.
   is used within scenes, but `MainWindow` mutual-exclusivity switching does a
   hard stop→start. The fade infrastructure makes this disproportionately
   cheap. Effort M (coarse); timing coordination is the risk.
-- **One-shot soundboard effects** — scenes/playlists cover ambient + sequential,
-  but there's no "play this stinger now" mode; today's workaround is a
-  single-track scene. Weakest evidence of the four (no in-repo signal beyond
-  the architecture gap); validate demand before building. Effort M–L (coarse).
+- **One-shot soundboard effects** — ✅ PLANNED (2026-07-15): user requested it
+  directly (demand validated); see Plan 008 (`008-soundboard.md`).
 
 ## Findings considered and rejected
 
