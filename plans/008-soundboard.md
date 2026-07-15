@@ -21,7 +21,7 @@
 - **Planned at**: commit `6d6a3cc`, 2026-07-15, branch `main`
 - **Baseline**: `venv/bin/pytest tests/ -q` → **572 passed**
 - **Branch**: `feature/soundboard` off `main`
-- **Status**: TODO
+- **Status**: IN PROGRESS — Phase 1 (dock shell) done 2026-07-15; spike PASS
 
 ## Goal
 
@@ -186,6 +186,14 @@ The novel-risk phase, so it goes first and starts with a spike.
   **STOP condition**: if floating is broken/ugly on macOS (known quirk area),
   stop and switch this phase to the fallback design (vertical `QSplitter` +
   reparent pop-out); record the decision here before continuing.
+  **Spike result (2026-07-15): PASS** — verified live on macOS (real Cocoa
+  windowing, scripted QTimer drive + screenshots): separator drag-resize
+  works with the custom title bar, `setFloating(True)` yields a clean
+  Qt-drawn floating window, `close()` re-docks, collapse pins to the title
+  line. QDockWidget design confirmed; splitter fallback not needed. One
+  fix out of the spike: bundled feather SVGs use `stroke="currentColor"`,
+  which QIcon renders black — the four new icons are tinted `#A1ADBE`
+  (TEXT_MUTED) directly in the SVG.
 - Build `SoundboardTitleBar`: "Soundboard" label, collapse/expand arrow
   toggle, pop-out button — that's its final form; all board controls belong
   to the content (Phase 4). Dark-theme styling in `styles.py`.

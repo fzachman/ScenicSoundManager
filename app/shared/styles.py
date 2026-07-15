@@ -297,6 +297,15 @@ class Styles:
             width: 1px;
         }}
 
+        QMainWindow::separator {{
+            background-color: {BORDER};
+            height: 3px;
+        }}
+
+        QMainWindow::separator:hover {{
+            background-color: {PRIMARY};
+        }}
+
         QDialog, QInputDialog {{
             background-color: {BACKGROUND};
             color: {TEXT};
@@ -353,6 +362,16 @@ class Styles:
         if selector:
             return f"{selector} {{{body}}}"
         return body
+
+    @staticmethod
+    def dock_title_bar_style(selector: str) -> str:
+        """Flat full-width surface for a dock's custom title bar."""
+        return f"""
+            {selector} {{
+                background-color: {Styles.BACKGROUND_ELEVATED};
+                border-top: 1px solid {Styles.BORDER};
+            }}
+        """
 
     @staticmethod
     def card_frame_style(

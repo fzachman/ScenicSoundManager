@@ -27,6 +27,7 @@ from .playlists import PlaylistsWidget
 from .remote import DEFAULT_PORT, RemoteControlFacade, RemoteControlServer
 from .scenes import ScenesWidget
 from .shared.styles import Styles
+from .soundboard import SoundboardDock
 
 
 class MainWindow(QMainWindow):
@@ -36,6 +37,7 @@ class MainWindow(QMainWindow):
     SETTINGS_MASTER_VOLUME = "master_volume"
     SETTINGS_UI_GROUP = "ui"
     SETTINGS_ACTIVE_TAB = "active_tab"
+    SETTINGS_WINDOW_STATE = "window_state"
     SETTINGS_LAST_SCENE_ID = "last_scene_id"
     SETTINGS_LAST_PLAYLIST_ID = "last_playlist_id"
     SETTINGS_REMOTE_GROUP = "remote"
@@ -70,6 +72,7 @@ class MainWindow(QMainWindow):
         self._restore_active_tab()
         self._restore_last_scene()
         self._restore_last_playlist()
+        self._restore_window_state()
 
     def _setup_ui(self):
         """Set up the main UI components"""
@@ -150,6 +153,12 @@ class MainWindow(QMainWindow):
         # Connect currentChanged only AFTER the tabs exist: adding the first tab
         # auto-fires currentChanged, and the handler references every tab widget.
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
+
+        # Soundboard panel: a permanent dock below the content, deliberately
+        # outside the scene/playlist mutual-exclusivity chain (its sounds play
+        # over whatever is active).
+        self.soundboard_dock = SoundboardDock()
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.soundboard_dock)
 
         # Connect signals between modules
         self._connect_signals()
@@ -352,6 +361,21 @@ class MainWindow(QMainWindow):
         settings.setValue(self.SETTINGS_ACTIVE_TAB, index)
         settings.endGroup()
 
+    def _save_window_state(self):
+        """Persist dock layout (soundboard height / floating geometry)."""
+        settings = QSettings()
+        settings.beginGroup(self.SETTINGS_UI_GROUP)
+        settings.setValue(self.SETTINGS_WINDOW_STATE, self.saveState())
+        settings.endGroup()
+
+    def _restore_window_state(self):
+        settings = QSettings()
+        settings.beginGroup(self.SETTINGS_UI_GROUP)
+        state = settings.value(self.SETTINGS_WINDOW_STATE)
+        settings.endGroup()
+        if state is not None:
+            self.restoreState(state)
+
     def _restore_active_tab(self):
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_UI_GROUP)
@@ -450,6 +474,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle application close"""
+        self._save_window_state()
+
         if self.remote_server is not None:
             self.remote_server.stop()
 
