@@ -21,8 +21,9 @@
 - **Planned at**: commit `6d6a3cc`, 2026-07-15, branch `main`
 - **Baseline**: `venv/bin/pytest tests/ -q` → **572 passed**
 - **Branch**: `feature/soundboard` off `main`
-- **Status**: IN PROGRESS — Phases 1 (dock shell; spike PASS) and 2 (data
-  layer) done 2026-07-15
+- **Status**: IN PROGRESS — Phases 1 (dock shell; spike PASS), 2 (data
+  layer), and 3 (playback core; capacity spike: no ceiling, no caps) done
+  2026-07-15
 
 ## Goal
 
@@ -238,6 +239,12 @@ Independent of Phase 1 (can be built in parallel if convenient).
   practical ceiling **in this plan**. Decision rule: no problem at realistic
   counts → no caps anywhere (status quo); problem found → cap scene track
   count at (ceiling − 1) at the UI/validation layer as a follow-up item.
+  **Spike result (2026-07-15): no practical ceiling found.** Near-silent
+  WAVs, 6s measured window per fleet on the target Mac: 8 → 9% CPU,
+  16 → 13%, 32 → 25%, 64 → 45% (of one core); at every size all players
+  reported Playing with positions advancing and zero VLC Error states.
+  Decision: **no caps anywhere** — scenes stay unbounded, and the
+  soundboard's one-slot design costs a single player regardless.
 - `app/audio/soundboard_player.py`: single-slot `SoundboardPlayer` per the
   settled design (cut-over hard stop, same-button toggle-stop, per-button
   volume applied on trigger, `stop()`, started/stopped signals, `clear()`).
