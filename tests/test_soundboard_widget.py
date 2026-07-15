@@ -1,9 +1,11 @@
-"""Tests for the soundboard board UI (Plan 008 Phase 4).
+"""Tests for the soundboard board UI (Plan 008 Phases 4-5).
 
 SoundboardContent is driven against a real temporary database and a real
 SoundboardPlayer QObject whose action methods (trigger/stop/clear/
 set_current_volume) are replaced with MagicMocks — its signals stay real so
-the highlight wiring can be exercised by emitting them.
+the highlight wiring can be exercised by emitting them. The reorder tests
+lay out a real SoundboardGrid at a width that forces wrapping, so the 2D
+hit-test runs against genuine FlowLayout geometry.
 """
 
 import os
@@ -11,11 +13,18 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QByteArray, QMimeData, QPointF, QSettings, Qt
+from PyQt6.QtGui import QDropEvent
 
 from app.audio.soundboard_player import SoundboardPlayer
-from app.database import AudioFile, DatabaseConnection, Soundboard
-from app.soundboard.board_widget import SoundboardContent
+from app.database import AudioFile, DatabaseConnection, Soundboard, SoundboardButton
+from app.shared.icons import IconLibrary
+from app.soundboard.board_widget import (
+    SOUNDBOARD_BUTTON_MIME,
+    SoundboardButtonCell,
+    SoundboardContent,
+    SoundboardGrid,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -254,6 +263,150 @@ class TestBoardManagement:
         assert content.current_board_id() == combat_id
         assert content.board_combo.currentText() == "Zombie"
         assert content.board_combo.currentIndex() == 1
+
+
+def make_grid(qapp, count):
+    """A shown SoundboardGrid wide enough for exactly two cells per row.
+
+    Cell footprint is 174x34 (150 trigger + 2 spacing + 22 grabber) with
+    8px flow spacing, so width 360 wraps after the second cell. Returns
+    (grid, button_ids).
+    """
+    icons = IconLibrary()
+    cells = []
+    for i in range(count):
+        button = SoundboardButton(
+            id=100 + i,
+            soundboard_id=1,
+            audio_file_id=i,
+            position=i,
+            volume=1.0,
+            audio_file=AudioFile(id=i, file_path=f"/sfx/{i}.mp3", title=f"FX {i}"),
+        )
+        cells.append(SoundboardButtonCell(button, icons))
+    grid = SoundboardGrid()
+    grid.populate(cells)
+    grid.setFixedWidth(360)
+    grid.show()
+    qapp.processEvents()
+    return grid, [100 + i for i in range(count)]
+
+
+class TestGridHitTest:
+    def test_rows_wrap_as_expected(self, qapp):
+        # Sanity-check the fixture geometry the assertions below rely on.
+        grid, _ = make_grid(qapp, 3)
+        cells = grid.cells_in_order()
+        assert cells[0].y() == cells[1].y()  # row 0
+        assert cells[2].y() > cells[0].y()  # wrapped to row 1
+        grid.close()
+
+    def test_points_map_to_reading_order_indices(self, qapp):
+        grid, _ = make_grid(qapp, 3)
+        c0, c1, c2 = grid.cells_in_order()
+        row0_y = c0.y() + 5
+        row1_y = c2.y() + 5
+        # Left of the first cell's midpoint -> before it.
+        assert grid._index_for_pos(c0.x() + 10, row0_y) == 0
+        # Between the midpoints of cells 0 and 1 -> between them.
+        assert grid._index_for_pos(c1.x() + 10, row0_y) == 1
+        # Right of the last cell in row 0 -> start of row 1.
+        assert grid._index_for_pos(c1.x() + c1.width() - 5, row0_y) == 2
+        # Row 1, left of cell 2's midpoint -> before it.
+        assert grid._index_for_pos(c2.x() + 10, row1_y) == 2
+        # Right of cell 2 (over the trailing drop zone) -> append.
+        assert grid._index_for_pos(c2.x() + c2.width() + 50, row1_y) == 3
+        # Below everything -> append.
+        assert grid._index_for_pos(10, row1_y + 200) == 3
+        grid.close()
+
+    def test_drop_zone_present_only_with_cells(self, qapp):
+        grid, _ = make_grid(qapp, 2)
+        assert grid._drop_zone is not None
+        grid.populate([])
+        assert grid._drop_zone is None
+        grid.close()
+
+
+class TestReorder:
+    def test_move_first_to_end(self, qapp):
+        grid, ids = make_grid(qapp, 3)
+        c2 = grid.cells_in_order()[2]
+        end_x, end_y = c2.x() + c2.width() + 50, c2.y() + 5
+        assert grid._reordered_ids(ids[0], end_x, end_y) == [ids[1], ids[2], ids[0]]
+        grid.close()
+
+    def test_insert_shifts_target_down_list(self, qapp):
+        # Dropping cell 2 on cell 1 (left of its midpoint) puts 2 in 1's
+        # place and shifts 1 down-list.
+        grid, ids = make_grid(qapp, 3)
+        c1 = grid.cells_in_order()[1]
+        assert grid._reordered_ids(ids[2], c1.x() + 5, c1.y() + 5) == [
+            ids[0],
+            ids[2],
+            ids[1],
+        ]
+        grid.close()
+
+    def test_drop_on_own_position_is_noop(self, qapp):
+        grid, ids = make_grid(qapp, 3)
+        c0 = grid.cells_in_order()[0]
+        assert grid._reordered_ids(ids[0], c0.x() + 5, c0.y() + 5) is None
+        grid.close()
+
+    def test_unknown_id_is_noop(self, qapp):
+        grid, _ = make_grid(qapp, 2)
+        assert grid._reordered_ids(999, 10, 10) is None
+        grid.close()
+
+    def test_drop_event_emits_new_order(self, qapp):
+        grid, ids = make_grid(qapp, 3)
+        emitted = []
+        grid.order_changed.connect(emitted.append)
+        c2 = grid.cells_in_order()[2]
+        mime = QMimeData()
+        mime.setData(SOUNDBOARD_BUTTON_MIME, QByteArray(str(ids[0]).encode()))
+        event = QDropEvent(
+            QPointF(c2.x() + c2.width() + 50, c2.y() + 5),
+            Qt.DropAction.MoveAction,
+            mime,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        grid.dropEvent(event)
+        assert emitted == [[ids[1], ids[2], ids[0]]]
+        grid.close()
+
+    def test_foreign_mime_ignored(self, qapp):
+        grid, _ = make_grid(qapp, 2)
+        emitted = []
+        grid.order_changed.connect(emitted.append)
+        mime = QMimeData()
+        mime.setData("application/x-soundmanager-playlist-track", QByteArray(b"1"))
+        event = QDropEvent(
+            QPointF(10, 10),
+            Qt.DropAction.MoveAction,
+            mime,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        grid.dropEvent(event)
+        assert emitted == []
+        grid.close()
+
+    def test_content_persists_reorder_and_rebuilds(self, qapp, db, player, audio_ids):
+        board_id = db.add_soundboard(Soundboard(name="Combat"))
+        ids = [db.add_button_to_soundboard(board_id, f) for f in audio_ids]
+        content = make_content(db, player)
+
+        content._on_reorder([ids[2], ids[0], ids[1]])
+
+        assert [b.id for b in db.get_soundboard_buttons(board_id)] == [
+            ids[2],
+            ids[0],
+            ids[1],
+        ]
+        assert content.grid.button_ids_in_order() == [ids[2], ids[0], ids[1]]
 
 
 class TestMainWindowIntegration:

@@ -30,7 +30,12 @@ class FlowLayout(QLayout):
         return None
 
     def expandingDirections(self):
-        return Qt.Orientations(Qt.Orientation(0))
+        # NB: Qt.Orientation(0), not PyQt5's Qt.Orientations(...) — the
+        # latter doesn't exist in PyQt6 and, being raised inside a C++-called
+        # override, aborts the process. Latent in the original tag_manager
+        # copy; only reachable once the layout is a shown widget's top-level
+        # layout (the soundboard grid is the first such use).
+        return Qt.Orientation(0)
 
     def hasHeightForWidth(self) -> bool:
         return True

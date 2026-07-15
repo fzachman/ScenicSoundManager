@@ -36,7 +36,7 @@ for future audio-test work: `python-vlc` IS importable in this env (so
 | 005 | Characterization tests for MainWindow mutual exclusivity | P1 | M | — | DONE (reviewed 2026-06-11; merged into `experimental-improvements` as `6e7caa6`) |
 | 006 | De-duplicate scene control cards (DEBT-01) | P2 | M | — | DONE (2026-06-29 on `advisor/006-dedupe-control-cards`; adversarially reviewed; see `006-deduplicate-scene-control-cards.md`) |
 | 007 | Stream Deck remote control: local WebSocket API (user-requested feature) | Feature | M–L | — | DONE (app side, 2026-07-07 on `feature/remote-control`; suite 251→297; plugin repo starts from `streamdeck-plugin-plan.md`) |
-| 008 | Soundboard: one-shot SFX panel docked below main window (user-requested feature) | Feature | M–L | — | IN PROGRESS (Phases 1–4 done 2026-07-15 on `feature/soundboard`; feature usable end-to-end, Phase 5 drag-reorder remains; suite 572→655) |
+| 008 | Soundboard: one-shot SFX panel docked below main window (user-requested feature) | Feature | M–L | — | DONE (all 5 phases 2026-07-15 on `feature/soundboard`, awaiting merge; both spikes PASS; suite 572→649; see `008-soundboard.md` execution outcome) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 

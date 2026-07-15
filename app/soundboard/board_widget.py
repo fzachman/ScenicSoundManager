@@ -1,8 +1,17 @@
 """Soundboard content: sticky controls row above a scrolling button grid"""
 
-from PyQt6.QtCore import QSettings, Qt, pyqtSignal
-from PyQt6.QtGui import QFontMetrics
+from PyQt6.QtCore import (
+    QByteArray,
+    QEvent,
+    QMimeData,
+    QPoint,
+    QSettings,
+    Qt,
+    pyqtSignal,
+)
+from PyQt6.QtGui import QDrag, QFontMetrics
 from PyQt6.QtWidgets import (
+    QApplication,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -23,13 +32,16 @@ from ..shared.styles import Styles
 from ..shared.volume_slider import VolumeSlider
 from .edit_dialog import SoundboardEditDialog
 
+SOUNDBOARD_BUTTON_MIME = "application/x-soundmanager-soundboard-button"
+
 
 class SoundboardButtonCell(QFrame):
     """One grid cell: the trigger button plus a grabber for drag-reorder.
 
-    The grabber is inert until Phase 5 wires the drag. The cell's context
-    menu carries the per-button VolumeSlider (commit-on-release contract)
-    and the remove action.
+    Dragging the grabber starts a QDrag carrying the button id (custom MIME,
+    same pattern as PlaylistTrackItem); SoundboardGrid handles the drop. The
+    cell's context menu carries the per-button VolumeSlider
+    (commit-on-release contract) and the remove action.
     """
 
     triggered = pyqtSignal(object)  # SoundboardButton
@@ -41,6 +53,7 @@ class SoundboardButtonCell(QFrame):
         super().__init__(parent)
         self.button = button
         self._playing = False
+        self._drag_start_pos: QPoint | None = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -66,11 +79,48 @@ class SoundboardButtonCell(QFrame):
         self.grabber.setToolTip("Drag to reorder")
         self.grabber.setCursor(Qt.CursorShape.OpenHandCursor)
         self.grabber.setStyleSheet(Styles.compact_icon_button_style())
+        self.grabber.installEventFilter(self)
         layout.addWidget(self.grabber)
 
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
         self._apply_style()
+
+    def eventFilter(self, obj, event):
+        """Start a drag from the grabber (a QPushButton eats mouse events,
+        so the drag gesture is detected here rather than in the button)."""
+        if obj is self.grabber:
+            if (
+                event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.LeftButton
+            ):
+                self._drag_start_pos = event.position().toPoint()
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                self._drag_start_pos = None
+            elif (
+                event.type() == QEvent.Type.MouseMove
+                and (event.buttons() & Qt.MouseButton.LeftButton)
+                and self._drag_start_pos is not None
+                and (
+                    event.position().toPoint() - self._drag_start_pos
+                ).manhattanLength()
+                >= QApplication.startDragDistance()
+            ):
+                self._start_drag()
+                return True
+        return super().eventFilter(obj, event)
+
+    def _start_drag(self) -> None:
+        self._drag_start_pos = None
+        if self.button.id is None:
+            return
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setData(SOUNDBOARD_BUTTON_MIME, QByteArray(str(self.button.id).encode()))
+        drag.setMimeData(mime)
+        drag.setPixmap(self.grab())
+        drag.setHotSpot(QPoint(self.width() // 2, self.height() // 2))
+        drag.exec(Qt.DropAction.MoveAction)
 
     @property
     def playing(self) -> bool:
@@ -102,6 +152,117 @@ class SoundboardButtonCell(QFrame):
         remove_action = menu.addAction("Remove from board")
         remove_action.triggered.connect(lambda: self.remove_requested.emit(self.button))
         menu.exec(self.mapToGlobal(pos))
+
+
+class SoundboardGrid(QWidget):
+    """Drop-accepting container for the wrapping grid of button cells.
+
+    Reorder is insert-style: dropping on a cell shifts it (and everything
+    after it) down-list. A dashed trailing drop cell is always present while
+    the board has buttons, so "move to end" always has a target. The drop
+    only computes and emits the new id order (``order_changed``); the owner
+    persists it and rebuilds the grid.
+    """
+
+    order_changed = pyqtSignal(list)  # list[int]: button ids in new order
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.grid_layout = FlowLayout(self, margin=0, spacing=8)
+        self._drop_zone: QFrame | None = None
+
+    def populate(self, cells: list[SoundboardButtonCell]) -> None:
+        clear_layout(self.grid_layout)
+        self._drop_zone = None
+        for cell in cells:
+            self.grid_layout.addWidget(cell)
+        if cells:
+            self._drop_zone = self._build_drop_zone()
+            self.grid_layout.addWidget(self._drop_zone)
+
+    def _build_drop_zone(self) -> QFrame:
+        zone = QFrame()
+        zone.setFixedSize(174, 34)
+        zone.setToolTip("Drop here to move a sound to the end")
+        zone.setStyleSheet(
+            f"""
+            QFrame {{
+                background-color: transparent;
+                border: 1px dashed {Styles.BORDER};
+                border-radius: 8px;
+            }}
+            """
+        )
+        return zone
+
+    def cells_in_order(self) -> list[SoundboardButtonCell]:
+        cells = []
+        for i in range(self.grid_layout.count()):
+            item = self.grid_layout.itemAt(i)
+            widget = item.widget() if item else None
+            if isinstance(widget, SoundboardButtonCell):
+                cells.append(widget)
+        return cells
+
+    def button_ids_in_order(self) -> list[int]:
+        return [c.button.id for c in self.cells_in_order() if c.button.id is not None]
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat(SOUNDBOARD_BUTTON_MIME):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasFormat(SOUNDBOARD_BUTTON_MIME):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        if not event.mimeData().hasFormat(SOUNDBOARD_BUTTON_MIME):
+            return
+        data = bytes(event.mimeData().data(SOUNDBOARD_BUTTON_MIME))
+        try:
+            button_id = int(data.decode())
+        except ValueError:
+            return
+        new_order = self._reordered_ids(
+            button_id, event.position().x(), event.position().y()
+        )
+        if new_order is None:
+            return
+        event.acceptProposedAction()
+        self.order_changed.emit(new_order)
+
+    def _reordered_ids(self, button_id: int, x: float, y: float) -> list[int] | None:
+        """The id order after inserting button_id at (x, y); None if a no-op."""
+        ids = self.button_ids_in_order()
+        if button_id not in ids:
+            return None
+        insert_index = self._index_for_pos(x, y)
+        current_index = ids.index(button_id)
+        ids.remove(button_id)
+        if insert_index > current_index:
+            insert_index -= 1
+        ids.insert(insert_index, button_id)
+        if ids == self.button_ids_in_order():
+            return None
+        return ids
+
+    def _index_for_pos(self, x: float, y: float) -> int:
+        """Insert index for a point in the wrapped flow (reading order).
+
+        Rows are walked in layout order: a point above a cell's row inserts
+        before that cell (it sits in the wrap gap); within a row, a point
+        left of a cell's horizontal midpoint inserts before it. Past all
+        cells (including on the trailing drop zone) appends.
+        """
+        cells = self.cells_in_order()
+        for index, cell in enumerate(cells):
+            geo = cell.geometry()
+            if y < geo.top():
+                return index
+            if y <= geo.bottom() and x < geo.x() + geo.width() / 2:
+                return index
+        return len(cells)
 
 
 class SoundboardContent(QWidget):
@@ -181,9 +342,9 @@ class SoundboardContent(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.grid_container = QWidget()
-        self.grid_layout = FlowLayout(self.grid_container, margin=0, spacing=8)
-        scroll.setWidget(self.grid_container)
+        self.grid = SoundboardGrid()
+        self.grid.order_changed.connect(self._on_reorder)
+        scroll.setWidget(self.grid)
         layout.addWidget(scroll, 1)
 
     def _icon_button(self, icon_name: str, tooltip: str) -> QPushButton:
@@ -234,10 +395,10 @@ class SoundboardContent(QWidget):
         self._load_buttons()
 
     def _load_buttons(self) -> None:
-        clear_layout(self.grid_layout)
         self._cells_by_button_id = {}
         board_id = self.current_board_id()
         if board_id is None:
+            self.grid.populate([])
             self.empty_label.setText("No soundboards yet — click + to create one")
             self.empty_label.show()
             return
@@ -251,15 +412,24 @@ class SoundboardContent(QWidget):
         else:
             self.empty_label.hide()
 
+        cells = []
         for button in buttons:
             cell = SoundboardButtonCell(button, self._icons)
             cell.triggered.connect(self._on_cell_triggered)
             cell.remove_requested.connect(self._on_remove_button)
             cell.volume_changed.connect(self._on_volume_changed)
             cell.volume_committed.connect(self._on_volume_committed)
-            self.grid_layout.addWidget(cell)
+            cells.append(cell)
             if button.id is not None:
                 self._cells_by_button_id[button.id] = cell
+        self.grid.populate(cells)
+
+    def _on_reorder(self, button_ids: list) -> None:
+        board_id = self.current_board_id()
+        if board_id is None:
+            return
+        self.db.reorder_soundboard_buttons(board_id, button_ids)
+        self._load_buttons()
 
     # Playback wiring
 

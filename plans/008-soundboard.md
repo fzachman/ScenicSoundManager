@@ -21,9 +21,44 @@
 - **Planned at**: commit `6d6a3cc`, 2026-07-15, branch `main`
 - **Baseline**: `venv/bin/pytest tests/ -q` → **572 passed**
 - **Branch**: `feature/soundboard` off `main`
-- **Status**: IN PROGRESS — Phases 1 (dock shell; spike PASS), 2 (data
-  layer), 3 (playback core; capacity spike: no ceiling, no caps), and 4
-  (board UI end-to-end) done 2026-07-15; Phase 5 (drag-reorder) remains
+- **Status**: ✅ DONE (all 5 phases, 2026-07-15, on `feature/soundboard`;
+  awaiting user merge)
+
+## Execution outcome (2026-07-15)
+
+All five phases completed on `feature/soundboard` in one day, one commit
+per phase plus fixes: plan (`aaa61c8` on main) → Phase 1 dock shell
+(`38c382c`) + collapsed-width fix (`7725517`) + first-pop-out geometry
+(`a626916`) → Phase 2 data layer (`88f4741`) → Phase 3 playback core
+(`4915c43`) → Phase 4 refactors (`d461048`) + board UI (`f902586`) +
+icon tint (`1c9e971`) → Phase 5 drag-reorder (final commit). Suite
+**572 → 649** (77 new tests); ruff format/check + mypy green throughout.
+(Note: the "655" quoted in the Phase 4 commit message was a miscount;
+640 was the true post-Phase-4 count.)
+
+Both spikes PASSED and are recorded inline (Phase 1: QDockWidget float on
+macOS — no splitter fallback needed; Phase 3: 64 concurrent players clean —
+no caps introduced). Each phase was also verified live against the real
+app on macOS (scripted QTimer drives + screenshots), including real audio
+trigger/cut-over/toggle-stop and a simulated drop persisting a reorder.
+
+Notable deviations from / additions to the original plan:
+
+- **First-ever pop-out gets a distinct default geometry** (70% of the main
+  window width, centered): Qt floats a dock at its docked footprint, which
+  was visually indistinguishable from staying docked (user-reported).
+- **Collapse pins content to zero height instead of hiding it**: a hidden
+  content widget caps QDockWidget's max width at the title bar's sizeHint,
+  shrinking the collapsed dock out of its full-width span (user-reported).
+- **Latent PyQt6 bug found in the relocated FlowLayout**:
+  `expandingDirections` returned PyQt5-style `Qt.Orientations(...)`, which
+  doesn't exist in PyQt6 and aborts the process when raised inside the
+  C++-called override. Never triggered from inside scroll areas (tag
+  badges); the soundboard grid is the first top-level use. Fixed.
+- Icon visibility: bundled feather SVGs render `currentColor` as black via
+  QIcon; the five new icons + `plus.svg` are tinted `#A1ADBE`.
+- The duplicated dark QComboBox stylesheet was hoisted to
+  `Styles.combobox_style()` (GetInfoDialog now shares it).
 
 ## Goal
 
