@@ -115,3 +115,30 @@ class PlaylistTrack:
     position: int = 0
     volume: float = 1.0
     audio_file: AudioFile | None = None
+
+
+@dataclass
+class Soundboard:
+    """Represents a soundboard of one-shot sound effect buttons.
+
+    No position field: boards are listed alphabetically (there is no
+    reorder UI for boards, only for the buttons within one).
+    """
+
+    id: int | None = None
+    name: str = ""
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    buttons: list["SoundboardButton"] = field(default_factory=list)
+
+
+@dataclass
+class SoundboardButton:
+    """Represents one button (grid cell) on a soundboard"""
+
+    id: int | None = None
+    soundboard_id: int | None = None
+    audio_file_id: int | None = None
+    position: int = 0
+    volume: float = 1.0
+    audio_file: AudioFile | None = None

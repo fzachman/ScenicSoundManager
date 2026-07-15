@@ -21,7 +21,8 @@
 - **Planned at**: commit `6d6a3cc`, 2026-07-15, branch `main`
 - **Baseline**: `venv/bin/pytest tests/ -q` → **572 passed**
 - **Branch**: `feature/soundboard` off `main`
-- **Status**: IN PROGRESS — Phase 1 (dock shell) done 2026-07-15; spike PASS
+- **Status**: IN PROGRESS — Phases 1 (dock shell; spike PASS) and 2 (data
+  layer) done 2026-07-15
 
 ## Goal
 

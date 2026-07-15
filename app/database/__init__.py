@@ -8,6 +8,8 @@ from .models import (
     Scene,
     SceneAudioFile,
     ScenePlaylistEntry,
+    Soundboard,
+    SoundboardButton,
     Tag,
 )
 
@@ -21,4 +23,6 @@ __all__ = [
     "ScenePlaylistEntry",
     "Playlist",
     "PlaylistTrack",
+    "Soundboard",
+    "SoundboardButton",
 ]

@@ -129,3 +129,25 @@ CREATE TABLE IF NOT EXISTS playlist_tracks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist_id ON playlist_tracks(playlist_id, position);
+
+-- Soundboard definitions (no position column: boards list alphabetically)
+CREATE TABLE IF NOT EXISTS soundboards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Buttons on a soundboard (ordered grid cells, unique track per board)
+CREATE TABLE IF NOT EXISTS soundboard_buttons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    soundboard_id INTEGER NOT NULL,
+    audio_file_id INTEGER NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    volume REAL NOT NULL DEFAULT 1.0,
+    FOREIGN KEY (soundboard_id) REFERENCES soundboards(id) ON DELETE CASCADE,
+    FOREIGN KEY (audio_file_id) REFERENCES audio_files(id) ON DELETE CASCADE,
+    UNIQUE (soundboard_id, audio_file_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_soundboard_buttons_soundboard_id ON soundboard_buttons(soundboard_id, position);

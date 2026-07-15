@@ -11,6 +11,8 @@ from .models import (
     Scene,
     SceneAudioFile,
     ScenePlaylistEntry,
+    Soundboard,
+    SoundboardButton,
     Tag,
 )
 
@@ -1258,5 +1260,139 @@ class DatabaseConnection:
             self._conn.execute(
                 "UPDATE playlist_tracks SET position = ? WHERE id = ? AND playlist_id = ?",
                 (position, track_id, playlist_id),
+            )
+        self._conn.commit()
+
+    # Soundboard operations
+    def add_soundboard(self, soundboard: Soundboard) -> int:
+        """Add a new soundboard, return its ID"""
+        cursor = self._conn.execute(
+            "INSERT INTO soundboards (name) VALUES (?)", (soundboard.name,)
+        )
+        self._conn.commit()
+        return self._insert_id(cursor)
+
+    def get_soundboard(self, soundboard_id: int) -> Soundboard | None:
+        """Get a soundboard by ID with all its buttons"""
+        cursor = self._conn.execute(
+            "SELECT * FROM soundboards WHERE id = ?", (soundboard_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            soundboard = self._row_to_soundboard(row)
+            soundboard.buttons = self.get_soundboard_buttons(soundboard_id)
+            return soundboard
+        return None
+
+    def get_all_soundboards(self) -> list[Soundboard]:
+        """Get all soundboards, alphabetically (no manual board ordering)"""
+        cursor = self._conn.execute(
+            "SELECT * FROM soundboards ORDER BY name COLLATE NOCASE"
+        )
+        return [self._row_to_soundboard(row) for row in cursor.fetchall()]
+
+    def update_soundboard(self, soundboard: Soundboard) -> None:
+        """Update a soundboard's name"""
+        self._conn.execute(
+            "UPDATE soundboards SET name = ?, updated_at = datetime('now') WHERE id = ?",
+            (soundboard.name, soundboard.id),
+        )
+        self._conn.commit()
+
+    def delete_soundboard(self, soundboard_id: int) -> None:
+        """Delete a soundboard"""
+        self._conn.execute("DELETE FROM soundboards WHERE id = ?", (soundboard_id,))
+        self._conn.commit()
+
+    def _row_to_soundboard(self, row: sqlite3.Row) -> Soundboard:
+        """Convert a database row to a Soundboard object"""
+        return Soundboard(
+            id=row["id"],
+            name=row["name"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    # Soundboard button operations
+    def add_button_to_soundboard(
+        self,
+        soundboard_id: int,
+        audio_file_id: int,
+        position: int | None = None,
+        volume: float = 1.0,
+    ) -> int:
+        """Add an audio file button to a soundboard, return the button ID"""
+        if position is None:
+            cursor = self._conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 AS next_pos FROM soundboard_buttons WHERE soundboard_id = ?",
+                (soundboard_id,),
+            )
+            position = cursor.fetchone()["next_pos"]
+        cursor = self._conn.execute(
+            "INSERT INTO soundboard_buttons (soundboard_id, audio_file_id, position, volume)"
+            " VALUES (?, ?, ?, ?)",
+            (soundboard_id, audio_file_id, position, volume),
+        )
+        self._conn.commit()
+        return self._insert_id(cursor)
+
+    def update_soundboard_button_volume(self, button_id: int, volume: float) -> None:
+        """Update a soundboard button's stored volume (0.0-1.0)"""
+        self._conn.execute(
+            "UPDATE soundboard_buttons SET volume = ? WHERE id = ?",
+            (volume, button_id),
+        )
+        self._conn.commit()
+
+    def get_soundboard_buttons(self, soundboard_id: int) -> list[SoundboardButton]:
+        """Get all buttons on a soundboard with their audio file data and tags"""
+        cursor = self._conn.execute(
+            """
+            SELECT sb.*, af.file_path, af.title, af.artist, af.duration_seconds
+            FROM soundboard_buttons sb
+            JOIN audio_files af ON sb.audio_file_id = af.id
+            WHERE sb.soundboard_id = ?
+            ORDER BY sb.position
+            """,
+            (soundboard_id,),
+        )
+        rows = cursor.fetchall()
+        audio_file_ids = [row["audio_file_id"] for row in rows]
+        tags_by_file = self._batch_load_tags(audio_file_ids)
+
+        buttons = []
+        for row in rows:
+            audio_file = AudioFile(
+                id=row["audio_file_id"],
+                file_path=row["file_path"],
+                title=row["title"],
+                artist=row["artist"],
+                duration_seconds=row["duration_seconds"],
+            )
+            audio_file.tags = tags_by_file.get(row["audio_file_id"], [])
+            button = SoundboardButton(
+                id=row["id"],
+                soundboard_id=row["soundboard_id"],
+                audio_file_id=row["audio_file_id"],
+                position=row["position"],
+                volume=row["volume"],
+                audio_file=audio_file,
+            )
+            buttons.append(button)
+        return buttons
+
+    def remove_soundboard_button(self, button_id: int) -> None:
+        """Remove a button from a soundboard"""
+        self._conn.execute("DELETE FROM soundboard_buttons WHERE id = ?", (button_id,))
+        self._conn.commit()
+
+    def reorder_soundboard_buttons(
+        self, soundboard_id: int, button_ids: list[int]
+    ) -> None:
+        """Reorder buttons on a soundboard by updating their positions"""
+        for position, button_id in enumerate(button_ids):
+            self._conn.execute(
+                "UPDATE soundboard_buttons SET position = ? WHERE id = ? AND soundboard_id = ?",
+                (position, button_id, soundboard_id),
             )
         self._conn.commit()
