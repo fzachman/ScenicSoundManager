@@ -64,6 +64,10 @@
 - **Pop-out is a normal window** (not always-on-top; a pin toggle is deferred).
   Closing the pop-out window re-docks the panel — it can never be closed away
   entirely (the "always visible" contract; the pop-out is the one caveat).
+  The **first-ever pop-out defaults to ~70% of the main-window width,
+  centered over it** (added during Phase 1: Qt floats a dock at its docked
+  footprint, which is visually indistinguishable from staying docked); after
+  that, the user's floating geometry is preserved.
 - **Stop button** — stops the current soundboard sound (only one can play),
   without touching the scene/playlist. Lives in the controls row (below),
   not the title bar. Mostly redundant with same-button toggle-stop, but it's

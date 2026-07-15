@@ -11,7 +11,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtCore import QRect, QSettings, Qt
 from PyQt6.QtWidgets import QDockWidget, QMainWindow, QWidget
 
 import app.main_window as main_window_module
@@ -164,6 +164,43 @@ class TestPopOut:
         assert not dock.collapsed
         assert dock.widget().isVisible()
         assert dock.widget().maximumHeight() > 0
+
+    def test_first_popout_gets_distinct_default_geometry(self, qapp, host):
+        # Qt floats a dock at its docked footprint (full window width, same
+        # position), which is visually indistinguishable from staying docked.
+        # The first-ever pop-out must be sized/centered so it reads as a new
+        # window.
+        window, dock = host
+        dock.titleBarWidget().popout_btn.click()
+        qapp.processEvents()
+        assert dock.isFloating()
+        expected_width = int(
+            window.width() * SoundboardDock.DEFAULT_POPOUT_WIDTH_FRACTION
+        )
+        assert dock.width() == expected_width
+        assert dock.width() < window.width()
+        center_delta = dock.geometry().center() - window.geometry().center()
+        assert abs(center_delta.x()) <= 2 and abs(center_delta.y()) <= 2
+        settings = QSettings()
+        settings.beginGroup(SoundboardDock.SETTINGS_GROUP)
+        assert settings.value(
+            SoundboardDock.SETTINGS_POPOUT_INITIALIZED, defaultValue=False, type=bool
+        )
+        settings.endGroup()
+
+    def test_later_popouts_keep_user_geometry(self, qapp, host):
+        _, dock = host
+        bar = dock.titleBarWidget()
+        bar.popout_btn.click()
+        qapp.processEvents()
+        dock.setGeometry(QRect(60, 60, 500, 300))
+        qapp.processEvents()
+        bar.popout_btn.click()  # re-dock
+        qapp.processEvents()
+        bar.popout_btn.click()  # pop out again: default must NOT re-apply
+        qapp.processEvents()
+        assert dock.isFloating()
+        assert dock.width() == 500
 
     def test_closing_floating_window_redocks(self, qapp, host):
         _, dock = host

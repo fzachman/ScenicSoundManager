@@ -7,7 +7,7 @@ button. It can never be closed away entirely — closing the popped-out window
 re-docks it instead.
 """
 
-from PyQt6.QtCore import QSettings, Qt, pyqtSignal
+from PyQt6.QtCore import QRect, QSettings, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QWIDGETSIZE_MAX,
     QDockWidget,
@@ -88,7 +88,9 @@ class SoundboardDock(QDockWidget):
     SETTINGS_GROUP = "soundboard"
     SETTINGS_COLLAPSED = "collapsed"
     SETTINGS_EXPANDED_HEIGHT = "expanded_height"
+    SETTINGS_POPOUT_INITIALIZED = "popout_initialized"
     DEFAULT_EXPANDED_HEIGHT = 240
+    DEFAULT_POPOUT_WIDTH_FRACTION = 0.7
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -186,7 +188,38 @@ class SoundboardDock(QDockWidget):
         if not self.isFloating() and self._collapsed:
             # A popped-out bare title strip is useless; expand first.
             self.set_collapsed(False)
-        self.setFloating(not self.isFloating())
+        will_float = not self.isFloating()
+        self.setFloating(will_float)
+        if will_float:
+            self._apply_first_popout_geometry()
+
+    def _apply_first_popout_geometry(self) -> None:
+        """Give the first-ever pop-out a distinct size and position.
+
+        Qt floats a dock at its docked footprint (full window width, same
+        spot), which is indistinguishable from staying docked. With no stored
+        preference, size it to a fraction of the main window and center it
+        over the window so it clearly reads as a new window. After this once,
+        Qt and saveState/restoreState own the floating geometry.
+        """
+        settings = QSettings()
+        settings.beginGroup(self.SETTINGS_GROUP)
+        initialized = settings.value(
+            self.SETTINGS_POPOUT_INITIALIZED, defaultValue=False, type=bool
+        )
+        if not initialized:
+            window = self.parentWidget()
+            if isinstance(window, QMainWindow):
+                geometry = QRect(
+                    0,
+                    0,
+                    int(window.width() * self.DEFAULT_POPOUT_WIDTH_FRACTION),
+                    self._expanded_height + self._title_bar.sizeHint().height(),
+                )
+                geometry.moveCenter(window.geometry().center())
+                self.setGeometry(geometry)
+            settings.setValue(self.SETTINGS_POPOUT_INITIALIZED, True)
+        settings.endGroup()
 
     def closeEvent(self, event):
         """A floating soundboard re-docks on close; it can't be closed away."""
