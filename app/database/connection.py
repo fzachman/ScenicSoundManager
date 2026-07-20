@@ -1381,6 +1381,39 @@ class DatabaseConnection:
             buttons.append(button)
         return buttons
 
+    def get_soundboard_button(self, button_id: int) -> SoundboardButton | None:
+        """Get a single soundboard button with its audio file data and tags"""
+        cursor = self._conn.execute(
+            """
+            SELECT sb.*, af.file_path, af.title, af.artist, af.duration_seconds
+            FROM soundboard_buttons sb
+            JOIN audio_files af ON sb.audio_file_id = af.id
+            WHERE sb.id = ?
+            """,
+            (button_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        audio_file = AudioFile(
+            id=row["audio_file_id"],
+            file_path=row["file_path"],
+            title=row["title"],
+            artist=row["artist"],
+            duration_seconds=row["duration_seconds"],
+        )
+        audio_file.tags = self._batch_load_tags([row["audio_file_id"]]).get(
+            row["audio_file_id"], []
+        )
+        return SoundboardButton(
+            id=row["id"],
+            soundboard_id=row["soundboard_id"],
+            audio_file_id=row["audio_file_id"],
+            position=row["position"],
+            volume=row["volume"],
+            audio_file=audio_file,
+        )
+
     def remove_soundboard_button(self, button_id: int) -> None:
         """Remove a button from a soundboard"""
         self._conn.execute("DELETE FROM soundboard_buttons WHERE id = ?", (button_id,))

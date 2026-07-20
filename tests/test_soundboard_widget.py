@@ -107,15 +107,17 @@ class TestBoardSelection:
         content = make_content(db, player)
         assert content.current_board_id() == tavern_id
 
-    def test_board_switch_clears_player_and_persists(self, qapp, db, player):
+    def test_board_switch_stops_player_and_persists(self, qapp, db, player):
+        # stop(), not clear(): the button_stopped signal must reach remote
+        # clients so their state doesn't show a ghost sound after a switch.
         db.add_soundboard(Soundboard(name="Ambush"))
         tavern_id = db.add_soundboard(Soundboard(name="Tavern"))
         content = make_content(db, player)
-        player.clear.reset_mock()
+        player.stop.reset_mock()
 
         content.board_combo.setCurrentIndex(1)
 
-        player.clear.assert_called_once()
+        player.stop.assert_called_once()
         assert content.current_board_id() == tavern_id
         settings = QSettings()
         settings.beginGroup(SoundboardContent.SETTINGS_GROUP)
@@ -162,6 +164,7 @@ class TestGrid:
         board_id = db.add_soundboard(Soundboard(name="Combat"))
         db.add_button_to_soundboard(board_id, audio_ids[0])
         content = make_content(db, player)
+        player.stop.reset_mock()  # construction stops once on board selection
         content.stop_btn.click()
         player.stop.assert_called_once()
 
@@ -182,6 +185,7 @@ class TestButtonActions:
         board_id = db.add_soundboard(Soundboard(name="Combat"))
         button_id = db.add_button_to_soundboard(board_id, audio_ids[0])
         content = make_content(db, player)
+        player.stop.reset_mock()  # construction stops once on board selection
         player._current_button_id = button_id  # simulate it playing
 
         content._on_remove_button(content._cells_by_button_id[button_id].button)

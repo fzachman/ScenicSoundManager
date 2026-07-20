@@ -47,6 +47,7 @@ class RemoteControlServer(QObject):
             "get_state": lambda p: self._facade.get_state(),
             "get_scenes": lambda p: self._facade.get_scenes(),
             "get_playlists": lambda p: self._facade.get_playlists(),
+            "get_soundboards": lambda p: self._facade.get_soundboards(),
             "play_scene": lambda p: self._facade.play_scene(
                 p.get("scene_id"), p.get("preset")
             ),
@@ -57,6 +58,8 @@ class RemoteControlServer(QObject):
             "set_master_volume": lambda p: {
                 "master_volume": self._facade.set_master_volume(p.get("value"))
             },
+            "trigger_sound": lambda p: self._facade.trigger_sound(p.get("button_id")),
+            "stop_sound": lambda p: self._facade.stop_sound(),
         }
 
     def start(self) -> bool:

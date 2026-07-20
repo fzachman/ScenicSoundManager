@@ -19,7 +19,7 @@ from PyQt6.QtNetwork import QAbstractSocket
 from PyQt6.QtWebSockets import QWebSocket
 
 import app.main_window as main_window_module
-from app.database import DatabaseConnection, Scene
+from app.database import AudioFile, DatabaseConnection, Scene, Soundboard
 from app.remote.server import RemoteControlServer
 
 
@@ -231,6 +231,64 @@ def test_set_master_volume_applies_and_clamps(main_window, client):
     assert response["ok"] is True
     assert response["result"] == {"master_volume": 100}
     assert main_window.master_slider.value() == 100
+
+
+def _make_button(main_window, tmp_path) -> int:
+    """A soundboard button whose audio file really exists on disk."""
+    sfx = tmp_path / "hit.wav"
+    sfx.write_bytes(b"\x00")
+    file_id = main_window.db.add_audio_file(
+        AudioFile(file_path=str(sfx), title="Sword Clash")
+    )
+    board_id = main_window.db.add_soundboard(Soundboard(name="Combat"))
+    return main_window.db.add_button_to_soundboard(board_id, file_id)
+
+
+def test_get_soundboards_round_trip(main_window, client, tmp_path):
+    button_id = _make_button(main_window, tmp_path)
+    response = client.request("get_soundboards")
+    assert response["ok"] is True
+    (board,) = response["result"]
+    assert board["name"] == "Combat"
+    assert board["buttons"] == [{"id": button_id, "name": "Sword Clash"}]
+
+
+def test_trigger_sound_dispatches_to_player(main_window, client, tmp_path, monkeypatch):
+    button_id = _make_button(main_window, tmp_path)
+    triggered = []
+    monkeypatch.setattr(
+        main_window.soundboard_player, "trigger", lambda *a: triggered.append(a)
+    )
+    response = client.request("trigger_sound", {"button_id": button_id})
+    assert response["ok"] is True
+    assert triggered == [(button_id, str(tmp_path / "hit.wav"), 1.0)]
+
+
+def test_trigger_sound_missing_param_errors(client):
+    response = client.request("trigger_sound")
+    assert response["ok"] is False
+    assert response["error"]["code"] == "invalid_params"
+
+
+def test_stop_sound_round_trip(main_window, client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        main_window.soundboard_player, "stop", lambda: calls.append(True)
+    )
+    assert client.request("stop_sound")["ok"] is True
+    assert calls == [True]
+
+
+def test_sound_start_broadcasts_state(main_window, qapp, client, tmp_path):
+    button_id = _make_button(main_window, tmp_path)
+    player = main_window.soundboard_player
+    before = len(client.state_events())
+    player._current_button_id = button_id
+    player.button_started.emit(button_id)
+    _wait_until(qapp, lambda: len(client.state_events()) > before, "sound state event")
+    sound = client.state_events()[-1]["data"]["sound"]
+    assert sound["button_id"] == button_id
+    assert sound["name"] == "Sword Clash"
 
 
 # --- malformed input never crashes or disconnects --------------------------------

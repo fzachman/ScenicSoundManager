@@ -76,7 +76,7 @@ class SoundboardPlayer(QObject):
             self.button_stopped.emit(stopped_button_id)
 
     def clear(self) -> None:
-        """Silent teardown (app close / board switch): release, no signals."""
+        """Silent teardown (app close): release, no signals."""
         self._release_slot()
 
     def _on_end_reached(self) -> None:

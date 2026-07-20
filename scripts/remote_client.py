@@ -15,6 +15,9 @@ Usage (with the app running):
     venv/bin/python scripts/remote_client.py toggle
     venv/bin/python scripts/remote_client.py next
     venv/bin/python scripts/remote_client.py volume 40
+    venv/bin/python scripts/remote_client.py soundboards
+    venv/bin/python scripts/remote_client.py trigger 5   # soundboard button id
+    venv/bin/python scripts/remote_client.py stop-sound
     venv/bin/python scripts/remote_client.py watch     # stream state events
 
 Exit status: 0 on ok:true, 1 on protocol error / connection failure / timeout.
@@ -41,6 +44,9 @@ COMMANDS = {
     "toggle": ("toggle_play_pause", None),
     "next": ("next_track", None),
     "volume": ("set_master_volume", "value"),
+    "soundboards": ("get_soundboards", None),
+    "trigger": ("trigger_sound", "button_id"),
+    "stop-sound": ("stop_sound", None),
 }
 
 

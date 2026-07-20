@@ -7,7 +7,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import app.main_window as main_window_module
-from app.database import DatabaseConnection, Playlist, Scene
+from app.database import AudioFile, DatabaseConnection, Playlist, Scene, Soundboard
 from app.remote import RemoteError
 
 
@@ -436,3 +436,119 @@ def test_no_state_changed_when_volume_unchanged(main_window, facade):
     facade.state_changed.connect(snapshots.append)
     facade.set_master_volume(50)
     assert snapshots == []
+
+
+# --- soundboard ----------------------------------------------------------------
+
+
+def _make_button(
+    main_window, tmp_path, board="Combat", title="Sword Clash", volume=1.0
+) -> int:
+    """A soundboard button whose audio file really exists on disk."""
+    sfx = tmp_path / f"{title}.wav"
+    sfx.write_bytes(b"\x00")
+    file_id = main_window.db.add_audio_file(AudioFile(file_path=str(sfx), title=title))
+    board_id = main_window.db.add_soundboard(Soundboard(name=board))
+    return main_window.db.add_button_to_soundboard(board_id, file_id, volume=volume)
+
+
+def test_get_soundboards_lists_boards_and_buttons(main_window, facade, tmp_path):
+    button_id = _make_button(main_window, tmp_path, board="Tavern", title="Cheers")
+    main_window.db.add_soundboard(Soundboard(name="Ambush"))
+    boards = facade.get_soundboards()
+    assert [b["name"] for b in boards] == ["Ambush", "Tavern"]
+    assert boards[0]["buttons"] == []
+    assert boards[1]["buttons"] == [{"id": button_id, "name": "Cheers"}]
+
+
+def test_trigger_sound_delegates_with_path_and_volume(
+    main_window, facade, tmp_path, monkeypatch
+):
+    button_id = _make_button(main_window, tmp_path, title="Thunder", volume=0.5)
+    triggered = _record(monkeypatch, main_window.soundboard_player, "trigger")
+    facade.trigger_sound(button_id)
+    assert triggered == [(button_id, str(tmp_path / "Thunder.wav"), 0.5)]
+
+
+def test_trigger_sound_unknown_id_raises_not_found(main_window, facade, monkeypatch):
+    triggered = _record(monkeypatch, main_window.soundboard_player, "trigger")
+    with pytest.raises(RemoteError) as exc:
+        facade.trigger_sound(999)
+    assert exc.value.code == "not_found"
+    assert triggered == []
+
+
+@pytest.mark.parametrize("bad_id", ["3", 3.5, True, None])
+def test_trigger_sound_rejects_non_int_ids(facade, bad_id):
+    with pytest.raises(RemoteError) as exc:
+        facade.trigger_sound(bad_id)
+    assert exc.value.code == "invalid_params"
+
+
+def test_trigger_sound_missing_file_errors(main_window, facade, tmp_path, monkeypatch):
+    button_id = _make_button(main_window, tmp_path, title="Gone")
+    (tmp_path / "Gone.wav").unlink()
+    triggered = _record(monkeypatch, main_window.soundboard_player, "trigger")
+    with pytest.raises(RemoteError) as exc:
+        facade.trigger_sound(button_id)
+    assert exc.value.code == "file_missing"
+    assert triggered == []
+
+
+def test_trigger_sound_toggle_off_works_despite_missing_file(
+    main_window, facade, tmp_path, monkeypatch
+):
+    # Stopping the sound you started must not fail just because the file
+    # vanished after it began playing.
+    button_id = _make_button(main_window, tmp_path, title="Gone")
+    (tmp_path / "Gone.wav").unlink()
+    player = main_window.soundboard_player
+    player._current_button_id = button_id
+    monkeypatch.setattr(player, "is_playing", lambda: True)
+    triggered = _record(monkeypatch, player, "trigger")
+    facade.trigger_sound(button_id)
+    assert len(triggered) == 1
+
+
+def test_stop_sound_delegates_to_player(main_window, facade, monkeypatch):
+    calls = _record(monkeypatch, main_window.soundboard_player, "stop")
+    facade.stop_sound()
+    assert len(calls) == 1
+
+
+def test_get_state_sound_is_none_when_idle(facade):
+    assert facade.get_state()["sound"] is None
+
+
+def test_get_state_reports_playing_sound(main_window, facade, tmp_path):
+    button_id = _make_button(main_window, tmp_path, board="Tavern", title="Cheers")
+    board_id = main_window.db.get_soundboard_button(button_id).soundboard_id
+    main_window.soundboard_player._current_button_id = button_id
+    assert facade.get_state()["sound"] == {
+        "button_id": button_id,
+        "soundboard_id": board_id,
+        "name": "Cheers",
+    }
+
+
+def test_get_state_sound_survives_deleted_button(main_window, facade):
+    # Defensive: slot id not resolvable (button removed mid-playback).
+    main_window.soundboard_player._current_button_id = 999
+    assert facade.get_state()["sound"] == {
+        "button_id": 999,
+        "soundboard_id": None,
+        "name": None,
+    }
+
+
+def test_sound_start_and_stop_broadcast_state(main_window, facade, tmp_path):
+    button_id = _make_button(main_window, tmp_path, title="Thunder")
+    player = main_window.soundboard_player
+    snapshots = []
+    facade.state_changed.connect(snapshots.append)
+    player._current_button_id = button_id
+    player.button_started.emit(button_id)
+    assert snapshots[-1]["sound"]["button_id"] == button_id
+    player._current_button_id = None
+    player.button_stopped.emit(button_id)
+    assert snapshots[-1]["sound"] is None

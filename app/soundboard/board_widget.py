@@ -383,8 +383,10 @@ class SoundboardContent(QWidget):
         self._on_board_selected()
 
     def _on_board_selected(self) -> None:
-        # Board switch empties the player slot (silent; the grid rebuilds).
-        self.player.clear()
+        # Board switch empties the player slot. stop(), not clear(): the
+        # button_stopped signal must fire so remote clients' state stays
+        # truthful (a silent clear would leave them showing a ghost sound).
+        self.player.stop()
         board_id = self.current_board_id()
         if board_id is not None:
             settings = QSettings()

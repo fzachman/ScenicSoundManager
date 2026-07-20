@@ -7,6 +7,8 @@ as one coarse ``state_changed`` snapshot (the protocol's ``state`` event).
 See ``docs/remote-protocol.md`` for the wire protocol it backs.
 """
 
+import os
+
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from ..database import PRESET_SLOTS
@@ -58,6 +60,8 @@ class RemoteControlFacade(QObject):
         window.scenes_widget.preset_changed.connect(self._emit_state)
         window.playlists_widget.playback_state_changed.connect(self._emit_state)
         window.master_slider.valueChanged.connect(self._emit_state)
+        window.soundboard_player.button_started.connect(self._emit_state)
+        window.soundboard_player.button_stopped.connect(self._emit_state)
 
     # --- queries ---------------------------------------------------------
 
@@ -67,7 +71,8 @@ class RemoteControlFacade(QObject):
         ``playing`` and ``paused`` are mutually exclusive: at most one item is
         active app-wide (mutual exclusivity stops the old item — paused or
         playing — whenever a new one starts), and ``paused`` is only reported
-        when nothing is playing.
+        when nothing is playing. ``sound`` is the soundboard one-shot, which
+        plays *over* the active item and is independent of both fields.
         """
         playing = None
         paused = None
@@ -80,6 +85,7 @@ class RemoteControlFacade(QObject):
         return {
             "playing": playing,
             "paused": paused,
+            "sound": self._sound_state(),
             "master_volume": self._window.audio_engine.master_volume,
         }
 
@@ -106,6 +112,32 @@ class RemoteControlFacade(QObject):
             {"id": playlist.id, "name": playlist.name}
             for playlist in self._window.db.get_all_playlists()
         ]
+
+    def get_soundboards(self) -> list[dict]:
+        """All soundboards with their buttons — boards alphabetical, buttons
+        in grid order. Controllers map a key to a button by storing its id."""
+        db = self._window.db
+        boards = []
+        for board in db.get_all_soundboards():
+            buttons = (
+                db.get_soundboard_buttons(board.id) if board.id is not None else []
+            )
+            boards.append(
+                {
+                    "id": board.id,
+                    "name": board.name,
+                    "buttons": [
+                        {
+                            "id": button.id,
+                            "name": button.audio_file.display_title
+                            if button.audio_file
+                            else None,
+                        }
+                        for button in buttons
+                    ],
+                }
+            )
+        return boards
 
     # --- commands ---------------------------------------------------------
 
@@ -179,6 +211,36 @@ class RemoteControlFacade(QObject):
         self._window.master_slider.setValue(value)
         return value
 
+    def trigger_sound(self, button_id) -> None:
+        """Press a soundboard button — exact grid-button semantics.
+
+        The same button while its sound plays stops it (toggle); any other
+        button hard-stops the current sound and plays instead, over whatever
+        scene/playlist is active. Unlike ``play_scene``/``play_playlist``
+        this never touches the visible UI (no board switch) — one-shots are
+        momentary and shouldn't yank the combo out from under the user.
+        """
+        button_id = _require_id(button_id, "button_id")
+        button = self._window.db.get_soundboard_button(button_id)
+        if button is None or button.audio_file is None:
+            raise RemoteError("not_found", f"no soundboard button with id {button_id}")
+        player = self._window.soundboard_player
+        # A toggle-off press must succeed even if the file has since vanished;
+        # only an actual (re)play needs the file present. The UI swallows a
+        # missing file silently — remote clients get an error they can render.
+        toggles_off = player.current_button_id == button_id and player.is_playing()
+        if not toggles_off and not os.path.exists(button.audio_file.file_path):
+            raise RemoteError(
+                "file_missing",
+                f"audio file not found: {button.audio_file.file_path}",
+            )
+        logger.info("remote_trigger_sound", button_id=button_id)
+        player.trigger(button_id, button.audio_file.file_path, button.volume)
+
+    def stop_sound(self) -> None:
+        """Stop the playing soundboard sound, if any (the panel's Stop button)."""
+        self._window.soundboard_player.stop()
+
     # --- internal ---------------------------------------------------------
 
     def _paused_item(self) -> dict | None:
@@ -221,6 +283,22 @@ class RemoteControlFacade(QObject):
             playlist = self._window.db.get_playlist(item_id)
             item["name"] = playlist.name if playlist else None
         return item
+
+    def _sound_state(self) -> dict | None:
+        """The ``sound`` wire shape: the soundboard button occupying the
+        player slot, or None when idle. The slot is authoritative — it empties
+        on stop, cut-over, board switch, and natural end alike."""
+        button_id = self._window.soundboard_player.current_button_id
+        if button_id is None:
+            return None
+        button = self._window.db.get_soundboard_button(button_id)
+        return {
+            "button_id": button_id,
+            "soundboard_id": button.soundboard_id if button else None,
+            "name": button.audio_file.display_title
+            if button and button.audio_file
+            else None,
+        }
 
     def _emit_state(self, *_args):
         """Republish any playback/volume change as one full snapshot."""

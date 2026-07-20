@@ -171,3 +171,20 @@ class TestSoundboardButtons:
         board = db.get_soundboard(board_id)
         assert len(board.buttons) == 3
         assert board.buttons[0].audio_file.title == "FX 0"
+
+    def test_get_soundboard_button_carries_audio_file_and_tags(self, db, audio_ids):
+        board_id = db.add_soundboard(Soundboard(name="Combat"))
+        tag_id = db.add_tag(Tag(name="stinger", color="#ff0000"))
+        db.add_tag_to_audio_file(audio_ids[0], tag_id)
+        button_id = db.add_button_to_soundboard(board_id, audio_ids[0], volume=0.4)
+        button = db.get_soundboard_button(button_id)
+        assert button is not None
+        assert button.id == button_id
+        assert button.soundboard_id == board_id
+        assert button.volume == 0.4
+        assert button.audio_file.title == "FX 0"
+        assert button.audio_file.file_path == "/sfx/effect0.mp3"
+        assert [t.name for t in button.audio_file.tags] == ["stinger"]
+
+    def test_get_missing_soundboard_button_returns_none(self, db):
+        assert db.get_soundboard_button(999) is None

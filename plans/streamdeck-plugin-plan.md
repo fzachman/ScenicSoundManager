@@ -148,6 +148,30 @@ Optional extra action, **Set Preset** (scene-agnostic key outside the page):
   restarted mid-session, scene deleted while bound, two decks/pages with the
   same scene bound twice, volume dial while a playlist plays.
 
+## Milestone 6 — Soundboard hit action (app side shipped 2026-07-20)
+
+One action = one soundboard hit, manually mapped (boards can hold many
+sounds; no auto-layout).
+
+- Property inspector: two chained dropdowns — Soundboard, then Track —
+  populated from `get_soundboards` (boards alphabetical, buttons in grid
+  order). Store the **button id** from the chosen track; re-resolve display
+  names via `get_soundboards` on render, same rule as scenes.
+- On key press: `trigger_sound {button_id}`. That's the whole behavior —
+  the app implements exact grid-button semantics: plays over the active
+  scene/playlist; pressing while *this* button's sound plays stops it
+  (toggle); pressing while another sound plays cuts it off. No preset/UI
+  side effects (the app's visible board is never switched).
+- Render from state: active look while `state.sound.button_id == <mine>`;
+  `state.sound` is `null` when the soundboard is silent. It clears on stop,
+  cut-over, natural end, and in-app board switch — re-render on every event
+  as usual.
+- Errors: `not_found` → the button was removed from the board (or the track
+  re-added, which mints a new id) — `showAlert()`, user re-picks in the
+  inspector. `file_missing` → file gone from disk — `showAlert()`.
+- Optional companion key: **Stop Sound** = `stop_sound` (no params, no-op
+  when silent).
+
 ---
 
 ## Wire protocol (v1) — as implemented and verified
@@ -173,6 +197,7 @@ preset, or master-volume change from any source. `data` schema (same as
 {
   "playing": {"type": "scene", "id": 3, "name": "Tavern", "preset": {"slot": 2, "name": "Combat"}},
   "paused": null,
+  "sound": {"button_id": 5, "soundboard_id": 1, "name": "Sword Clash"},
   "master_volume": 80
 }
 ```
@@ -182,8 +207,10 @@ preset, or master-volume change from any source. `data` schema (same as
 active preset slot (`name` null for never-renamed slots — render as
 "Preset {slot}"); always `null` for playlists. `paused` has the same shape as
 `playing` and holds the resumable paused item; the two are mutually exclusive
-(at most one non-null). Treat every event as a full re-render — a mutating
-command's `state` broadcast typically arrives *before* its response.
+(at most one non-null). `sound` is the soundboard one-shot playing *over* the
+active item (`null` when silent) — independent of both fields, at most one at
+a time. Treat every event as a full re-render — a mutating command's `state`
+broadcast typically arrives *before* its response.
 
 | `cmd` | `params` | `result` |
 |-------|----------|----------|
@@ -196,11 +223,15 @@ command's `state` broadcast typically arrives *before* its response.
 | `toggle_play_pause` | — | `null` |
 | `next_track` | — | `null` (playing playlist only; no-op otherwise) |
 | `set_master_volume` | `{"value": int}` | `{"master_volume": int}` (clamped 0–100) |
+| `get_soundboards` | — | `[{"id": int, "name": str, "buttons": [{"id": int, "name": str\|null}, ...]}, ...]` |
+| `trigger_sound` | `{"button_id": int}` | `null` — in-app button semantics: same-button toggle-stop, different-button cut-over, plays over the active item; never touches the app's UI |
+| `stop_sound` | — | `null` (no-op when silent) |
 
 Error codes: `bad_request` (bad JSON / non-object frame or params),
 `unknown_command`, `invalid_params` (wrong type or preset outside 1–3; ids and
 volume must be JSON integers — booleans are rejected), `not_found`,
-`no_active_scene`, `internal_error`.
+`no_active_scene`, `file_missing` (`trigger_sound` with the audio file gone
+from disk), `internal_error`.
 
 Only one scene *or* one playlist plays at a time (app-enforced mutual
 exclusivity). v1 is additive-versioned: ignore unknown fields in `state` and
