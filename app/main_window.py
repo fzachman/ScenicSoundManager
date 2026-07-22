@@ -246,6 +246,9 @@ class MainWindow(QMainWindow):
         restore_action = QAction("Restore Database…", self)
         restore_action.triggered.connect(self._restore_database)
         file_menu.addAction(restore_action)
+        repair_action = QAction("Repair Library…", self)
+        repair_action.triggered.connect(self._repair_library)
+        file_menu.addAction(repair_action)
 
         # The transport keys (Space/→) are deliberately NOT bound as action
         # shortcuts: they live in the application event filter so they can
@@ -480,6 +483,15 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self, "Backup Complete", f"Database backed up to:\n{path}"
         )
+
+    def _repair_library(self):
+        """File > Repair Library…: relink entries whose files moved on disk."""
+        from .library import RepairLibraryDialog
+
+        dialog = RepairLibraryDialog(self.db, self.audio_engine, parent=self)
+        dialog.exec()
+        if dialog.relinked_count:
+            self.library_widget.refresh()
 
     def _restore_database(self):
         """File > Restore Database…: validate, confirm, then restart to swap.

@@ -3,6 +3,7 @@
 from .file_table import FileTableWidget
 from .library_widget import LibraryWidget
 from .metadata import MetadataExtractor
+from .repair_dialog import RepairLibraryDialog
 from .search_bar import SearchBar
 from .tag_manager import TagManager
 
@@ -12,4 +13,5 @@ __all__ = [
     "TagManager",
     "SearchBar",
     "MetadataExtractor",
+    "RepairLibraryDialog",
 ]

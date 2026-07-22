@@ -349,6 +349,29 @@ class DatabaseConnection:
         )
         self._conn.commit()
 
+    def relink_audio_file(
+        self,
+        file_id: int,
+        new_path: str,
+        file_size: int | None,
+        content_hash: str | None,
+    ) -> None:
+        """Point an entry at a new path, refreshing its fingerprint.
+
+        Used by the repair-library flow. References (scenes, playlists,
+        soundboards) join on the id, so relinking heals them all.
+        """
+        self._conn.execute(
+            """
+            UPDATE audio_files
+            SET file_path = ?, file_size = ?, content_hash = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (new_path, file_size, content_hash, file_id),
+        )
+        self._conn.commit()
+
     def delete_audio_file(self, file_id: int) -> None:
         """Delete an audio file from the library"""
         self._conn.execute("DELETE FROM audio_files WHERE id = ?", (file_id,))

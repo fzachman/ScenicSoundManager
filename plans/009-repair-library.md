@@ -1,8 +1,9 @@
 # 009 — Repair Library (relink moved/missing audio files)
 
-**Status:** DESIGN AGREED (2026-07-22). Scaffolding (hash + size columns,
-computed at import, existing library backfilled) shipping now; the repair
-UI itself is deferred.
+**Status:** SHIPPED 2026-07-22 (feature/repair-library). File → Repair
+Library… implements the design below (app/library/repair.py +
+repair_dialog.py). Remaining follow-up idea: "show unlinked files"
+filter in the Library tab (see Notes).
 
 ## Problem
 

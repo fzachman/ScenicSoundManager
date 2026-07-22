@@ -574,6 +574,44 @@ def test_import_files_switches_to_library_and_opens_picker(main_window, monkeypa
     assert len(calls) == 1
 
 
+def test_repair_library_menu_opens_dialog_and_refreshes(main_window, monkeypatch):
+    class FakeDialog:
+        relinked_count = 1
+
+        def __init__(self, db, audio_engine, parent=None):
+            assert db is main_window.db
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr("app.library.RepairLibraryDialog", FakeDialog)
+    refreshes = _record(monkeypatch, main_window.library_widget, "refresh")
+
+    file_menu = main_window.menuBar().actions()[0].menu()
+    actions = {a.text(): a for a in file_menu.actions()}
+    actions["Repair Library…"].trigger()
+
+    assert len(refreshes) == 1
+
+
+def test_repair_library_without_relinks_skips_refresh(main_window, monkeypatch):
+    class FakeDialog:
+        relinked_count = 0
+
+        def __init__(self, db, audio_engine, parent=None):
+            pass
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr("app.library.RepairLibraryDialog", FakeDialog)
+    refreshes = _record(monkeypatch, main_window.library_widget, "refresh")
+
+    main_window._repair_library()
+
+    assert len(refreshes) == 0
+
+
 def test_import_stores_content_fingerprint(main_window, tmp_path):
     content = b"not really mp3 audio" * 500
     track = tmp_path / "Goblin Market.mp3"
