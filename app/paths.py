@@ -5,8 +5,7 @@ from pathlib import Path
 APP_SUPPORT = Path.home() / "Library" / "Application Support"
 
 # Data home (SQLite database). Renamed from the legacy "SoundManager" folder
-# in 2026-07 alongside the QSettings org rename; app/migrations.py moves the
-# database over on startup.
+# in 2026-07 alongside the QSettings org rename (one-shot migration since
+# removed; see commit 6458079 if a future rename needs the pattern).
 DATA_DIR = APP_SUPPORT / "ScenicSound"
-LEGACY_DATA_DIR = APP_SUPPORT / "SoundManager"
 DB_FILENAME = "soundmanager.db"

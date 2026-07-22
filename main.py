@@ -48,19 +48,14 @@ def main():
 
     # Create application. applicationName/organizationName are the QSettings
     # identity (macOS domain com.scenicsound.SoundManager) — renaming either
-    # orphans existing user settings, so any future change needs a migration
-    # like the 2026-07 org rename in app/migrations.py. The user-facing name
-    # goes in applicationDisplayName and the bundle plist.
+    # orphans existing user settings, so any future change needs a startup
+    # migration (see commit 6458079 for the 2026-07 org-rename one, removed
+    # after it ran; note macOS merges NSGlobalDomain into QSettings.allKeys()).
+    # The user-facing name goes in applicationDisplayName and the bundle plist.
     app = QApplication(sys.argv)
     app.setApplicationName("SoundManager")
     app.setOrganizationName("ScenicSound")
     app.setApplicationDisplayName(APP_DISPLAY_NAME)
-
-    # One-time identity migrations (legacy settings/database namespaces).
-    # Must run before MainWindow reads QSettings or opens the database.
-    from app.migrations import run_startup_migrations
-
-    run_startup_migrations()
 
     # Create and show main window
     window = MainWindow()
