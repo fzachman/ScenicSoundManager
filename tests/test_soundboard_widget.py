@@ -431,3 +431,30 @@ class TestMainWindowIntegration:
             assert content.player is window.soundboard_player
         finally:
             window.db.close()
+
+
+class TestSelectBoard:
+    def test_select_board_switches_and_stops_player(self, qapp, db, player):
+        db.add_soundboard(Soundboard(name="Alpha"))
+        board_b = db.add_soundboard(Soundboard(name="Beta"))
+        content = make_content(db, player)
+        player.stop.reset_mock()
+        content.select_board(board_b)
+        assert content.current_board_id() == board_b
+        assert player.stop.called  # board switch empties the one-shot slot
+
+    def test_select_same_board_is_noop(self, qapp, db, player):
+        board_a = db.add_soundboard(Soundboard(name="Alpha"))
+        content = make_content(db, player)
+        assert content.current_board_id() == board_a
+        player.stop.reset_mock()
+        content.select_board(board_a)
+        # Must not stop a playing sound when the board is already open.
+        player.stop.assert_not_called()
+
+    def test_select_board_missing_from_combo_reloads(self, qapp, db, player):
+        content = make_content(db, player)
+        # Board created after the combo was populated (e.g. remotely).
+        board = db.add_soundboard(Soundboard(name="Late"))
+        content.select_board(board)
+        assert content.current_board_id() == board

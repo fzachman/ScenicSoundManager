@@ -20,10 +20,13 @@ import sys
 
 from setuptools import setup
 
-# Application metadata
+from app import APP_DISPLAY_NAME, __version__
+
+# Application metadata. APP_NAME is the internal/setuptools name; the
+# user-facing name (macOS menu bar, Finder) comes from the plist below.
 APP = ["main.py"]
 APP_NAME = "SoundManager"
-VERSION = "1.0.0"
+VERSION = __version__
 
 # Data files to include
 DATA_FILES = []
@@ -33,8 +36,9 @@ OPTIONS = {
     "argv_emulation": False,
     "iconfile": None,  # Add path to .icns file if available
     "plist": {
-        "CFBundleName": APP_NAME,
-        "CFBundleDisplayName": APP_NAME,
+        # CFBundleName names the macOS app menu; keep it the display name.
+        "CFBundleName": APP_DISPLAY_NAME,
+        "CFBundleDisplayName": APP_DISPLAY_NAME,
         "CFBundleGetInfoString": "D&D Audio Soundscape Manager",
         "CFBundleIdentifier": "com.soundmanager.app",
         "CFBundleVersion": VERSION,

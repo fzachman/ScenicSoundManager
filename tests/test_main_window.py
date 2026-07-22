@@ -6,7 +6,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QCoreApplication, QEvent, Qt
+from PyQt6.QtCore import QCoreApplication, QEvent, QSettings, Qt
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import (
     QApplication,
@@ -456,3 +456,158 @@ def test_switch_to_library_does_not_focus_play_lists(main_window, qapp, monkeypa
     main_window.tab_widget.setCurrentWidget(main_window.library_widget)
     qapp.processEvents()
     assert s == [] and p == []
+
+
+# --- Native menu bar -------------------------------------------------------------
+
+
+def test_menu_bar_has_expected_menus(main_window):
+    titles = [a.text() for a in main_window.menuBar().actions()]
+    assert titles == [
+        "File",
+        "Playback",
+        "View",
+        "Scenes",
+        "Playlists",
+        "Soundboards",
+        "Help",
+    ]
+
+
+def test_scenes_menu_empty_shows_disabled_placeholder(main_window):
+    main_window._rebuild_scenes_menu()
+    actions = main_window.scenes_menu.actions()
+    assert [a.text() for a in actions] == ["No Scenes"]
+    assert not actions[0].isEnabled()
+
+
+def test_scenes_menu_lists_scenes_and_checks_playing(main_window, monkeypatch):
+    from app.database import Scene
+
+    id_a = main_window.db.add_scene(Scene(title="Ambush"))
+    id_b = main_window.db.add_scene(Scene(title="Tavern"))
+    main_window._current_playing_type = "scene"
+    main_window._current_scene_id = id_b
+    main_window._rebuild_scenes_menu()
+    actions = main_window.scenes_menu.actions()
+    # Newest-first: add_scene inserts at position 0, same as the sidebar.
+    assert [a.text() for a in actions] == ["Tavern", "Ambush"]
+    assert [a.text() for a in actions if a.isChecked()] == ["Tavern"]
+
+    # Triggering an entry switches to the Scenes tab and selects the scene.
+    seen = []
+    main_window.tab_widget.setCurrentWidget(main_window.library_widget)
+    monkeypatch.setattr(
+        main_window.scenes_widget, "select_scene", lambda i: seen.append(i)
+    )
+    actions[1].trigger()
+    assert main_window.tab_widget.currentWidget() is main_window.scenes_widget
+    assert seen == [id_a]
+
+
+def test_playlists_menu_lists_playlists_and_checks_playing(main_window):
+    from app.database import Playlist as PlaylistModel
+
+    id_a = main_window.db.add_playlist(PlaylistModel(name="Battle Mix"))
+    main_window._current_playing_type = "playlist"
+    main_window._current_playlist_playing_id = id_a
+    main_window._rebuild_playlists_menu()
+    actions = main_window.playlists_menu.actions()
+    assert [a.text() for a in actions] == ["Battle Mix"]
+    assert actions[0].isChecked()
+
+
+def test_soundboards_menu_checks_open_board_and_opens_on_trigger(main_window):
+    from app.database import Soundboard
+
+    board_id = main_window.db.add_soundboard(Soundboard(name="SFX"))
+    main_window._rebuild_soundboards_menu()
+    actions = main_window.soundboards_menu.actions()
+    assert [a.text() for a in actions] == ["SFX"]
+
+    main_window.soundboard_dock.set_collapsed(True)
+    actions[0].trigger()
+    assert main_window.soundboard_dock.collapsed is False
+    assert main_window.soundboard_content.current_board_id() == board_id
+
+    # Now that the board is the open one, the rebuilt menu checks it.
+    main_window._rebuild_soundboards_menu()
+    assert main_window.soundboards_menu.actions()[0].isChecked()
+
+
+def test_show_scene_switches_tab_and_selects(main_window, monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        main_window.scenes_widget, "select_scene", lambda i: seen.append(i)
+    )
+    main_window.tab_widget.setCurrentWidget(main_window.library_widget)
+    main_window.show_scene(42)
+    assert main_window.tab_widget.currentWidget() is main_window.scenes_widget
+    assert seen == [42]
+
+
+def test_show_playlist_switches_tab_and_selects(main_window, monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        main_window.playlists_widget, "select_playlist", lambda i: seen.append(i)
+    )
+    main_window.show_playlist(7)
+    assert main_window.tab_widget.currentWidget() is main_window.playlists_widget
+    assert seen == [7]
+
+
+def test_import_files_switches_to_library_and_opens_picker(main_window, monkeypatch):
+    calls = _record(monkeypatch, main_window.library_widget, "add_files")
+    main_window.tab_widget.setCurrentWidget(main_window.scenes_widget)
+    main_window.import_files()
+    assert main_window.tab_widget.currentWidget() is main_window.library_widget
+    assert len(calls) == 1
+
+
+def test_import_folder_switches_to_library_and_opens_picker(main_window, monkeypatch):
+    calls = _record(monkeypatch, main_window.library_widget, "add_folder")
+    main_window.tab_widget.setCurrentWidget(main_window.scenes_widget)
+    main_window.import_folder()
+    assert main_window.tab_widget.currentWidget() is main_window.library_widget
+    assert len(calls) == 1
+
+
+def test_stop_all_playback_stops_scenes_playlists_and_soundboard(
+    main_window, monkeypatch
+):
+    s = _record(monkeypatch, main_window.scenes_widget, "stop_all_playback")
+    p = _record(monkeypatch, main_window.playlists_widget, "stop_all_playback")
+    b = _record(monkeypatch, main_window.soundboard_player, "stop")
+    main_window.stop_all_playback()
+    assert len(s) == 1 and len(p) == 1 and len(b) == 1
+
+
+def test_view_menu_soundboard_action_tracks_and_toggles_collapse(main_window):
+    main_window.soundboard_dock.set_collapsed(True)
+    main_window._sync_view_menu()
+    assert main_window._soundboard_view_action.isChecked() is False
+    # trigger() flips the checkable state to True, expanding the dock.
+    main_window._soundboard_view_action.trigger()
+    assert main_window.soundboard_dock.collapsed is False
+    main_window._sync_view_menu()
+    assert main_window._soundboard_view_action.isChecked() is True
+
+
+def test_restart_remote_server_applies_new_settings(main_window):
+    # conftest disables remote, so the window starts without a server.
+    assert main_window.remote_server is None
+    settings = QSettings()
+    settings.beginGroup("remote")
+    settings.setValue("enabled", True)
+    settings.setValue("port", 0)  # ephemeral: don't depend on 8765 being free
+    settings.endGroup()
+    try:
+        main_window._restart_remote_server()
+        assert main_window.remote_server is not None
+        assert main_window.remote_server.port > 0
+    finally:
+        settings.beginGroup("remote")
+        settings.setValue("enabled", False)
+        settings.endGroup()
+        main_window._restart_remote_server()
+    assert main_window.remote_server is None

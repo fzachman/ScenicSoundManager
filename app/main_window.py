@@ -1,7 +1,9 @@
 """Main application window with tab navigation"""
 
+from collections.abc import Callable
+
 from PyQt6.QtCore import QEvent, QSettings, Qt, QTimer
-from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtGui import QAction, QKeyEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractButton,
     QAbstractSlider,
@@ -11,6 +13,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSlider,
@@ -20,12 +24,21 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from . import APP_DISPLAY_NAME, __version__
 from .audio import TRANSITION_FADE_MS, AudioEngine, SoundboardPlayer
 from .database import DatabaseConnection
 from .library import LibraryWidget
 from .playlists import PlaylistsWidget
-from .remote import DEFAULT_PORT, RemoteControlFacade, RemoteControlServer
+from .remote import (
+    DEFAULT_PORT,
+    SETTINGS_ENABLED,
+    SETTINGS_GROUP,
+    SETTINGS_PORT,
+    RemoteControlFacade,
+    RemoteControlServer,
+)
 from .scenes import ScenesWidget
+from .settings_dialog import SettingsDialog
 from .shared.styles import Styles
 from .soundboard import SoundboardContent, SoundboardDock
 
@@ -40,13 +53,10 @@ class MainWindow(QMainWindow):
     SETTINGS_WINDOW_STATE = "window_state"
     SETTINGS_LAST_SCENE_ID = "last_scene_id"
     SETTINGS_LAST_PLAYLIST_ID = "last_playlist_id"
-    SETTINGS_REMOTE_GROUP = "remote"
-    SETTINGS_REMOTE_ENABLED = "enabled"
-    SETTINGS_REMOTE_PORT = "port"
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("SoundManager")
+        self.setWindowTitle(APP_DISPLAY_NAME)
         self.setMinimumSize(1200, 800)
         self._tab_restore_done = False
         self._current_scene_id = None
@@ -158,11 +168,10 @@ class MainWindow(QMainWindow):
         # outside the scene/playlist mutual-exclusivity chain (its sounds play
         # over whatever is active).
         self.soundboard_player = SoundboardPlayer(self.audio_engine)
-        self.soundboard_dock = SoundboardDock(
-            content=SoundboardContent(
-                self.db, self.audio_engine, self.soundboard_player
-            )
+        self.soundboard_content = SoundboardContent(
+            self.db, self.audio_engine, self.soundboard_player
         )
+        self.soundboard_dock = SoundboardDock(content=self.soundboard_content)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.soundboard_dock)
 
         # Connect signals between modules
@@ -170,6 +179,261 @@ class MainWindow(QMainWindow):
 
         # Playback keyboard shortcuts
         self._setup_shortcuts()
+
+        # Native menu bar
+        self._setup_menus()
+
+    def _setup_menus(self):
+        """Build the native menu bar.
+
+        macOS relocates the About/Settings/Quit actions out of the File menu
+        into the application menu via their MenuRoles (the app menu's *name*
+        comes from the bundle plist, so it reads "Python" when running
+        unbundled). The Scenes/Playlists/Soundboards menus rebuild from the
+        database on every aboutToShow, so they never go stale and need no
+        CRUD signal wiring.
+        """
+        menubar = self.menuBar()
+        if menubar is None:  # pragma: no cover - QMainWindow creates one
+            return
+
+        file_menu = QMenu("File", self)
+        menubar.addMenu(file_menu)
+
+        about_action = QAction(f"About {APP_DISPLAY_NAME}", self)
+        about_action.setMenuRole(QAction.MenuRole.AboutRole)
+        about_action.triggered.connect(self._show_about)
+        file_menu.addAction(about_action)
+
+        settings_action = QAction("Settings…", self)
+        settings_action.setMenuRole(QAction.MenuRole.PreferencesRole)
+        settings_action.setShortcut(QKeySequence.StandardKey.Preferences)
+        settings_action.triggered.connect(self._show_settings)
+        file_menu.addAction(settings_action)
+
+        # close(), not QApplication.quit(): closeEvent owns the teardown
+        # (audio stop, remote server stop, DB close, engine release).
+        quit_action = QAction(f"Quit {APP_DISPLAY_NAME}", self)
+        quit_action.setMenuRole(QAction.MenuRole.QuitRole)
+        quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        quit_action.triggered.connect(self.close)
+        file_menu.addAction(quit_action)
+
+        import_menu = QMenu("Import", self)
+        file_menu.addMenu(import_menu)
+        import_files_action = QAction("Files…", self)
+        import_files_action.setShortcut(QKeySequence.StandardKey.Open)
+        import_files_action.triggered.connect(self.import_files)
+        import_menu.addAction(import_files_action)
+        import_folder_action = QAction("Folder…", self)
+        import_folder_action.triggered.connect(self.import_folder)
+        import_menu.addAction(import_folder_action)
+
+        # The transport keys (Space/→) are deliberately NOT bound as action
+        # shortcuts: they live in the application event filter so they can
+        # yield to text fields and sliders (see _setup_shortcuts). The labels
+        # only advertise them.
+        playback_menu = QMenu("Playback", self)
+        menubar.addMenu(playback_menu)
+        play_pause_action = QAction("Play/Pause  (Space)", self)
+        play_pause_action.triggered.connect(self.toggle_play_pause)
+        playback_menu.addAction(play_pause_action)
+        next_track_action = QAction("Next Track  (→)", self)
+        next_track_action.triggered.connect(self.next_track)
+        playback_menu.addAction(next_track_action)
+        playback_menu.addSeparator()
+        stop_all_action = QAction("Stop All", self)
+        stop_all_action.triggered.connect(self.stop_all_playback)
+        playback_menu.addAction(stop_all_action)
+
+        view_menu = QMenu("View", self)
+        menubar.addMenu(view_menu)
+        tabs = [
+            ("Library", self.library_widget),
+            ("Scenes", self.scenes_widget),
+            ("Playlists", self.playlists_widget),
+        ]
+        for i, (label, widget) in enumerate(tabs):
+            tab_action = QAction(label, self)
+            tab_action.setShortcut(f"Ctrl+{i + 1}")  # ⌘1/2/3 on macOS
+            tab_action.triggered.connect(
+                lambda checked=False, w=widget: self.tab_widget.setCurrentWidget(w)
+            )
+            view_menu.addAction(tab_action)
+        view_menu.addSeparator()
+        self._soundboard_view_action = QAction("Soundboard", self)
+        self._soundboard_view_action.setCheckable(True)
+        self._soundboard_view_action.triggered.connect(self._toggle_soundboard_panel)
+        view_menu.addAction(self._soundboard_view_action)
+        view_menu.aboutToShow.connect(self._sync_view_menu)
+
+        self.scenes_menu = QMenu("Scenes", self)
+        menubar.addMenu(self.scenes_menu)
+        self.scenes_menu.aboutToShow.connect(self._rebuild_scenes_menu)
+
+        self.playlists_menu = QMenu("Playlists", self)
+        menubar.addMenu(self.playlists_menu)
+        self.playlists_menu.aboutToShow.connect(self._rebuild_playlists_menu)
+
+        self.soundboards_menu = QMenu("Soundboards", self)
+        menubar.addMenu(self.soundboards_menu)
+        self.soundboards_menu.aboutToShow.connect(self._rebuild_soundboards_menu)
+
+        help_menu = QMenu("Help", self)
+        menubar.addMenu(help_menu)
+        shortcuts_action = QAction("Keyboard Shortcuts", self)
+        shortcuts_action.triggered.connect(self._show_shortcuts_help)
+        help_menu.addAction(shortcuts_action)
+
+    def _rebuild_scenes_menu(self):
+        playing_id = (
+            self._current_scene_id if self._current_playing_type == "scene" else None
+        )
+        self._populate_item_menu(
+            self.scenes_menu,
+            [(s.id, s.title or "Untitled Scene") for s in self.db.get_all_scenes()],
+            empty_text="No Scenes",
+            checked_id=playing_id,
+            on_selected=self.show_scene,
+        )
+
+    def _rebuild_playlists_menu(self):
+        playing_id = (
+            self._current_playlist_playing_id
+            if self._current_playing_type == "playlist"
+            else None
+        )
+        self._populate_item_menu(
+            self.playlists_menu,
+            [
+                (p.id, p.name or "Untitled Playlist")
+                for p in self.db.get_all_playlists()
+            ],
+            empty_text="No Playlists",
+            checked_id=playing_id,
+            on_selected=self.show_playlist,
+        )
+
+    def _rebuild_soundboards_menu(self):
+        # The checkmark marks the board open in the panel (there is no
+        # "playing" board — soundboard sounds are one-shots).
+        self._populate_item_menu(
+            self.soundboards_menu,
+            [(b.id, b.name) for b in self.db.get_all_soundboards()],
+            empty_text="No Soundboards",
+            checked_id=self.soundboard_content.current_board_id(),
+            on_selected=self.show_soundboard,
+        )
+
+    @staticmethod
+    def _populate_item_menu(
+        menu: QMenu,
+        items: list[tuple[int | None, str]],
+        empty_text: str,
+        checked_id: int | None,
+        on_selected: Callable[[int], None],
+    ):
+        """Fill a dynamic menu with (id, label) entries.
+
+        Called from the menu's aboutToShow, so the contents always mirror the
+        database. Actions are parented to the menu: clear() deletes them.
+        """
+        menu.clear()
+        if not items:
+            placeholder = QAction(empty_text, menu)
+            placeholder.setEnabled(False)
+            menu.addAction(placeholder)
+            return
+        for item_id, label in items:
+            if item_id is None:
+                continue
+            action = QAction(label, menu)
+            action.setCheckable(True)
+            action.setChecked(item_id == checked_id)
+            action.triggered.connect(lambda checked=False, i=item_id: on_selected(i))
+            menu.addAction(action)
+
+    def _sync_view_menu(self):
+        floating = self.soundboard_dock.isFloating()
+        self._soundboard_view_action.setChecked(
+            floating or not self.soundboard_dock.collapsed
+        )
+        # Collapse is a docked-only affordance; a floating board is a window.
+        self._soundboard_view_action.setEnabled(not floating)
+
+    def _toggle_soundboard_panel(self, checked: bool):
+        self.soundboard_dock.set_collapsed(not checked)
+
+    def import_files(self):
+        """File > Import > Files…: open the Library tab and its file picker."""
+        self.tab_widget.setCurrentWidget(self.library_widget)
+        self.library_widget.add_files()
+
+    def import_folder(self):
+        """File > Import > Folder…: open the Library tab and its folder picker."""
+        self.tab_widget.setCurrentWidget(self.library_widget)
+        self.library_widget.add_folder()
+
+    def show_scene(self, scene_id: int):
+        """Bring the Scenes tab forward and open the given scene."""
+        self.tab_widget.setCurrentWidget(self.scenes_widget)
+        self.scenes_widget.select_scene(scene_id)
+
+    def show_playlist(self, playlist_id: int):
+        """Bring the Playlists tab forward and open the given playlist."""
+        self.tab_widget.setCurrentWidget(self.playlists_widget)
+        self.playlists_widget.select_playlist(playlist_id)
+
+    def show_soundboard(self, board_id: int):
+        """Expand (and raise, if floating) the soundboard panel on a board."""
+        self.soundboard_dock.set_collapsed(False)
+        if self.soundboard_dock.isFloating():
+            self.soundboard_dock.raise_()
+            self.soundboard_dock.activateWindow()
+        self.soundboard_content.select_board(board_id)
+
+    def stop_all_playback(self):
+        """Stop scenes, playlists, and any soundboard one-shot (Stop All)."""
+        self.scenes_widget.stop_all_playback()
+        self.playlists_widget.stop_all_playback()
+        self.soundboard_player.stop()
+
+    def _show_about(self):
+        QMessageBox.about(
+            self,
+            f"About {APP_DISPLAY_NAME}",
+            f"<b>{APP_DISPLAY_NAME}</b><br>"
+            f"Version {__version__}<br><br>"
+            "Layered soundscapes, playlists, and soundboards "
+            "for tabletop games.",
+        )
+
+    def _show_settings(self):
+        dialog = SettingsDialog(self)
+        # Only restart on an actual change: a restart drops remote clients.
+        if dialog.exec() and dialog.remote_config_changed():
+            self._restart_remote_server()
+
+    def _restart_remote_server(self):
+        if self.remote_server is not None:
+            self.remote_server.stop()
+            self.remote_server = None
+        self.remote_server = self._start_remote_server()
+
+    def _show_shortcuts_help(self):
+        QMessageBox.information(
+            self,
+            "Keyboard Shortcuts",
+            "<table cellspacing='6'>"
+            "<tr><td><b>Space</b></td><td>Play / pause</td></tr>"
+            "<tr><td><b>→</b></td><td>Next track (playlist)</td></tr>"
+            "<tr><td><b>⌘← / ⌘→</b></td>"
+            "<td>Previous / next scene or playlist</td></tr>"
+            "<tr><td><b>⌘1 / ⌘2 / ⌘3</b></td>"
+            "<td>Library / Scenes / Playlists tab</td></tr>"
+            "<tr><td><b>⌘O</b></td><td>Import audio files</td></tr>"
+            "</table>",
+        )
 
     def _setup_shortcuts(self):
         """Install an application event filter for the playback transport keys.
@@ -293,13 +557,9 @@ class MainWindow(QMainWindow):
         control must never prevent the app from starting.
         """
         settings = QSettings()
-        settings.beginGroup(self.SETTINGS_REMOTE_GROUP)
-        enabled = settings.value(
-            self.SETTINGS_REMOTE_ENABLED, defaultValue=True, type=bool
-        )
-        port = settings.value(
-            self.SETTINGS_REMOTE_PORT, defaultValue=DEFAULT_PORT, type=int
-        )
+        settings.beginGroup(SETTINGS_GROUP)
+        enabled = settings.value(SETTINGS_ENABLED, defaultValue=True, type=bool)
+        port = settings.value(SETTINGS_PORT, defaultValue=DEFAULT_PORT, type=int)
         settings.endGroup()
         if not enabled:
             return None
@@ -464,18 +724,12 @@ class MainWindow(QMainWindow):
 
     def _on_current_playing_clicked(self):
         if self._current_playing_type == "scene" and self._current_scene_id:
-            scenes_index = self.tab_widget.indexOf(self.scenes_widget)
-            if scenes_index != -1:
-                self.tab_widget.setCurrentIndex(scenes_index)
-            self.scenes_widget.select_scene(self._current_scene_id)
+            self.show_scene(self._current_scene_id)
         elif (
             self._current_playing_type == "playlist"
             and self._current_playlist_playing_id
         ):
-            playlists_index = self.tab_widget.indexOf(self.playlists_widget)
-            if playlists_index != -1:
-                self.tab_widget.setCurrentIndex(playlists_index)
-            self.playlists_widget.select_playlist(self._current_playlist_playing_id)
+            self.show_playlist(self._current_playlist_playing_id)
 
     def closeEvent(self, event):
         """Handle application close"""

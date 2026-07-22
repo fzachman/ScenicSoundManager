@@ -62,11 +62,11 @@ class LibraryWidget(QWidget):
         top_bar.addWidget(self.search_bar, 1)
 
         add_btn = QPushButton("Add Files")
-        add_btn.clicked.connect(self._add_files)
+        add_btn.clicked.connect(self.add_files)
         top_bar.addWidget(add_btn)
 
         add_folder_btn = QPushButton("Add Folder")
-        add_folder_btn.clicked.connect(self._add_folder)
+        add_folder_btn.clicked.connect(self.add_folder)
         top_bar.addWidget(add_folder_btn)
 
         layout.addLayout(top_bar)
@@ -189,15 +189,15 @@ class LibraryWidget(QWidget):
         self._load_files()
         self.library_updated.emit()
 
-    def _add_files(self):
-        """Open file picker to add files"""
+    def add_files(self):
+        """Open file picker to add files (also the File > Import menu entry point)"""
         dialog = FilePickerDialog(self, "Select Audio Files")
 
         if dialog.exec():
             file_paths = dialog.selectedFiles()
             self._import_files(file_paths)
 
-    def _add_folder(self):
+    def add_folder(self):
         """Open native directory picker and import all supported audio files recursively"""
         dir_path = QFileDialog.getExistingDirectory(self, "Select Folder")
         if not dir_path:

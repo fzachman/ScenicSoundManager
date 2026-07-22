@@ -23,6 +23,12 @@ logger = get_logger(__name__)
 
 DEFAULT_PORT = 8765
 
+# QSettings keys for the server's configuration, shared by MainWindow (which
+# reads them at startup) and the Settings dialog (which edits them).
+SETTINGS_GROUP = "remote"
+SETTINGS_ENABLED = "enabled"
+SETTINGS_PORT = "port"
+
 
 def _error(req_id, code: str, message: str) -> dict:
     return {"id": req_id, "ok": False, "error": {"code": code, "message": message}}

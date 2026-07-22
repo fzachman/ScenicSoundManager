@@ -362,6 +362,21 @@ class SoundboardContent(QWidget):
     def current_board_id(self) -> int | None:
         return self.board_combo.currentData()
 
+    def select_board(self, board_id: int) -> None:
+        """Select a board by id (the Soundboards menu entry point).
+
+        Same-board selection is a deliberate no-op: switching boards stops the
+        player, and re-selecting the open board must not cut a playing sound.
+        """
+        if board_id == self.current_board_id():
+            return
+        index = self.board_combo.findData(board_id)
+        if index >= 0:
+            self.board_combo.setCurrentIndex(index)
+        else:
+            # Not in the combo (created elsewhere, e.g. remote): full reload.
+            self._reload_boards(select_id=board_id)
+
     def _restore_last_board_id(self) -> int | None:
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_GROUP)

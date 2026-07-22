@@ -44,10 +44,15 @@ def main():
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
 
-    # Create application
+    from app import APP_DISPLAY_NAME
+
+    # Create application. applicationName/organizationName are the QSettings
+    # identity — never rename them (it would orphan existing user settings);
+    # the user-facing name goes in applicationDisplayName and the bundle plist.
     app = QApplication(sys.argv)
     app.setApplicationName("SoundManager")
     app.setOrganizationName("SoundManager")
+    app.setApplicationDisplayName(APP_DISPLAY_NAME)
 
     # Create and show main window
     window = MainWindow()
