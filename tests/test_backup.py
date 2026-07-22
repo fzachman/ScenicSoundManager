@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 
+from app import APP_DISPLAY_NAME
 from app.database import (
     AudioFile,
     DatabaseConnection,
@@ -75,7 +76,7 @@ class TestValidateBackup:
         conn.close()
         error = validate_backup(str(foreign))
         assert error is not None
-        assert "Scenic Sound Manager" in error
+        assert APP_DISPLAY_NAME in error
 
     def test_validation_never_modifies_file(self, db, tmp_path):
         dest = tmp_path / "backup.db"

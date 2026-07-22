@@ -11,6 +11,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from .. import APP_DISPLAY_NAME
 from ..shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -37,7 +38,7 @@ def validate_backup(path: str) -> str | None:
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
             if REQUIRED_TABLES - tables:
-                return "This is not a Scenic Sound Manager database."
+                return f"This is not a {APP_DISPLAY_NAME} database."
         finally:
             conn.close()
     except sqlite3.DatabaseError:
