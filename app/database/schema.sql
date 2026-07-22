@@ -1,12 +1,17 @@
 PRAGMA foreign_keys = ON;
 
--- Audio files in the library (referenced by path, not moved)
+-- Audio files in the library (referenced by path, not moved).
+-- file_size + content_hash (hex SHA-256 of the file bytes) fingerprint the
+-- file for the repair-library feature (plan 009); NULL when the file was
+-- unreadable at import time.
 CREATE TABLE IF NOT EXISTS audio_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     file_path TEXT NOT NULL UNIQUE,
     title TEXT,
     artist TEXT,
     duration_seconds REAL,
+    file_size INTEGER,
+    content_hash TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );

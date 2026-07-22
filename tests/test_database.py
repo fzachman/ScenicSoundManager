@@ -60,6 +60,37 @@ class TestAudioFiles:
         assert retrieved.artist == "Test Artist"
         assert retrieved.duration_seconds == 180.5
 
+    def test_fingerprint_round_trip(self, db):
+        file_id = db.add_audio_file(
+            AudioFile(
+                file_path="/path/to/test.mp3",
+                title="Test Song",
+                file_size=123456,
+                content_hash="ab" * 32,
+            )
+        )
+
+        retrieved = db.get_audio_file(file_id)
+
+        assert retrieved is not None
+        assert retrieved.file_size == 123456
+        assert retrieved.content_hash == "ab" * 32
+
+    def test_fingerprint_round_trip_bulk(self, db):
+        ids = db.bulk_add_audio_files(
+            [
+                AudioFile(file_path="/a.mp3", file_size=10, content_hash="aa" * 32),
+                AudioFile(file_path="/b.mp3"),  # unreadable at import -> NULLs
+            ]
+        )
+
+        first = db.get_audio_file(ids[0])
+        second = db.get_audio_file(ids[1])
+
+        assert first is not None and second is not None
+        assert (first.file_size, first.content_hash) == (10, "aa" * 32)
+        assert (second.file_size, second.content_hash) == (None, None)
+
     def test_get_audio_file_by_path(self, db):
         audio_file = AudioFile(file_path="/path/to/unique.mp3", title="Unique Song")
         db.add_audio_file(audio_file)

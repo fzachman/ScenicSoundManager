@@ -1,6 +1,8 @@
 # 009 — Repair Library (relink moved/missing audio files)
 
-**Status:** TODO (idea captured 2026-07-22, user-requested; not yet planned)
+**Status:** DESIGN AGREED (2026-07-22). Scaffolding (hash + size columns,
+computed at import, existing library backfilled) shipping now; the repair
+UI itself is deferred.
 
 ## Problem
 
@@ -10,25 +12,68 @@ and soundboard button referencing them) silently break. There is currently no
 way to find or fix these except deleting and re-importing, which loses tags
 and references.
 
-## Sketch (from the user)
+## Agreed design (discussed 2026-07-22)
 
-- Scan the library for "unlinked" entries (path no longer exists).
-- Search the computer for candidate replacements:
-  - by filename first (cheap);
-  - ideally by content hash — which means we'd have to START STORING A HASH
-    per audio file at import time (schema change; backfill existing rows by
-    hashing on first repair run or lazily).
-- Repair UI: list each unlinked file with its candidate match(es), let the
-  user preview the candidate track (reuse the preview pattern from
-  AudioFileSearchWidget), and accept each fix individually before relinking.
+### Fingerprint: `file_size` + `content_hash` (full-file SHA-256)
+
+- Stored on `audio_files`, computed at import time (the import already reads
+  every file for mutagen metadata, so the extra read is nearly free).
+- Full-file hash, NOT a partial hash: ID3 tags sit at the *start* of MP3s,
+  so "first N MB" would mostly hash tag data. Full SHA-256 over a music
+  library is fast enough on modern disks.
+- Known caveat (accepted): a byte hash fingerprints the FILE, not the audio.
+  Editing tags in an external app changes the bytes and stales the hash.
+  Fine for the moved/reorganized-files scenario this feature targets. If it
+  ever matters, the upgrade path is hashing only the audio stream (mutagen
+  knows where tags end; FLAC headers even carry a decoded-audio MD5).
+
+### Hash CONFIRMS, it never SEARCHES
+
+Never hash the disk looking for matches — find cheap candidates first, then
+hash only the candidates. Per unlinked entry:
+
+1. Candidates by **filename** (and exact **byte size** — a strong
+   discriminator on its own).
+2. Hash each candidate (a handful of files, milliseconds).
+3. Confidence tiers:
+   - filename + hash match → certain; safe for one-click / bulk accept
+   - filename match, hash mismatch or no stored hash → "probably" —
+     require preview + explicit accept
+   - nothing found → unresolved
+
+### Finding candidates: Spotlight fast path + folder-walk fallback
+
+- **Spotlight** (macOS): `mdfind "kMDItemFSName == '<name>'"` via
+  QProcess/subprocess — instant, whole-disk, no walking. Fire queries for
+  ALL unlinked entries automatically when the repair dialog opens.
+  Caveat: skips unindexed volumes (some external drives), so it cannot be
+  the only mechanism.
+- **Folder walk** fallback: user picks a root (`getExistingDirectory`),
+  `Path.rglob` in a worker QThread with progress. Pre-filter by exact size,
+  hash only size matches — this also catches RENAMED files, which filename
+  search never can.
+
+### Repair UI
+
+Dialog: scan library for dead paths → auto-run Spotlight queries → list of
+unlinked entries with candidate(s) + confidence badge, preview player
+(reuse AudioFileSearchWidget pattern), accept per-fix; "Search a folder…"
+button for leftovers.
 
 ## Notes for planning later
 
 - Relinking = updating `audio_files.file_path` only; all scene/playlist/
   soundboard references join on the audio file id, so they heal for free.
-- Hash choice: partial hash (e.g. first N MB + size) is usually enough for
-  audio and much faster than full-file SHA over a large library.
+  On accept, also refresh `file_size`/`content_hash` from the accepted file
+  (covers the accepted-despite-hash-mismatch case).
 - Full-disk search needs scoping (start dirs, exclusions) or it will be slow;
-  consider letting the user point at a folder to scan.
+  the Spotlight + user-chosen-folder combination above is the answer.
 - Related, cheaper follow-up: a "show unlinked files" filter in the Library
-  tab, so breakage is at least visible before a repair feature exists.
+  tab, so breakage is at least visible before the repair feature exists.
+
+## Scaffolding shipped ahead (2026-07-22)
+
+- `audio_files.file_size` (INTEGER) + `audio_files.content_hash` (TEXT,
+  hex SHA-256) in schema.sql; populated at import for all new files.
+- Existing library backfilled via one-shot script (run directly against the
+  live DB, not committed — per alpha migration convention).

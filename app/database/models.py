@@ -14,6 +14,8 @@ class AudioFile:
     title: str | None = None
     artist: str | None = None
     duration_seconds: float | None = None
+    file_size: int | None = None
+    content_hash: str | None = None  # hex SHA-256 of the file bytes
     created_at: datetime | None = None
     updated_at: datetime | None = None
     tags: list["Tag"] = field(default_factory=list)

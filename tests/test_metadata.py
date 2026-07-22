@@ -5,9 +5,10 @@ Covers the previously-untested extraction branches, especially the broad
 using the filename as the title rather than propagating.
 """
 
+import hashlib
 from types import SimpleNamespace
 
-from app.library.metadata import MetadataExtractor
+from app.library.metadata import MetadataExtractor, compute_fingerprint
 
 
 class FakeAudio:
@@ -75,6 +76,22 @@ class TestExtractHappyPath:
         assert result["title"] == "Untitled Loop"
         assert result["artist"] == "The Bard"
         assert result["duration_seconds"] is None
+
+
+class TestComputeFingerprint:
+    def test_size_and_sha256_of_file_bytes(self, tmp_path):
+        content = b"fake mp3 bytes" * 1000
+        track = tmp_path / "track.mp3"
+        track.write_bytes(content)
+
+        size, digest = compute_fingerprint(str(track))
+
+        assert size == len(content)
+        assert digest == hashlib.sha256(content).hexdigest()
+
+    def test_unreadable_file_returns_nones(self, tmp_path):
+        size, digest = compute_fingerprint(str(tmp_path / "missing.mp3"))
+        assert (size, digest) == (None, None)
 
 
 class TestIsSupportedFormat:

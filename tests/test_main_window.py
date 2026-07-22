@@ -1,5 +1,6 @@
 """Characterization tests for MainWindow playback mutual exclusivity."""
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -571,6 +572,19 @@ def test_import_files_switches_to_library_and_opens_picker(main_window, monkeypa
     main_window.import_files()
     assert main_window.tab_widget.currentWidget() is main_window.library_widget
     assert len(calls) == 1
+
+
+def test_import_stores_content_fingerprint(main_window, tmp_path):
+    content = b"not really mp3 audio" * 500
+    track = tmp_path / "Goblin Market.mp3"
+    track.write_bytes(content)
+
+    main_window.library_widget._import_files([str(track)])
+
+    stored = main_window.db.get_audio_file_by_path(str(track))
+    assert stored is not None
+    assert stored.file_size == len(content)
+    assert stored.content_hash == hashlib.sha256(content).hexdigest()
 
 
 def test_import_folder_switches_to_library_and_opens_picker(main_window, monkeypatch):

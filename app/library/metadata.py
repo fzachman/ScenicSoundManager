@@ -1,5 +1,6 @@
 """Metadata extraction using mutagen"""
 
+import hashlib
 import os
 
 from mutagen import File
@@ -7,6 +8,21 @@ from mutagen import File
 from app.shared.logging import get_logger
 
 _log = get_logger(__name__)
+
+
+def compute_fingerprint(file_path: str) -> tuple[int | None, str | None]:
+    """Return (file_size, hex SHA-256) for a file, or (None, None) if unreadable.
+
+    Full-file hash on purpose: ID3 tags sit at the start of MP3s, so a
+    partial hash would mostly fingerprint tag data (see plan 009).
+    """
+    try:
+        with open(file_path, "rb") as f:
+            digest = hashlib.file_digest(f, "sha256")
+        return os.path.getsize(file_path), digest.hexdigest()
+    except OSError as e:
+        _log.error("fingerprint_failed", file_path=file_path, error=str(e))
+        return None, None
 
 
 class MetadataExtractor:

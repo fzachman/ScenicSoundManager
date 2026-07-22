@@ -197,14 +197,17 @@ class DatabaseConnection:
         """Add an audio file to the library, return its ID"""
         cursor = self._conn.execute(
             """
-            INSERT INTO audio_files (file_path, title, artist, duration_seconds)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO audio_files
+                (file_path, title, artist, duration_seconds, file_size, content_hash)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 audio_file.file_path,
                 audio_file.title,
                 audio_file.artist,
                 audio_file.duration_seconds,
+                audio_file.file_size,
+                audio_file.content_hash,
             ),
         )
         self._conn.commit()
@@ -218,14 +221,17 @@ class DatabaseConnection:
         for audio_file in audio_files:
             cursor = self._conn.execute(
                 """
-                INSERT INTO audio_files (file_path, title, artist, duration_seconds)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO audio_files
+                    (file_path, title, artist, duration_seconds, file_size, content_hash)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     audio_file.file_path,
                     audio_file.title,
                     audio_file.artist,
                     audio_file.duration_seconds,
+                    audio_file.file_size,
+                    audio_file.content_hash,
                 ),
             )
             ids.append(self._insert_id(cursor))
@@ -356,6 +362,8 @@ class DatabaseConnection:
             title=row["title"],
             artist=row["artist"],
             duration_seconds=row["duration_seconds"],
+            file_size=row["file_size"],
+            content_hash=row["content_hash"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

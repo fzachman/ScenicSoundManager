@@ -19,7 +19,7 @@ from ..database import AudioFile, DatabaseConnection
 from ..shared.dialogs import DuplicateFilesDialog, FilePickerDialog
 from ..shared.styles import Styles
 from .file_table import FileTableWidget
-from .metadata import MetadataExtractor
+from .metadata import MetadataExtractor, compute_fingerprint
 from .pagination_bar import PaginationBar
 from .search_bar import SearchBar
 from .tag_manager import TagManager
@@ -238,6 +238,7 @@ class LibraryWidget(QWidget):
 
             # Extract metadata
             metadata = MetadataExtractor.extract(file_path)
+            file_size, content_hash = compute_fingerprint(file_path)
 
             # Create audio file record
             audio_file = AudioFile(
@@ -245,6 +246,8 @@ class LibraryWidget(QWidget):
                 title=metadata["title"],
                 artist=metadata["artist"],
                 duration_seconds=metadata["duration_seconds"],
+                file_size=file_size,
+                content_hash=content_hash,
             )
 
             new_files.append(audio_file)
