@@ -3,6 +3,7 @@
 import sqlite3
 from pathlib import Path
 
+from .. import paths
 from ..shared.logging import get_logger
 from .models import (
     AudioFile,
@@ -29,11 +30,8 @@ class DatabaseConnection:
     def __init__(self, db_path: str | None = None):
         if db_path is None:
             # Default to user's application support directory
-            app_support = (
-                Path.home() / "Library" / "Application Support" / "SoundManager"
-            )
-            app_support.mkdir(parents=True, exist_ok=True)
-            db_path = str(app_support / "soundmanager.db")
+            paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
+            db_path = str(paths.DATA_DIR / paths.DB_FILENAME)
 
         self.db_path = db_path
         self.connection: sqlite3.Connection | None = None

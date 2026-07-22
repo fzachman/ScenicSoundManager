@@ -40,7 +40,7 @@ OPTIONS = {
         "CFBundleName": APP_DISPLAY_NAME,
         "CFBundleDisplayName": APP_DISPLAY_NAME,
         "CFBundleGetInfoString": "D&D Audio Soundscape Manager",
-        "CFBundleIdentifier": "com.soundmanager.app",
+        "CFBundleIdentifier": "com.scenicsound.soundmanager",
         "CFBundleVersion": VERSION,
         "CFBundleShortVersionString": VERSION,
         "NSHighResolutionCapable": True,
