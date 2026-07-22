@@ -1,14 +1,20 @@
 """Main application window with tab navigation"""
 
+import os
+import sqlite3
+import sys
 from collections.abc import Callable
+from datetime import date
+from pathlib import Path
 
-from PyQt6.QtCore import QEvent, QSettings, Qt, QTimer
+from PyQt6.QtCore import QEvent, QProcess, QSettings, Qt, QTimer
 from PyQt6.QtGui import QAction, QKeyEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractButton,
     QAbstractSlider,
     QAbstractSpinBox,
     QApplication,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -26,7 +32,7 @@ from PyQt6.QtWidgets import (
 
 from . import APP_DISPLAY_NAME, __version__
 from .audio import TRANSITION_FADE_MS, AudioEngine, SoundboardPlayer
-from .database import DatabaseConnection
+from .database import DatabaseConnection, swap_database, validate_backup
 from .library import LibraryWidget
 from .playlists import PlaylistsWidget
 from .remote import (
@@ -39,8 +45,11 @@ from .remote import (
 )
 from .scenes import ScenesWidget
 from .settings_dialog import SettingsDialog
+from .shared.logging import get_logger
 from .shared.styles import Styles
 from .soundboard import SoundboardContent, SoundboardDock
+
+logger = get_logger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -62,6 +71,7 @@ class MainWindow(QMainWindow):
         self._current_scene_id = None
         self._current_playlist_playing_id = None
         self._current_playing_type = None  # "scene" or "playlist"
+        self._pending_restore: str | None = None  # backup path; see closeEvent
 
         # Initialize core components
         self.db = DatabaseConnection()
@@ -228,6 +238,14 @@ class MainWindow(QMainWindow):
         import_folder_action = QAction("Folder…", self)
         import_folder_action.triggered.connect(self.import_folder)
         import_menu.addAction(import_folder_action)
+
+        file_menu.addSeparator()
+        backup_action = QAction("Back Up Database…", self)
+        backup_action.triggered.connect(self._backup_database)
+        file_menu.addAction(backup_action)
+        restore_action = QAction("Restore Database…", self)
+        restore_action.triggered.connect(self._restore_database)
+        file_menu.addAction(restore_action)
 
         # The transport keys (Space/→) are deliberately NOT bound as action
         # shortcuts: they live in the application event filter so they can
@@ -441,6 +459,70 @@ class MainWindow(QMainWindow):
             "<tr><td><b>⌘O</b></td><td>Import audio files</td></tr>"
             "</table>",
         )
+
+    def _backup_database(self):
+        """File > Back Up Database…: snapshot the live DB wherever the user picks."""
+        default = str(
+            Path.home() / f"soundmanager-backup-{date.today().isoformat()}.db"
+        )
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Back Up Database", default, "SQLite Database (*.db)"
+        )
+        if not path:
+            return
+        try:
+            self.db.backup_to(path)
+        except (sqlite3.Error, OSError) as exc:
+            QMessageBox.critical(
+                self, "Backup Failed", f"Could not write the backup:\n{exc}"
+            )
+            return
+        QMessageBox.information(
+            self, "Backup Complete", f"Database backed up to:\n{path}"
+        )
+
+    def _restore_database(self):
+        """File > Restore Database…: validate, confirm, then restart to swap.
+
+        The actual file swap happens in closeEvent, after playback has
+        stopped and the database connection is closed — swapping under a
+        live SQLite connection corrupts data.
+        """
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Restore Database", str(Path.home()), "SQLite Database (*.db)"
+        )
+        if not path:
+            return
+        error = validate_backup(path)
+        if error is not None:
+            QMessageBox.critical(self, "Cannot Restore", error)
+            return
+        answer = QMessageBox.question(
+            self,
+            "Restore Database",
+            "Replace your current library, scenes, playlists, and soundboards "
+            "with this backup?\n\nYour current database will be kept beside "
+            "it as a safety copy, and the app will restart.",
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Ok,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer == QMessageBox.StandardButton.Ok:
+            self._pending_restore = path
+            self.close()
+
+    def _finish_pending_restore(self):
+        """Swap in the restore file and relaunch. Runs at the end of
+        closeEvent — the ONLY point where the database is guaranteed closed."""
+        assert self._pending_restore is not None
+        try:
+            swap_database(Path(self.db.db_path), Path(self._pending_restore))
+        except OSError:
+            logger.exception("restore_swap_failed")
+            return
+        # Relaunch: in a py2app bundle sys.executable is the app launcher
+        # (no args); in dev it's the venv python, which needs main.py back.
+        args = [] if getattr(sys, "frozen", False) else sys.argv
+        QProcess.startDetached(sys.executable, args, os.getcwd())
 
     def _setup_shortcuts(self):
         """Install an application event filter for the playback transport keys.
@@ -755,5 +837,10 @@ class MainWindow(QMainWindow):
 
         # Release audio engine
         self.audio_engine.release()
+
+        # A confirmed File > Restore Database… swaps files and relaunches
+        # here, now that the database connection is closed.
+        if self._pending_restore is not None:
+            self._finish_pending_restore()
 
         event.accept()

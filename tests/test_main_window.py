@@ -1,6 +1,7 @@
 """Characterization tests for MainWindow playback mutual exclusivity."""
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -619,3 +620,62 @@ def test_restart_remote_server_applies_new_settings(main_window):
         settings.endGroup()
         main_window._restart_remote_server()
     assert main_window.remote_server is None
+
+
+# --- Database backup / restore --------------------------------------------------
+
+
+def test_file_menu_has_backup_and_restore(main_window):
+    file_menu = main_window.menuBar().actions()[0].menu()
+    texts = [a.text() for a in file_menu.actions()]
+    assert "Back Up Database…" in texts
+    assert "Restore Database…" in texts
+
+
+def test_confirmed_restore_swaps_db_and_relaunches(main_window, monkeypatch):
+    import app.main_window as mw
+    from app.database import DatabaseConnection as DB
+
+    # Build a distinguishable backup: one audio file vs the empty live DB.
+    backup_path = str(Path(main_window.db.db_path).parent / "backup.db")
+    source = DB(str(Path(main_window.db.db_path).parent / "source.db"))
+    source.connect()
+    from app.database import AudioFile
+
+    source.add_audio_file(AudioFile(file_path="/music/a.mp3", title="A"))
+    source.backup_to(backup_path)
+    source.close()
+
+    relaunches = []
+    monkeypatch.setattr(
+        mw.QProcess,
+        "startDetached",
+        staticmethod(lambda *args: relaunches.append(args)),
+    )
+    main_window._pending_restore = backup_path
+    main_window.close()
+
+    live_path = Path(main_window.db.db_path)
+    check = DB(str(live_path))
+    check.connect()
+    try:
+        assert len(check.get_all_audio_files()) == 1
+    finally:
+        check.close()
+    safety_copies = list(live_path.parent.glob("*pre-restore*"))
+    assert len(safety_copies) == 1
+    assert len(relaunches) == 1
+
+
+def test_plain_close_does_not_restore_or_relaunch(main_window, monkeypatch):
+    import app.main_window as mw
+
+    relaunches = []
+    monkeypatch.setattr(
+        mw.QProcess,
+        "startDetached",
+        staticmethod(lambda *args: relaunches.append(args)),
+    )
+    main_window.close()
+    assert relaunches == []
+    assert not list(Path(main_window.db.db_path).parent.glob("*pre-restore*"))

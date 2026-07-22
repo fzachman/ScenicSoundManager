@@ -37,6 +37,7 @@ for future audio-test work: `python-vlc` IS importable in this env (so
 | 006 | De-duplicate scene control cards (DEBT-01) | P2 | M | — | DONE (2026-06-29 on `advisor/006-dedupe-control-cards`; adversarially reviewed; see `006-deduplicate-scene-control-cards.md`) |
 | 007 | Stream Deck remote control: local WebSocket API (user-requested feature) | Feature | M–L | — | DONE (app side, 2026-07-07 on `feature/remote-control`; suite 251→297; plugin repo starts from `streamdeck-plugin-plan.md`) |
 | 008 | Soundboard: one-shot SFX panel docked below main window (user-requested feature) | Feature | M–L | — | DONE (all 5 phases 2026-07-15 on `feature/soundboard`, awaiting merge; both spikes PASS; suite 572→649; see `008-soundboard.md` execution outcome) |
+| 009 | Repair library: find + relink moved audio files (user-requested feature) | Feature | M–L | — | TODO (idea captured 2026-07-22; see `009-repair-library.md` — needs content hashes stored at import, scan for unlinked entries, per-file preview/accept UI) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 

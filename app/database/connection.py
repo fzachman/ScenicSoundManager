@@ -165,6 +165,20 @@ class DatabaseConnection:
             self.connection.close()
             self.connection = None
 
+    def backup_to(self, dest_path: str) -> None:
+        """Write a consistent snapshot of the database to ``dest_path``.
+
+        Uses SQLite's online-backup API, so it is safe while this connection
+        is live (unlike copying the file). An existing destination file is
+        fully replaced.
+        """
+        dest = sqlite3.connect(dest_path)
+        try:
+            with dest:
+                self._conn.backup(dest)
+        finally:
+            dest.close()
+
     @property
     def _conn(self) -> sqlite3.Connection:
         """The live connection; connect() must have been called."""
