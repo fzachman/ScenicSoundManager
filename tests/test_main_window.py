@@ -474,6 +474,14 @@ def test_menu_bar_has_expected_menus(main_window):
     ]
 
 
+def test_dynamic_menus_are_populated_at_startup(main_window):
+    # The macOS native menu bar hides empty menus: if these only filled on
+    # aboutToShow, the Scenes/Playlists/Soundboards titles would never show.
+    assert main_window.scenes_menu.actions()
+    assert main_window.playlists_menu.actions()
+    assert main_window.soundboards_menu.actions()
+
+
 def test_scenes_menu_empty_shows_disabled_placeholder(main_window):
     main_window._rebuild_scenes_menu()
     actions = main_window.scenes_menu.actions()

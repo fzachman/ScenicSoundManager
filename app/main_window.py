@@ -285,6 +285,13 @@ class MainWindow(QMainWindow):
         shortcuts_action.triggered.connect(self._show_shortcuts_help)
         help_menu.addAction(shortcuts_action)
 
+        # Populate the dynamic menus now, not just on aboutToShow: the macOS
+        # native menu bar HIDES empty menus, so without an initial build the
+        # Scenes/Playlists/Soundboards titles never appear at all.
+        self._rebuild_scenes_menu()
+        self._rebuild_playlists_menu()
+        self._rebuild_soundboards_menu()
+
     def _rebuild_scenes_menu(self):
         playing_id = (
             self._current_scene_id if self._current_playing_type == "scene" else None
