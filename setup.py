@@ -4,9 +4,12 @@ py2app build script for SoundManager
 Usage:
     python setup.py py2app
 
-To bundle VLC libraries:
-1. Install VLC.app from https://www.videolan.org/vlc/
-2. The setup script will automatically locate and bundle VLC libraries
+The build does NOT embed VLC (plan 010 decision): the built app requires
+VLC.app installed at runtime (python-vlc auto-discovers /Applications/
+VLC.app; the app shows an install-VLC dialog when it's missing). If a
+future release embeds libVLC, see plan 010 — it's LGPL-legal via dynamic
+linking, but the plugin set must be curated and PYTHON_VLC_LIB_PATH /
+VLC_PLUGIN_PATH wired (hooks already exist in main.py and AudioEngine).
 
 For development builds:
     python setup.py py2app -A  (alias mode, faster but requires source files)
@@ -14,9 +17,6 @@ For development builds:
 For production builds:
     python setup.py py2app     (standalone, includes all dependencies)
 """
-
-import os
-import sys
 
 from setuptools import setup
 
@@ -46,21 +46,17 @@ OPTIONS = {
         "NSHighResolutionCapable": True,
         "NSRequiresAquaSystemAppearance": False,  # Support dark mode
     },
+    # "app" MUST be in packages (not includes): py2app copies packages as
+    # real directories, keeping __file__-relative data loading working
+    # (DatabaseConnection reads schema.sql, IconLibrary reads
+    # app/assets/icons/*.svg). Modules in `includes` go into a zip where
+    # those paths don't exist.
     "packages": [
+        "app",
         "PyQt6",
         "vlc",
         "mutagen",
         "structlog",
-    ],
-    "includes": [
-        "app",
-        "app.database",
-        "app.audio",
-        "app.library",
-        "app.playlists",
-        "app.remote",
-        "app.scenes",
-        "app.shared",
     ],
     "excludes": [
         "tkinter",
@@ -69,81 +65,17 @@ OPTIONS = {
         "pandas",
         "scipy",
     ],
-    "frameworks": [],  # VLC libraries will be added here
-    "resources": [
-        "app/database/schema.sql",
-    ],
 }
 
 
-def find_vlc_libraries():
-    """Find VLC libraries from VLC.app installation"""
-    vlc_app_paths = [
-        "/Applications/VLC.app",
-        os.path.expanduser("~/Applications/VLC.app"),
-    ]
-
-    for vlc_path in vlc_app_paths:
-        if os.path.exists(vlc_path):
-            lib_path = os.path.join(vlc_path, "Contents", "MacOS", "lib")
-            plugins_path = os.path.join(vlc_path, "Contents", "MacOS", "plugins")
-
-            if os.path.exists(lib_path) and os.path.exists(plugins_path):
-                return lib_path, plugins_path
-
-    return None, None
-
-
-def setup_vlc_bundling():
-    """Set up VLC library bundling"""
-    lib_path, plugins_path = find_vlc_libraries()
-
-    if lib_path and plugins_path:
-        print(f"Found VLC libraries at: {lib_path}")
-
-        # Add VLC libraries to frameworks
-        vlc_libs = [
-            os.path.join(lib_path, "libvlc.dylib"),
-            os.path.join(lib_path, "libvlccore.dylib"),
-        ]
-
-        for lib in vlc_libs:
-            if os.path.exists(lib):
-                OPTIONS["frameworks"].append(lib)
-                print(f"  Adding: {lib}")
-
-        # Add plugins as resources (they'll be copied to Resources/plugins)
-        # Note: This increases app size significantly but ensures all codecs work
-        print(f"VLC plugins will be copied from: {plugins_path}")
-
-        return True
-    else:
-        print(
-            "WARNING: VLC.app not found. The app will require VLC to be installed separately."
-        )
-        print(
-            "Install VLC from https://www.videolan.org/vlc/ to bundle it with the app."
-        )
-        return False
-
-
 if __name__ == "__main__":
-    # Set up VLC bundling if building app
-    if "py2app" in sys.argv:
-        setup_vlc_bundling()
-
     setup(
         name=APP_NAME,
         version=VERSION,
         app=APP,
         data_files=DATA_FILES,
         options={"py2app": OPTIONS},
-        setup_requires=["py2app"],
-        python_requires=">=3.10",
-        install_requires=[
-            "PyQt6>=6.6.0",
-            "python-vlc>=3.0.18",
-            "mutagen>=1.47.0",
-            "structlog>=24.1.0",
-        ],
+        # No install_requires/setup_requires: newer setuptools rejects them
+        # here, and this file is purely the py2app build script — runtime
+        # dependencies are pinned in requirements.txt.
     )

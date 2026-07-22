@@ -574,6 +574,46 @@ def test_import_files_switches_to_library_and_opens_picker(main_window, monkeypa
     assert len(calls) == 1
 
 
+def test_missing_audio_warning_scheduled_when_vlc_unavailable(
+    qapp, tmp_path, monkeypatch
+):
+    db_path = str(tmp_path / "test.db")
+    monkeypatch.setattr(
+        main_window_module, "DatabaseConnection", lambda: DatabaseConnection(db_path)
+    )
+    # A real engine forced into the VLC-missing degraded mode.
+    engine = main_window_module.AudioEngine()
+    engine.available = False
+    monkeypatch.setattr(
+        main_window_module.AudioEngine, "get_instance", classmethod(lambda cls: engine)
+    )
+    warned = []
+    monkeypatch.setattr(
+        main_window_module.MainWindow,
+        "_warn_missing_audio",
+        lambda self: warned.append(True),
+    )
+
+    window = main_window_module.MainWindow()
+    qapp.processEvents()  # let the singleShot(0) fire
+
+    assert warned == [True]
+    window.db.close()
+
+
+def test_no_missing_audio_warning_when_vlc_available(main_window, qapp, monkeypatch):
+    # The shared fixture builds MainWindow with the real (available) engine;
+    # nothing should have scheduled the warning.
+    warned = []
+    monkeypatch.setattr(
+        main_window_module.MainWindow,
+        "_warn_missing_audio",
+        lambda self: warned.append(True),
+    )
+    qapp.processEvents()
+    assert warned == []
+
+
 def test_repair_library_menu_opens_dialog_and_refreshes(main_window, monkeypatch):
     class FakeDialog:
         relinked_count = 1

@@ -7,8 +7,8 @@ from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
-from PyQt6.QtCore import QEvent, QProcess, QSettings, Qt, QTimer
-from PyQt6.QtGui import QAction, QKeyEvent, QKeySequence
+from PyQt6.QtCore import QEvent, QProcess, QSettings, Qt, QTimer, QUrl
+from PyQt6.QtGui import QAction, QDesktopServices, QKeyEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractButton,
     QAbstractSlider,
@@ -78,6 +78,10 @@ class MainWindow(QMainWindow):
         self.db.connect()
 
         self.audio_engine = AudioEngine.get_instance()
+        if not self.audio_engine.available:
+            # After the window shows: everything but playback still works,
+            # but the user must be told why the app is silent.
+            QTimer.singleShot(0, self._warn_missing_audio)
 
         # Apply global styles
         self.setStyleSheet(Styles.APP_STYLESHEET)
@@ -483,6 +487,25 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self, "Backup Complete", f"Database backed up to:\n{path}"
         )
+
+    def _warn_missing_audio(self):
+        """Tell the user VLC is missing and where to get it (plan 010)."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("VLC Not Found")
+        box.setText(
+            f"{APP_DISPLAY_NAME} uses VLC for audio playback, and it doesn't "
+            "appear to be installed.\n\n"
+            "Everything except playback will still work. To enable audio, "
+            "install VLC from videolan.org and relaunch this app."
+        )
+        download_btn = box.addButton(
+            "Open VLC Download Page", QMessageBox.ButtonRole.ActionRole
+        )
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.exec()
+        if box.clickedButton() is download_btn:
+            QDesktopServices.openUrl(QUrl("https://www.videolan.org/vlc/"))
 
     def _repair_library(self):
         """File > Repair Library…: relink entries whose files moved on disk."""
