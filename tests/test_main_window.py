@@ -574,6 +574,23 @@ def test_import_files_switches_to_library_and_opens_picker(main_window, monkeypa
     assert len(calls) == 1
 
 
+def test_about_box_shows_app_name_and_version(main_window, monkeypatch):
+    from app import APP_DISPLAY_NAME, __version__
+
+    seen = {}
+    monkeypatch.setattr(
+        main_window_module.QMessageBox,
+        "about",
+        staticmethod(lambda parent, title, text: seen.update(title=title, text=text)),
+    )
+
+    main_window._show_about()
+
+    assert APP_DISPLAY_NAME in seen["title"]
+    assert APP_DISPLAY_NAME in seen["text"]
+    assert __version__ in seen["text"]
+
+
 def test_missing_audio_warning_scheduled_when_vlc_unavailable(
     qapp, tmp_path, monkeypatch
 ):
