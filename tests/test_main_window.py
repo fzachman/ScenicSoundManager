@@ -589,6 +589,7 @@ def test_about_box_shows_app_name_and_version(main_window, monkeypatch):
     assert APP_DISPLAY_NAME in seen["title"]
     assert APP_DISPLAY_NAME in seen["text"]
     assert __version__ in seen["text"]
+    assert "Feather icons" in seen["text"]  # MIT credit stays with the icons
 
 
 def test_missing_audio_warning_scheduled_when_vlc_unavailable(

@@ -437,7 +437,9 @@ class MainWindow(QMainWindow):
             f"<b>{APP_DISPLAY_NAME}</b><br>"
             f"Version {__version__}<br><br>"
             "Layered soundscapes, playlists, and soundboards "
-            "for tabletop games.",
+            "for tabletop games.<br><br>"
+            "<small>Feather icons © Cole Bemis, MIT license.<br>"
+            "Audio playback via VLC (videolan.org).</small>",
         )
 
     def _show_settings(self):
