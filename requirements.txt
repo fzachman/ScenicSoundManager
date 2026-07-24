@@ -6,13 +6,13 @@
 # that gap if needed later.
 
 # Core (runtime)
-PyQt6==6.10.2
+PyQt6==6.11.0
 python-vlc==3.0.21203
-mutagen==1.47.0
-structlog==25.5.0
+mutagen==1.48.1
+structlog==26.1.0
 
 # Development / CI
-py2app==0.28.9
-pytest==9.0.3
-ruff==0.15.20
-mypy==2.1.0
+py2app==0.28.10
+pytest==9.1.1
+ruff==0.16.0
+mypy==2.3.0
