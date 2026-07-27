@@ -27,13 +27,14 @@ PRESET_SLOTS = (1, 2, 3)
 class DatabaseConnection:
     """Manages SQLite database connection and operations"""
 
-    def __init__(self, db_path: str | None = None):
+    def __init__(self, db_path: str | None = None, seed_default_tags: bool = False):
         if db_path is None:
             # Default to user's application support directory
             paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
             db_path = str(paths.DATA_DIR / paths.DB_FILENAME)
 
         self.db_path = db_path
+        self.seed_default_tags = seed_default_tags
         self.connection: sqlite3.Connection | None = None
 
     def connect(self) -> None:
@@ -45,16 +46,31 @@ class DatabaseConnection:
 
     def _initialize_schema(self) -> None:
         """Create database tables if they don't exist"""
+        # Freshness must be checked before the schema script creates the
+        # tables: seeding only ever applies to a brand-new database, never
+        # to an existing one whose user may have deleted the defaults.
+        is_fresh = not self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tags'"
+        ).fetchone()
         schema_path = Path(__file__).parent / "schema.sql"
         with open(schema_path) as f:
             schema = f.read()
         self._conn.executescript(schema)
+        if is_fresh and self.seed_default_tags:
+            self._seed_default_tags()
         self._ensure_scene_positions()
         self._ensure_playlist_shuffle()
         self._ensure_playlist_track_volume()
         self._ensure_scene_active_preset_slot()
         self._migrate_scene_settings_to_presets()
         self._conn.commit()
+
+    def _seed_default_tags(self) -> None:
+        """Populate a brand-new database with the starter tag set"""
+        seed_path = Path(__file__).parent / "default_tags.sql"
+        with open(seed_path) as f:
+            self._conn.executescript(f.read())
+        _log.info("seeded_default_tags")
 
     def _ensure_scene_positions(self) -> None:
         """Ensure scenes have a position column and values"""

@@ -74,7 +74,7 @@ class MainWindow(QMainWindow):
         self._pending_restore: str | None = None  # backup path; see closeEvent
 
         # Initialize core components
-        self.db = DatabaseConnection()
+        self.db = DatabaseConnection(seed_default_tags=True)
         self.db.connect()
 
         self.audio_engine = AudioEngine.get_instance()

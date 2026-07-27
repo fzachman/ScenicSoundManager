@@ -160,6 +160,63 @@ class TestTags:
         assert files[0].title == "Test"
 
 
+class TestDefaultTagSeeding:
+    @pytest.fixture
+    def db_path(self, tmp_path):
+        return str(tmp_path / "seeded.db")
+
+    def _connect(self, db_path, seed):
+        conn = DatabaseConnection(db_path, seed_default_tags=seed)
+        conn.connect()
+        return conn
+
+    def test_fresh_database_gets_starter_tags(self, db_path):
+        conn = self._connect(db_path, seed=True)
+        try:
+            tags = conn.get_all_tags()
+            names = {t.name for t in tags}
+            assert "Combat" in names
+            assert "Mood: Tense" in names
+            assert len(tags) > 20
+            # Every starter tag ships with a display color.
+            assert all(t.color for t in tags)
+        finally:
+            conn.close()
+
+    def test_deleted_defaults_stay_deleted_on_reconnect(self, db_path):
+        conn = self._connect(db_path, seed=True)
+        combat = next(t for t in conn.get_all_tags() if t.name == "Combat")
+        conn.delete_tag(combat.id)
+        count_after_delete = len(conn.get_all_tags())
+        conn.close()
+
+        conn = self._connect(db_path, seed=True)
+        try:
+            tags = conn.get_all_tags()
+            assert len(tags) == count_after_delete
+            assert "Combat" not in {t.name for t in tags}
+        finally:
+            conn.close()
+
+    def test_seeding_is_opt_in(self, db_path):
+        conn = self._connect(db_path, seed=False)
+        try:
+            assert conn.get_all_tags() == []
+        finally:
+            conn.close()
+
+    def test_existing_unseeded_database_is_never_seeded(self, db_path):
+        conn = self._connect(db_path, seed=False)
+        conn.add_tag(Tag(name="Mine"))
+        conn.close()
+
+        conn = self._connect(db_path, seed=True)
+        try:
+            assert [t.name for t in conn.get_all_tags()] == ["Mine"]
+        finally:
+            conn.close()
+
+
 class TestTagSearchFilters:
     """AND semantics for included tags + NOT semantics for excluded tags."""
 

@@ -1,0 +1,31 @@
+-- Starter tags seeded into brand-new databases only (see
+-- DatabaseConnection.seed_default_tags). Existing databases are never
+-- touched, so users who delete or rename these won't see them come back.
+INSERT INTO tags (name, color) VALUES
+    ('Ambient', '#00396D'),
+    ('Coast', '#64B5F6'),
+    ('Combat', '#9B0000'),
+    ('Crowds', '#343A00'),
+    ('Fire', '#FF0000'),
+    ('Forest', '#104400'),
+    ('Hits', '#E57373'),
+    ('Mechanical', '#003854'),
+    ('Modern', '#FF00CC'),
+    ('Mood: Calm', '#00995C'),
+    ('Mood: Hopeful', '#B78300'),
+    ('Mood: Joy', '#FFB74D'),
+    ('Mood: Playful', '#F06292'),
+    ('Mood: Sad', '#003F87'),
+    ('Mood: Scary', '#60003A'),
+    ('Mood: Tense', '#720000'),
+    ('Mood: Wonder', '#71009B'),
+    ('Music', '#E57373'),
+    ('Musicians', '#00659E'),
+    ('Rising', '#E57373'),
+    ('River', '#4FC3F7'),
+    ('Shop', '#FFB74D'),
+    ('Underground', '#472E00'),
+    ('Urban Exterior', '#4FC3F7'),
+    ('Urban Interior', '#FF8A65'),
+    ('Weather', '#64B5F6'),
+    ('Wilderness', '#688C00');

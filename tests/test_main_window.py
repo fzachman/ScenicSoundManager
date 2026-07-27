@@ -37,7 +37,9 @@ def qapp():
 def main_window(qapp, tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
     monkeypatch.setattr(
-        main_window_module, "DatabaseConnection", lambda: DatabaseConnection(db_path)
+        main_window_module,
+        "DatabaseConnection",
+        lambda **kw: DatabaseConnection(db_path),
     )
     window = main_window_module.MainWindow()
     yield window
@@ -597,7 +599,9 @@ def test_missing_audio_warning_scheduled_when_vlc_unavailable(
 ):
     db_path = str(tmp_path / "test.db")
     monkeypatch.setattr(
-        main_window_module, "DatabaseConnection", lambda: DatabaseConnection(db_path)
+        main_window_module,
+        "DatabaseConnection",
+        lambda **kw: DatabaseConnection(db_path),
     )
     # A real engine forced into the VLC-missing degraded mode.
     engine = main_window_module.AudioEngine()

@@ -216,7 +216,9 @@ class TestPopOut:
 def main_window(qapp, tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
     monkeypatch.setattr(
-        main_window_module, "DatabaseConnection", lambda: DatabaseConnection(db_path)
+        main_window_module,
+        "DatabaseConnection",
+        lambda **kw: DatabaseConnection(db_path),
     )
     window = main_window_module.MainWindow()
     yield window

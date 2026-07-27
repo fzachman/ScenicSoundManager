@@ -421,7 +421,7 @@ class TestMainWindowIntegration:
         monkeypatch.setattr(
             main_window_module,
             "DatabaseConnection",
-            lambda: DatabaseConnection(db_path),
+            lambda **kw: DatabaseConnection(db_path),
         )
         window = main_window_module.MainWindow()
         try:
