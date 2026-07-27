@@ -27,6 +27,7 @@ just build                    # clean + py2app + report artifact/version
 just check                    # all CI gates: format, lint, mypy, tests
 just test                     # test suite only
 just run                      # run from source
+just release                  # gate + build + tag + zip + GitHub release (version from app/__init__.py)
 ```
 
 ## Architecture
