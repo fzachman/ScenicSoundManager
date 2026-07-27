@@ -21,6 +21,12 @@ venv/bin/pytest tests/test_database.py::TestDatabaseConnection::test_add_audio_f
 # Build macOS app (requires VLC.app installed)
 python setup.py py2app        # production standalone
 python setup.py py2app -A     # development alias mode
+
+# Task runner shortcuts (justfile)
+just build                    # clean + py2app + report artifact/version
+just check                    # all CI gates: format, lint, mypy, tests
+just test                     # test suite only
+just run                      # run from source
 ```
 
 ## Architecture
