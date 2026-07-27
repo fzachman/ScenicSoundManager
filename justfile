@@ -39,12 +39,31 @@ build:
     @app="$(echo dist/*.app)"; ver="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"; printf '\n✓ Built %s (version %s)\n' "$app" "$ver"
 
 # Gate, build, tag, zip, and publish the current app version to GitHub Releases
-release: _preflight check build
+release: _preflight
+    #!/bin/sh
+    set -eu
+    # Gather answers up front (defaults: just hit return), then run the slow
+    # gates + build unattended, then publish.
+    default_title="ScenicSound Manager {{version}}{{title_suffix}}"
+    printf 'Release title [%s]: ' "$default_title"
+    read -r title || true
+    title="${title:-$default_title}"
+    printf 'Mark as pre-release? [{{ if prerelease_flag == "--prerelease" { "Y/n" } else { "y/N" } }}]: '
+    read -r pre_answer || true
+    pre_answer="${pre_answer:-{{ if prerelease_flag == "--prerelease" { "y" } else { "n" } }}}"
+    pre_flag=""
+    case "$pre_answer" in [Yy]*) pre_flag="--prerelease" ;; esac
+    notes_file="$(mktemp -t release-notes)"
+    cp docs/release-notes-base.md "$notes_file"
+    printf 'Edit release notes in %s first? [y/N]: ' "${EDITOR:-nano}"
+    read -r edit_answer || true
+    case "$edit_answer" in [Yy]*) ${EDITOR:-nano} "$notes_file" ;; esac
+    just check build
     git tag -a "v{{version}}" -m "ScenicSound Manager {{version}}"
     git push origin "v{{version}}"
-    cd dist && ditto -c -k --keepParent "ScenicSound Manager.app" "ScenicSoundManager-{{version}}.zip"
-    gh release create "v{{version}}" "dist/ScenicSoundManager-{{version}}.zip" --repo {{repo}} {{prerelease_flag}} --title "ScenicSound Manager {{version}}{{title_suffix}}" --notes-file docs/release-notes-base.md
-    @printf '\n✓ Released v%s — add highlights at https://github.com/%s/releases/tag/v%s\n' '{{version}}' '{{repo}}' '{{version}}'
+    (cd dist && ditto -c -k --keepParent "ScenicSound Manager.app" "ScenicSoundManager-{{version}}.zip")
+    gh release create "v{{version}}" "dist/ScenicSoundManager-{{version}}.zip" --repo {{repo}} $pre_flag --title "$title" --notes-file "$notes_file"
+    printf '\n✓ Released v%s — https://github.com/%s/releases/tag/v%s\n' '{{version}}' '{{repo}}' '{{version}}'
 
 # Refuse to release from the wrong branch, a dirty tree, or a stale/duplicate version
 _preflight:
