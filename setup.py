@@ -34,7 +34,9 @@ DATA_FILES = []
 # py2app options
 OPTIONS = {
     "argv_emulation": False,
-    "iconfile": None,  # Add path to .icns file if available
+    # Generated from resources/app_icon.png (1024px master) via
+    # sips -z <s> <s> + iconutil -c icns; regenerate if the PNG changes.
+    "iconfile": "resources/app_icon.icns",
     "plist": {
         # CFBundleName names the macOS app menu; keep it the display name.
         "CFBundleName": APP_DISPLAY_NAME,

@@ -77,9 +77,12 @@ during real use, start from the .ips files.
 
 ## Later / follow-ups
 
-- .icns app icon; .app bundle display name ("Scenic Sound Manager.app").
+- ~~.icns app icon~~ DONE 2026-07-28: resources/app_icon.png (1024px
+  master) → resources/app_icon.icns (sips + iconutil), wired via
+  py2app `iconfile`.
 - .dmg packaging; Developer ID signing + notarization when distributing
-  beyond friends (unsigned = right-click-Open instruction).
+  beyond friends (unsigned = Settings→Privacy "Open Anyway" instruction;
+  right-click-Open bypass was removed in macOS Sequoia).
 - GitHub Actions build-on-tag workflow (runner needs
   `brew install --cask vlc` or the no-VLC build).
 - Single-instance guard; optional --data-dir override for sandboxed
