@@ -8,7 +8,9 @@ from pathlib import Path
 import structlog
 from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
 
-LOG_DIR = Path.home() / "Library" / "Logs" / "SoundManager"
+# Renamed from the legacy "SoundManager" folder in 2026-07 to match DATA_DIR
+# (see app/paths.py); old logs were deliberately left behind, not migrated.
+LOG_DIR = Path.home() / "Library" / "Logs" / "ScenicSound"
 LOG_FILE_NAME = "soundmanager.log"
 
 _MAX_LOG_BYTES = 5 * 1024 * 1024
@@ -46,7 +48,7 @@ def configure_logging() -> None:
 
     Call once at startup before any loggers are created.
 
-    The full stream (info+) goes to ``~/Library/Logs/SoundManager/`` with
+    The full stream (info+) goes to ``~/Library/Logs/ScenicSound/`` with
     size-based rotation; the console (stderr) only gets warning+ so terminal
     runs aren't flooded by routine events but real problems stay visible.
     Qt's own messages are routed through the same pipeline (see
