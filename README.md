@@ -1,4 +1,4 @@
-# SoundManager
+# ScenicSound Manager
 
 A desktop **audio soundscape manager for tabletop RPGs** (D&D and friends). Build
 layered ambient scenes, run music playlists, and switch between them live during a
@@ -29,7 +29,7 @@ persistence.
   pressing the playing button stops it.
 
 Your library and scenes are stored in a local SQLite database at
-`~/Library/Application Support/SoundManager/soundmanager.db` (macOS).
+`~/Library/Application Support/ScenicSound/soundmanager.db` (macOS).
 
 ## Keyboard shortcuts
 
@@ -64,10 +64,8 @@ venv/bin/python scripts/remote_client.py volume 40
 venv/bin/python scripts/remote_client.py watch         # stream state events
 ```
 
-The server only listens on localhost. To change the port or turn it off, edit
-the app settings (macOS: `defaults write com.soundmanager.SoundManager remote.port 9000`
-or `remote.enabled -bool false`, adjusting the domain to what `QSettings` uses
-on your install).
+The server only listens on localhost. To turn it off or change the port, open
+**Settings…** in the app menu (⌘, on macOS); changes take effect immediately.
 
 ## Requirements
 
