@@ -144,3 +144,13 @@ setup.py      py2app packaging
 
 Each feature tab follows a **splitter pattern**: a `*ListWidget` sidebar (list +
 CRUD) beside a `*Editor` detail/playback panel, inside a container `*Widget`.
+
+## License
+
+ScenicSound Manager is free software, released under the
+[GNU General Public License v3.0](LICENSE) (or any later version).
+Copyright © 2026 Forest Zachman.
+
+It is built on [PyQt6](https://riverbankcomputing.com/software/pyqt/) (GPLv3)
+and plays audio through [VLC](https://www.videolan.org/)'s libVLC (LGPL 2.1+),
+which must be installed separately. Feather icons © Cole Bemis, MIT license.
