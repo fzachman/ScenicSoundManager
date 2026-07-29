@@ -51,6 +51,10 @@ from .soundboard import SoundboardContent, SoundboardDock
 
 logger = get_logger(__name__)
 
+# Beta feedback Google Form (Help > Send Feedback…). Also linked from the
+# README and docs/release-notes-base.md — update all three together.
+FEEDBACK_FORM_URL = "https://forms.gle/QyTAhJCRd18NvHNn6"
+
 
 class MainWindow(QMainWindow):
     """Main application window"""
@@ -309,6 +313,9 @@ class MainWindow(QMainWindow):
         shortcuts_action = QAction("Keyboard Shortcuts", self)
         shortcuts_action.triggered.connect(self._show_shortcuts_help)
         help_menu.addAction(shortcuts_action)
+        feedback_action = QAction("Send Feedback…", self)
+        feedback_action.triggered.connect(self._send_feedback)
+        help_menu.addAction(feedback_action)
 
         # Populate the dynamic menus now, not just on aboutToShow: the macOS
         # native menu bar HIDES empty menus, so without an initial build the
@@ -468,6 +475,10 @@ class MainWindow(QMainWindow):
             "<tr><td><b>⌘O</b></td><td>Import audio files</td></tr>"
             "</table>",
         )
+
+    def _send_feedback(self):
+        """Help > Send Feedback…: open the beta feedback form in the browser."""
+        QDesktopServices.openUrl(QUrl(FEEDBACK_FORM_URL))
 
     def _backup_database(self):
         """File > Back Up Database…: snapshot the live DB wherever the user picks."""

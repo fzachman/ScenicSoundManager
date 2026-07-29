@@ -594,6 +594,24 @@ def test_about_box_shows_app_name_and_version(main_window, monkeypatch):
     assert "Feather icons" in seen["text"]  # MIT credit stays with the icons
 
 
+def test_send_feedback_opens_form_url(main_window, monkeypatch):
+    opened = []
+    monkeypatch.setattr(
+        main_window_module.QDesktopServices,
+        "openUrl",
+        staticmethod(lambda url: opened.append(url.toString()) or True),
+    )
+
+    help_menu = next(
+        a.menu() for a in main_window.menuBar().actions() if a.text() == "Help"
+    )
+    feedback = next(a for a in help_menu.actions() if a.text() == "Send Feedback…")
+    feedback.trigger()
+
+    assert opened == [main_window_module.FEEDBACK_FORM_URL]
+    assert opened[0].startswith("https://forms.gle/")
+
+
 def test_missing_audio_warning_scheduled_when_vlc_unavailable(
     qapp, tmp_path, monkeypatch
 ):
