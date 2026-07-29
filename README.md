@@ -31,6 +31,11 @@ persistence.
 Your library and scenes are stored in a local SQLite database at
 `~/Library/Application Support/ScenicSound/soundmanager.db` (macOS).
 
+## Feedback & bug reports
+
+The easiest way is the [feedback form](https://forms.gle/QyTAhJCRd18NvHNn6) —
+takes a minute, no account needed. GitHub issues work too.
+
 ## Keyboard shortcuts
 
 Transport keys work while the app window is focused (these are in-app shortcuts,
