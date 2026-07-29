@@ -67,6 +67,11 @@ venv/bin/python scripts/remote_client.py watch         # stream state events
 The server only listens on localhost. To turn it off or change the port, open
 **Settings…** in the app menu (⌘, on macOS); changes take effect immediately.
 
+For Elgato Stream Deck owners there's a ready-made
+[Stream Deck plugin](https://github.com/fzachman/SSMStreamdeckPlugin/releases)
+built on this protocol — physical buttons for scenes, playlists, and
+soundboard sounds.
+
 ## Requirements
 
 - **Python 3.10+** (developed and tested on 3.13).
