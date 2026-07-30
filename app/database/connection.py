@@ -1,6 +1,8 @@
 """SQLite database connection management"""
 
+import shutil
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from .. import paths
@@ -22,6 +24,17 @@ _log = get_logger(__name__)
 # Every scene has exactly these preset slots; each holds a full copy of the
 # per-track/per-entry settings.
 PRESET_SLOTS = (1, 2, 3)
+
+# On-disk schema generation, stored in the file via PRAGMA user_version.
+# Bump by 1 whenever schema.sql or a migration changes the schema in a way
+# an older app version can't safely open (dropping/renaming columns, moving
+# data). Purely additive changes don't need a bump. Version 1 = 0.9.1
+# (pre-0.9.1 databases read as 0, the SQLite default).
+SCHEMA_VERSION = 1
+
+
+class NewerDatabaseError(RuntimeError):
+    """The database was written by a newer app version; refuse to touch it."""
 
 
 class DatabaseConnection:
@@ -46,12 +59,26 @@ class DatabaseConnection:
 
     def _initialize_schema(self) -> None:
         """Create database tables if they don't exist"""
+        # The stored schema generation gates everything: a database written
+        # by a NEWER app version must not be opened (its migrations may have
+        # reshaped tables this code would corrupt or misread).
+        stored_version = self._conn.execute("PRAGMA user_version").fetchone()[0]
+        if stored_version > SCHEMA_VERSION:
+            self.close()
+            raise NewerDatabaseError(
+                f"Database schema is version {stored_version}; this app only "
+                f"knows version {SCHEMA_VERSION}."
+            )
         # Freshness must be checked before the schema script creates the
         # tables: seeding only ever applies to a brand-new database, never
         # to an existing one whose user may have deleted the defaults.
         is_fresh = not self._conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tags'"
         ).fetchone()
+        if not is_fresh and stored_version < SCHEMA_VERSION:
+            # Snapshot the file before migrations touch it, so the user can
+            # drop back to an older app version by restoring the copy.
+            self._backup_before_upgrade(stored_version)
         schema_path = Path(__file__).parent / "schema.sql"
         with open(schema_path) as f:
             schema = f.read()
@@ -63,7 +90,25 @@ class DatabaseConnection:
         self._ensure_playlist_track_volume()
         self._ensure_scene_active_preset_slot()
         self._migrate_scene_settings_to_presets()
+        # Stamp only after schema + migrations succeeded. PRAGMA can't take
+        # placeholders; SCHEMA_VERSION is a module constant int.
+        self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._conn.commit()
+
+    def _backup_before_upgrade(self, from_version: int) -> None:
+        """Copy the database file aside before a schema upgrade."""
+        source = Path(self.db_path)
+        if not source.is_file():
+            return
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        dest = source.with_name(f"{source.stem}-pre-upgrade-{timestamp}{source.suffix}")
+        shutil.copy2(source, dest)
+        _log.info(
+            "database_pre_upgrade_backup",
+            from_version=from_version,
+            to_version=SCHEMA_VERSION,
+            backup=str(dest),
+        )
 
     def _seed_default_tags(self) -> None:
         """Populate a brand-new database with the starter tag set"""

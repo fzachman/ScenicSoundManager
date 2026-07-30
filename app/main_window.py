@@ -32,7 +32,12 @@ from PyQt6.QtWidgets import (
 
 from . import APP_DISPLAY_NAME, __version__
 from .audio import TRANSITION_FADE_MS, AudioEngine, SoundboardPlayer
-from .database import DatabaseConnection, swap_database, validate_backup
+from .database import (
+    DatabaseConnection,
+    NewerDatabaseError,
+    swap_database,
+    validate_backup,
+)
 from .library import LibraryWidget
 from .playlists import PlaylistsWidget
 from .remote import (
@@ -48,6 +53,7 @@ from .settings_dialog import SettingsDialog
 from .shared.logging import get_logger
 from .shared.styles import Styles
 from .soundboard import SoundboardContent, SoundboardDock
+from .update_check import UpdateChecker
 
 logger = get_logger(__name__)
 
@@ -66,6 +72,7 @@ class MainWindow(QMainWindow):
     SETTINGS_WINDOW_STATE = "window_state"
     SETTINGS_LAST_SCENE_ID = "last_scene_id"
     SETTINGS_LAST_PLAYLIST_ID = "last_playlist_id"
+    SETTINGS_SKIP_UPDATE = "updates/skip_version"
 
     def __init__(self):
         super().__init__()
@@ -79,7 +86,18 @@ class MainWindow(QMainWindow):
 
         # Initialize core components
         self.db = DatabaseConnection(seed_default_tags=True)
-        self.db.connect()
+        try:
+            self.db.connect()
+        except NewerDatabaseError:
+            QMessageBox.critical(
+                self,
+                "Library Too New",
+                f"Your library database was written by a newer version of "
+                f"{APP_DISPLAY_NAME} than this one.\n\n"
+                "Update the app to its latest release, or restore a backup "
+                "made by this version (File → Restore Database…).",
+            )
+            raise SystemExit(1) from None
 
         self.audio_engine = AudioEngine.get_instance()
         if not self.audio_engine.available:
@@ -101,6 +119,11 @@ class MainWindow(QMainWindow):
         self._restore_last_scene()
         self._restore_last_playlist()
         self._restore_window_state()
+
+        # Notify-only update check, delayed so startup never races it.
+        self._update_checker = UpdateChecker(parent=self)
+        self._update_checker.update_available.connect(self._on_update_available)
+        QTimer.singleShot(3000, self._update_checker.check)
 
     def _setup_ui(self):
         """Set up the main UI components"""
@@ -479,6 +502,34 @@ class MainWindow(QMainWindow):
     def _send_feedback(self):
         """Help > Send Feedback…: open the beta feedback form in the browser."""
         QDesktopServices.openUrl(QUrl(FEEDBACK_FORM_URL))
+
+    def _on_update_available(self, release):
+        """A newer GitHub release exists: offer the download page, once."""
+        settings = QSettings()
+        if settings.value(self.SETTINGS_SKIP_UPDATE, "", type=str) == release.version:
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("Update Available")
+        box.setText(
+            f"{APP_DISPLAY_NAME} {release.version} is available "
+            f"(you have {__version__})."
+        )
+        box.setInformativeText(
+            "Before updating, back up your library "
+            "(File → Back Up Database…) so you can roll back if needed."
+        )
+        open_btn = box.addButton(
+            "Open Download Page", QMessageBox.ButtonRole.AcceptRole
+        )
+        skip_btn = box.addButton(
+            "Skip This Version", QMessageBox.ButtonRole.DestructiveRole
+        )
+        box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is open_btn:
+            QDesktopServices.openUrl(QUrl(release.url))
+        elif box.clickedButton() is skip_btn:
+            settings.setValue(self.SETTINGS_SKIP_UPDATE, release.version)
 
     def _backup_database(self):
         """File > Back Up Database…: snapshot the live DB wherever the user picks."""

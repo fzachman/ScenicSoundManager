@@ -57,7 +57,7 @@ Each tab follows a **splitter pattern**: `*Widget` (container) = `*ListWidget` (
 ### Key conventions
 
 - **Signals**: Use `pyqtSignal(object)` for dataclass payloads since PyQt6 doesn't support dataclass types directly.
-- **Database**: All CRUD goes through `DatabaseConnection` methods. Models are dataclasses in `models.py`.
+- **Database**: All CRUD goes through `DatabaseConnection` methods. Models are dataclasses in `models.py`. On-disk schema generation lives in `PRAGMA user_version` (`SCHEMA_VERSION` in connection.py): bump it for NON-additive schema changes (drops/renames/data moves); connect() refuses newer-versioned files and snapshots the DB before upgrading older ones.
 - **Logging**: Use `structlog` via `app.shared.logging.get_logger(__name__)`. Info+ goes to `~/Library/Logs/ScenicSound/soundmanager.log` (rotated); the console only shows warning+.
 - **Drag-drop**: Custom MIME type + container widget pattern (see `TrackListContainer`, `PlaylistTrackListContainer`).
 - **Reusable dialogs**: `AudioFileSearchDialog` for track picking (supports `disabled_track_ids` for exclusion), `TextInputDialog` for name input.

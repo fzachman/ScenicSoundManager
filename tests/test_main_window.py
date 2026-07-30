@@ -612,6 +612,100 @@ def test_send_feedback_opens_form_url(main_window, monkeypatch):
     assert opened[0].startswith("https://forms.gle/")
 
 
+# --- Update-available dialog -----------------------------------------------------
+
+
+class _FakeUpdateBox:
+    """Stands in for QMessageBox in _on_update_available: records everything,
+    'clicks' the button whose label matches ``click_label``."""
+
+    from PyQt6.QtWidgets import QMessageBox as _real
+
+    ButtonRole = _real.ButtonRole
+    last = None
+    click_label = "Later"
+
+    def __init__(self, parent=None):
+        type(self).last = self
+        self._clicked = None
+
+    def setWindowTitle(self, t):
+        self.title = t
+
+    def setText(self, t):
+        self.text = t
+
+    def setInformativeText(self, t):
+        self.informative = t
+
+    def addButton(self, label, role):
+        button = object()
+        if label == type(self).click_label:
+            self._clicked = button
+        return button
+
+    def exec(self):
+        pass
+
+    def clickedButton(self):
+        return self._clicked
+
+
+@pytest.fixture
+def update_dialog(monkeypatch):
+    """Patch the message box + browser-open; return (opened_urls, set_click)."""
+    from PyQt6.QtCore import QSettings
+
+    monkeypatch.setattr(main_window_module, "QMessageBox", _FakeUpdateBox)
+    opened = []
+    monkeypatch.setattr(
+        main_window_module.QDesktopServices,
+        "openUrl",
+        staticmethod(lambda url: opened.append(url.toString()) or True),
+    )
+    _FakeUpdateBox.last = None
+    _FakeUpdateBox.click_label = "Later"
+    settings = QSettings()
+    settings.remove(main_window_module.MainWindow.SETTINGS_SKIP_UPDATE)
+    yield opened
+    settings.remove(main_window_module.MainWindow.SETTINGS_SKIP_UPDATE)
+
+
+def _release(version="9.9.9"):
+    from app.update_check import Release
+
+    return Release(version=version, url=f"https://example.com/tag/v{version}")
+
+
+def test_update_dialog_open_button_opens_release_page(main_window, update_dialog):
+    _FakeUpdateBox.click_label = "Open Download Page"
+    main_window._on_update_available(_release())
+    assert update_dialog == ["https://example.com/tag/v9.9.9"]
+    assert "9.9.9" in _FakeUpdateBox.last.text
+    assert "Back Up Database" in _FakeUpdateBox.last.informative
+
+
+def test_update_dialog_later_does_nothing(main_window, update_dialog):
+    main_window._on_update_available(_release())
+    assert update_dialog == []
+    # Not skipped: the same release prompts again next launch.
+    _FakeUpdateBox.last = None
+    main_window._on_update_available(_release())
+    assert _FakeUpdateBox.last is not None
+
+
+def test_update_dialog_skip_silences_that_version_only(main_window, update_dialog):
+    _FakeUpdateBox.click_label = "Skip This Version"
+    main_window._on_update_available(_release("9.9.9"))
+
+    _FakeUpdateBox.last = None
+    main_window._on_update_available(_release("9.9.9"))
+    assert _FakeUpdateBox.last is None  # skipped version stays silent
+
+    main_window._on_update_available(_release("10.0.0"))
+    assert _FakeUpdateBox.last is not None  # a newer one still prompts
+
+
 def test_missing_audio_warning_scheduled_when_vlc_unavailable(
     qapp, tmp_path, monkeypatch
 ):

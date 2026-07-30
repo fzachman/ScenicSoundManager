@@ -1,13 +1,16 @@
 """Tests for database operations"""
 
 import os
+import sqlite3
 import tempfile
 
 import pytest
 
 from app.database import (
+    SCHEMA_VERSION,
     AudioFile,
     DatabaseConnection,
+    NewerDatabaseError,
     Playlist,
     Scene,
     Tag,
@@ -215,6 +218,78 @@ class TestDefaultTagSeeding:
             assert [t.name for t in conn.get_all_tags()] == ["Mine"]
         finally:
             conn.close()
+
+
+def _set_user_version(db_path, version):
+    raw = sqlite3.connect(db_path)
+    raw.execute(f"PRAGMA user_version = {version}")
+    raw.commit()
+    raw.close()
+
+
+def _get_user_version(db_path):
+    raw = sqlite3.connect(db_path)
+    try:
+        return raw.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        raw.close()
+
+
+class TestSchemaVersion:
+    def _backups(self, tmp_path):
+        return sorted(tmp_path.glob("*-pre-upgrade-*"))
+
+    def test_fresh_database_stamped_without_backup(self, tmp_path):
+        db_path = str(tmp_path / "fresh.db")
+        conn = DatabaseConnection(db_path)
+        conn.connect()
+        conn.close()
+        assert _get_user_version(db_path) == SCHEMA_VERSION
+        assert self._backups(tmp_path) == []
+
+    def test_reconnect_at_same_version_makes_no_backup(self, tmp_path):
+        db_path = str(tmp_path / "steady.db")
+        for _ in range(2):
+            conn = DatabaseConnection(db_path)
+            conn.connect()
+            conn.close()
+        assert self._backups(tmp_path) == []
+
+    def test_older_database_backed_up_then_stamped(self, tmp_path):
+        # Simulate a pre-0.9.1 database: has tables, user_version 0.
+        db_path = str(tmp_path / "old.db")
+        conn = DatabaseConnection(db_path)
+        conn.connect()
+        conn.add_audio_file(AudioFile(file_path="/music/keep.mp3", title="Keep"))
+        conn.close()
+        _set_user_version(db_path, 0)
+
+        conn = DatabaseConnection(db_path)
+        conn.connect()
+        try:
+            backups = self._backups(tmp_path)
+            assert len(backups) == 1
+            assert _get_user_version(db_path) == SCHEMA_VERSION
+            # The backup is the PRE-upgrade file: openable and version 0.
+            assert _get_user_version(str(backups[0])) == 0
+            # Data survived the upgrade.
+            assert len(conn.get_all_audio_files()) == 1
+        finally:
+            conn.close()
+
+    def test_newer_database_refused(self, tmp_path):
+        db_path = str(tmp_path / "future.db")
+        conn = DatabaseConnection(db_path)
+        conn.connect()
+        conn.close()
+        _set_user_version(db_path, SCHEMA_VERSION + 1)
+
+        conn = DatabaseConnection(db_path)
+        with pytest.raises(NewerDatabaseError):
+            conn.connect()
+        # Refusal must not modify the file (no downgrade, no backup litter).
+        assert _get_user_version(db_path) == SCHEMA_VERSION + 1
+        assert self._backups(tmp_path) == []
 
 
 class TestTagSearchFilters:
