@@ -7,6 +7,9 @@ session — all from one window.
 Built with **PyQt6**, a **VLC** (libVLC) audio backend, and **SQLite** for
 persistence.
 
+<img src="docs/images/scenes_screenshot.png" width="800"
+     alt="A playing Tavern scene: layered tracks with independent volumes, scene presets, an embedded playlist, and the soundboard docked below">
+
 > Note: this README is the user/contributor entry point. For architecture notes
 > and conventions, see [`CLAUDE.md`](CLAUDE.md) and [`docs/`](docs/).
 
@@ -27,6 +30,9 @@ persistence.
   its own window) with named boards of one-shot sound effect buttons that play
   *over* the active scene/playlist. One sound at a time: a new press cuts over,
   pressing the playing button stops it.
+
+<img src="docs/images/library_screenshot.png" width="800"
+     alt="The Library tab: imported tracks with colored tag badges, filtered by tag">
 
 Your library and scenes are stored in a local SQLite database at
 `~/Library/Application Support/ScenicSound/soundmanager.db` (macOS).
