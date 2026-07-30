@@ -33,8 +33,11 @@ if TYPE_CHECKING:
 class FilePickerDialog(QFileDialog):
     """Custom file picker for audio files"""
 
+    # Keep in sync with is_supported_format (app/library/metadata.py);
+    # a test asserts the two lists match.
     AUDIO_FILTER = (
-        "Audio Files (*.mp3 *.wav *.flac *.ogg *.m4a *.aac *.wma);;All Files (*)"
+        "Audio Files (*.mp3 *.wav *.flac *.ogg *.m4a *.aac *.wma *.opus"
+        " *.aiff *.aif);;All Files (*)"
     )
 
     def __init__(self, parent=None, title: str = "Select Audio Files"):

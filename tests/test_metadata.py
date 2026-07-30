@@ -96,9 +96,28 @@ class TestComputeFingerprint:
 
 class TestIsSupportedFormat:
     def test_supported_extensions(self):
-        for path in ("/a/b.mp3", "/a/B.MP3", "/a/x.flac", "/a/y.opus", "/a/z.m4a"):
+        for path in (
+            "/a/b.mp3",
+            "/a/B.MP3",
+            "/a/x.flac",
+            "/a/y.opus",
+            "/a/z.m4a",
+            "/a/sfx.aiff",
+            "/a/SFX.AIF",
+        ):
             assert MetadataExtractor.is_supported_format(path) is True
 
     def test_unsupported_extensions(self):
         for path in ("/a/notes.txt", "/a/clip.mov", "/a/noext"):
             assert MetadataExtractor.is_supported_format(path) is False
+
+    def test_file_picker_filter_matches_supported_formats(self):
+        """The import whitelist and the file dialog's filter must not drift
+        (that drift is how .opus was once importable-by-folder-scan only and
+        .aiff was rejected entirely)."""
+        import re
+
+        from app.shared.dialogs import FilePickerDialog
+
+        filter_exts = set(re.findall(r"\*(\.\w+)", FilePickerDialog.AUDIO_FILTER))
+        assert filter_exts == set(MetadataExtractor.SUPPORTED_EXTENSIONS)

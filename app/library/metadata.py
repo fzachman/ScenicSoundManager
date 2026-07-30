@@ -28,6 +28,23 @@ def compute_fingerprint(file_path: str) -> tuple[int | None, str | None]:
 class MetadataExtractor:
     """Extract metadata from audio files using mutagen"""
 
+    # Import whitelist. FilePickerDialog.AUDIO_FILTER (app/shared/dialogs.py)
+    # must offer exactly these; a test asserts the two stay in sync.
+    SUPPORTED_EXTENSIONS = frozenset(
+        {
+            ".mp3",
+            ".wav",
+            ".flac",
+            ".ogg",
+            ".m4a",
+            ".aac",
+            ".wma",
+            ".opus",
+            ".aiff",
+            ".aif",
+        }
+    )
+
     @staticmethod
     def extract(file_path: str) -> dict:
         """
@@ -76,15 +93,5 @@ class MetadataExtractor:
     @staticmethod
     def is_supported_format(file_path: str) -> bool:
         """Check if a file is a supported audio format"""
-        supported_extensions = {
-            ".mp3",
-            ".wav",
-            ".flac",
-            ".ogg",
-            ".m4a",
-            ".aac",
-            ".wma",
-            ".opus",
-        }
         _, ext = os.path.splitext(file_path.lower())
-        return ext in supported_extensions
+        return ext in MetadataExtractor.SUPPORTED_EXTENSIONS
