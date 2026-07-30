@@ -59,17 +59,22 @@ release: _preflight
     read -r edit_answer || true
     case "$edit_answer" in [Yy]*) ${EDITOR:-nano} "$notes_file" ;; esac
     just check build
-    git tag -a "v{{version}}" -m "ScenicSound Manager {{version}}"
+    # Re-runs after a partial failure resume: the tag may already exist from
+    # the failed attempt (preflight guarantees it points at HEAD).
+    if ! git rev-parse -q --verify "refs/tags/v{{version}}" >/dev/null; then git tag -a "v{{version}}" -m "ScenicSound Manager {{version}}"; fi
     git push origin "v{{version}}"
     (cd dist && ditto -c -k --keepParent "ScenicSound Manager.app" "ScenicSoundManager-{{version}}.zip")
     gh release create "v{{version}}" "dist/ScenicSoundManager-{{version}}.zip" --repo {{repo}} $pre_flag --title "$title" --notes-file "$notes_file"
     printf '\n✓ Released v%s — https://github.com/%s/releases/tag/v%s\n' '{{version}}' '{{repo}}' '{{version}}'
 
-# Refuse to release from the wrong branch, a dirty tree, or a stale/duplicate version
+# Refuse to release from the wrong branch, a dirty tree, a stale/duplicate
+# version, or the wrong gh account — all BEFORE anything irreversible happens
 _preflight:
     @test "$(git rev-parse --abbrev-ref HEAD)" = "main" || { echo "✗ releases come from main (currently on $(git rev-parse --abbrev-ref HEAD))"; exit 1; }
     @test -z "$(git status --porcelain)" || { echo "✗ working tree not clean — commit or stash first"; exit 1; }
     @git fetch -q origin main
     @test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || { echo "✗ main is not in sync with origin/main — push or pull first"; exit 1; }
-    @if git rev-parse -q --verify "refs/tags/v{{version}}" >/dev/null; then echo "✗ tag v{{version}} already exists — bump __version__ in app/__init__.py first"; exit 1; fi
+    @test "$(gh api repos/{{repo}} --jq .permissions.push 2>/dev/null)" = "true" || { echo "✗ gh can't write to {{repo}} — wrong active account? Run: gh auth switch -u fzachman"; exit 1; }
+    @! gh release view "v{{version}}" --repo {{repo}} >/dev/null 2>&1 || { echo "✗ release v{{version}} already exists — bump __version__ in app/__init__.py first"; exit 1; }
+    @if git rev-parse -q --verify "refs/tags/v{{version}}" >/dev/null; then test "$(git rev-parse "refs/tags/v{{version}}^{commit}")" = "$(git rev-parse HEAD)" || { echo "✗ tag v{{version}} exists but points at a different commit — bump __version__ or delete the stale tag"; exit 1; }; echo "· tag v{{version}} already at HEAD (resuming a failed release)"; fi
     @echo "✓ preflight ok — will release {{version}} from $(git rev-parse --short HEAD)"
