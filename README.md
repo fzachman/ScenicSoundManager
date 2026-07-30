@@ -40,7 +40,9 @@ Your library and scenes are stored in a local SQLite database at
 ## Feedback & bug reports
 
 The easiest way is the [feedback form](https://forms.gle/QyTAhJCRd18NvHNn6) —
-takes a minute, no account needed. GitHub issues work too.
+takes a minute, no account needed. GitHub issues work too, and the
+[ScenicSound Manager Discord](https://discord.gg/xj8X4VBF4N) is open for
+questions, ideas, and beta discussion.
 
 ## Keyboard shortcuts
 

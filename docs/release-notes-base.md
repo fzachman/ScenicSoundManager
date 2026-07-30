@@ -11,6 +11,9 @@ Found a bug or have a suggestion? Please use the
 [feedback form](https://forms.gle/QyTAhJCRd18NvHNn6) — takes a minute, no
 account needed. (If you're a GitHub user, opening an issue works too.)
 
+Or come chat: the [ScenicSound Manager Discord](https://discord.gg/xj8X4VBF4N)
+is the place for questions, ideas, and beta discussion.
+
 ## Stream Deck plugin (optional)
 
 Have an Elgato Stream Deck? The [ScenicSound Manager Stream Deck plugin](https://github.com/fzachman/SSMStreamdeckPlugin/releases) gives you physical buttons for scenes, playlists, and soundboard sounds. Grab the newest release from that page and make sure remote control is enabled in the app (Settings… → Enable remote control — on by default).
