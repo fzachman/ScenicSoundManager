@@ -1,6 +1,6 @@
 """Tag management widget"""
 
-from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -75,6 +75,14 @@ class TagBadge(QWidget):
         """Override the tag label style"""
         self.label.setStyleSheet(style)
 
+    def set_selected(self, selected: bool) -> None:
+        """Show/hide the leading checkmark marking an included tag.
+
+        A glyph rather than a border color: it stays legible on any tag
+        color, including user-defined ones.
+        """
+        self.label.setText(f"✓ {self.tag.name}" if selected else self.tag.name)
+
 
 class TagManager(QWidget):
     """Widget for managing tags and filtering by tags.
@@ -124,8 +132,6 @@ class TagManager(QWidget):
         header_layout.addWidget(clear_btn)
 
         if self._allow_manage:
-            # No custom stylesheet: inherits the global QPushButton look so it
-            # reads as a button next to Clear. Square, matching Clear's height.
             add_btn = QPushButton("Create new tag")
             add_btn.setToolTip("Create new tag")
             add_btn.clicked.connect(self._create_tag)
@@ -167,6 +173,7 @@ class TagManager(QWidget):
             no_tag_badge.set_label_style(Styles.tag_badge_excluded_style())
         else:
             no_tag_selected = no_tag.id in self._selected_tag_ids
+            no_tag_badge.set_selected(no_tag_selected)
             border_color = Styles.PRIMARY if no_tag_selected else Styles.BORDER
             no_tag_badge.set_label_style(f"""
                 background-color: #FFFFFF;
@@ -195,6 +202,7 @@ class TagManager(QWidget):
                 badge.right_clicked.connect(self._exclude_tag_filter)
 
             if tag.id in self._selected_tag_ids:
+                badge.set_selected(True)
                 badge.set_label_style(
                     Styles.tag_badge_style(
                         tag.color or Styles.TAG_COLORS[0], Styles.PRIMARY
