@@ -40,9 +40,12 @@ class LibraryWidget(QWidget):
         self._load_files()
 
     def _setup_ui(self):
+        # Bottom margin is small because the import-hint row below the table
+        # visually stands in for it — together they take up roughly the same
+        # space the old 16px margin did.
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(16, 16, 16, 2)
 
         # Tag filter section
         self.tag_manager = TagManager(self.db, header_text="Filter by tags")
@@ -84,14 +87,30 @@ class LibraryWidget(QWidget):
             lambda: self._refresh_current_view(preserve_page=True)
         )
         self.file_table.sort_requested.connect(self._on_sort_requested)
-        layout.addWidget(self.file_table, 1)
 
-        # Drop hint
+        # Table plus a persistent import hint, packed tightly so the hint
+        # lives inside what used to be the bottom margin.
+        table_area = QVBoxLayout()
+        table_area.setSpacing(2)
+        table_area.setContentsMargins(0, 0, 0, 0)
+        table_area.addWidget(self.file_table, 1)
+
+        self.import_hint = QLabel("Drag files anywhere on the library to import")
+        self.import_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.import_hint.setStyleSheet(
+            Styles.subtle_text_style(11, f"color: {Styles.TEXT_SUBTLE};")
+        )
+        table_area.addWidget(self.import_hint)
+
+        # Drop hint (empty-library placeholder; swaps with the table, so it
+        # shares the table's slot and stretch)
         self.drop_hint = QLabel("Drop audio files here to add to library")
         self.drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.drop_hint.setStyleSheet(Styles.empty_state_style())
         self.drop_hint.hide()
-        layout.addWidget(self.drop_hint)
+        table_area.addWidget(self.drop_hint, 1)
+
+        layout.addLayout(table_area, 1)
 
     def _load_files(self):
         """Load files from database"""
@@ -103,6 +122,14 @@ class LibraryWidget(QWidget):
         self.pagination_bar.set_files(files)
 
         # Show/hide drop hint based on whether we have files
+        self._update_empty_state(files)
+
+    def _update_empty_state(self, files: list[AudioFile]):
+        """Swap between the empty-library placeholder and the file table.
+
+        The import hint under the table hides with it — the placeholder
+        already says to drop files.
+        """
         if (
             not files
             and not self.search_bar.get_text()
@@ -110,9 +137,11 @@ class LibraryWidget(QWidget):
         ):
             self.drop_hint.show()
             self.file_table.hide()
+            self.import_hint.hide()
         else:
             self.drop_hint.hide()
             self.file_table.show()
+            self.import_hint.show()
 
     def _query_files(self) -> list[AudioFile]:
         """Run the active search + tag filter query"""
@@ -149,17 +178,7 @@ class LibraryWidget(QWidget):
         """Re-run the active search/filter query and update display"""
         files = self._query_files()
         self.pagination_bar.set_files(files, preserve_page=preserve_page)
-
-        if (
-            not files
-            and not self.search_bar.get_text()
-            and not self.tag_manager.has_active_filter()
-        ):
-            self.drop_hint.show()
-            self.file_table.hide()
-        else:
-            self.drop_hint.hide()
-            self.file_table.show()
+        self._update_empty_state(files)
 
     def _on_sort_requested(self, column: int, order: Qt.SortOrder):
         """Handle sort request from file table — sort full dataset then re-paginate"""
