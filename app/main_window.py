@@ -784,12 +784,13 @@ class MainWindow(QMainWindow):
         settings.endGroup()
 
     def _restore_master_volume(self):
+        # NB: with type=int, QSettings.value() returns 0 (not None) for a
+        # missing key, so an explicit default is required — without it every
+        # fresh install started muted.
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_GROUP)
-        value = settings.value(self.SETTINGS_MASTER_VOLUME, type=int)
+        value = settings.value(self.SETTINGS_MASTER_VOLUME, 100, type=int)
         settings.endGroup()
-        if value is None:
-            return
         self.audio_engine.master_volume = value
         self.master_slider.blockSignals(True)
         self.master_slider.setValue(value)

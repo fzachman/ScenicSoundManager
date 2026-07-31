@@ -905,3 +905,60 @@ def test_plain_close_does_not_restore_or_relaunch(main_window, monkeypatch):
     main_window.close()
     assert relaunches == []
     assert not list(Path(main_window.db.db_path).parent.glob("*pre-restore*"))
+
+
+class TestMasterVolumeDefault:
+    """Fresh installs must start at 100%, not muted.
+
+    QSettings.value(key, type=int) returns 0 — not None — for a missing key,
+    which is how every new install used to boot with the volume at zero.
+    """
+
+    @pytest.fixture
+    def make_window(self, qapp, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            main_window_module,
+            "DatabaseConnection",
+            lambda **kw: DatabaseConnection(str(tmp_path / "test.db")),
+        )
+        windows = []
+
+        def factory():
+            window = main_window_module.MainWindow()
+            windows.append(window)
+            return window
+
+        yield factory
+        for window in windows:
+            window.db.close()
+        self._set_saved_volume(None)
+
+    @staticmethod
+    def _set_saved_volume(value):
+        settings = QSettings()
+        settings.beginGroup(main_window_module.MainWindow.SETTINGS_GROUP)
+        key = main_window_module.MainWindow.SETTINGS_MASTER_VOLUME
+        if value is None:
+            settings.remove(key)
+        else:
+            settings.setValue(key, value)
+        settings.endGroup()
+
+    def test_fresh_install_defaults_to_full_volume(self, make_window):
+        self._set_saved_volume(None)
+        window = make_window()
+        assert window.audio_engine.master_volume == 100
+        assert window.master_slider.value() == 100
+        assert window.master_value_label.text() == "100%"
+
+    def test_saved_volume_is_restored(self, make_window):
+        self._set_saved_volume(37)
+        window = make_window()
+        assert window.audio_engine.master_volume == 37
+        assert window.master_slider.value() == 37
+
+    def test_explicitly_saved_zero_survives(self, make_window):
+        self._set_saved_volume(0)
+        window = make_window()
+        assert window.audio_engine.master_volume == 0
+        assert window.master_slider.value() == 0
