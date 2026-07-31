@@ -126,12 +126,8 @@ class TagManager(QWidget):
         if self._allow_manage:
             # No custom stylesheet: inherits the global QPushButton look so it
             # reads as a button next to Clear. Square, matching Clear's height.
-            add_btn = QPushButton()
-            add_btn.setIcon(self._icons.icon("plus"))
-            add_btn.setIconSize(QSize(14, 14))
+            add_btn = QPushButton("Create new tag")
             add_btn.setToolTip("Create new tag")
-            side = clear_btn.sizeHint().height()
-            add_btn.setFixedSize(side, side)
             add_btn.clicked.connect(self._create_tag)
             header_layout.addWidget(add_btn)
 
