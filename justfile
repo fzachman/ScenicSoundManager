@@ -53,8 +53,16 @@ release: _preflight
     pre_answer="${pre_answer:-{{ if prerelease_flag == "--prerelease" { "y" } else { "n" } }}}"
     pre_flag=""
     case "$pre_answer" in [Yy]*) pre_flag="--prerelease" ;; esac
+    # Compose notes: "What's new" from the running unreleased file (bullets
+    # added change-by-change during development), then the standing template.
     notes_file="$(mktemp -t release-notes)"
-    cp docs/release-notes-base.md "$notes_file"
+    unreleased="docs/release-notes-unreleased.md"
+    if grep -q '[^[:space:]]' "$unreleased" 2>/dev/null; then
+        { printf "## What's new in %s\n\n" '{{version}}'; cat "$unreleased"; printf '\n'; cat docs/release-notes-base.md; } > "$notes_file"
+    else
+        echo "⚠ $unreleased is empty — release will have no What's-new section"
+        cp docs/release-notes-base.md "$notes_file"
+    fi
     printf 'Edit release notes in %s first? [y/N]: ' "${EDITOR:-nano}"
     read -r edit_answer || true
     case "$edit_answer" in [Yy]*) ${EDITOR:-nano} "$notes_file" ;; esac
@@ -65,7 +73,9 @@ release: _preflight
     git push origin "v{{version}}"
     (cd dist && ditto -c -k --keepParent "ScenicSound Manager.app" "ScenicSoundManager-{{version}}.zip")
     gh release create "v{{version}}" "dist/ScenicSoundManager-{{version}}.zip" --repo {{repo}} $pre_flag --title "$title" --notes-file "$notes_file"
+    : > "$unreleased"
     printf '\n✓ Released v%s — https://github.com/%s/releases/tag/v%s\n' '{{version}}' '{{repo}}' '{{version}}'
+    printf '· cleared %s — commit it to start the next cycle (git commit -am "Clear unreleased notes after v{{version}}")\n' "$unreleased"
 
 # Refuse to release from the wrong branch, a dirty tree, a stale/duplicate
 # version, or the wrong gh account — all BEFORE anything irreversible happens

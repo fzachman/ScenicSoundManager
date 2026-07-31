@@ -61,3 +61,4 @@ Each tab follows a **splitter pattern**: `*Widget` (container) = `*ListWidget` (
 - **Logging**: Use `structlog` via `app.shared.logging.get_logger(__name__)`. Info+ goes to `~/Library/Logs/ScenicSound/soundmanager.log` (rotated); the console only shows warning+.
 - **Drag-drop**: Custom MIME type + container widget pattern (see `TrackListContainer`, `PlaylistTrackListContainer`).
 - **Reusable dialogs**: `AudioFileSearchDialog` for track picking (supports `disabled_track_ids` for exclusion), `TextInputDialog` for name input.
+- **Release notes**: every user-visible change appends a player-facing bullet to `docs/release-notes-unreleased.md` in the same commit (part of definition-of-done; internal/dev-only changes don't). `just release` prepends the file as "What's new in \<version\>" above `docs/release-notes-base.md`, then clears it — commit the cleared file after releasing.
