@@ -516,7 +516,8 @@ class MainWindow(QMainWindow):
         )
         box.setInformativeText(
             "Before updating, back up your library "
-            "(File → Back Up Database…) so you can roll back if needed."
+            "(File → Back Up Database…) so you can roll back if needed. "
+            f"Then quit {APP_DISPLAY_NAME} before installing the new version."
         )
         open_btn = box.addButton(
             "Open Download Page", QMessageBox.ButtonRole.AcceptRole

@@ -57,6 +57,24 @@ def main():
     app.setOrganizationName("ScenicSound")
     app.setApplicationDisplayName(APP_DISPLAY_NAME)
 
+    # Refuse to run twice: two instances share one database, which is
+    # unsafe around schema upgrades (see app/single_instance.py). The
+    # lock must stay referenced for the app's lifetime.
+    from PyQt6.QtWidgets import QMessageBox
+
+    from app.single_instance import acquire_instance_lock
+
+    instance_lock = acquire_instance_lock()
+    if instance_lock is None:
+        QMessageBox.warning(
+            None,
+            "Already Running",
+            f"{APP_DISPLAY_NAME} is already running.\n\n"
+            "Close the other copy before opening a new one — two copies "
+            "sharing one library can corrupt it during upgrades.",
+        )
+        sys.exit(0)
+
     # Create and show main window
     window = MainWindow()
     window.show()

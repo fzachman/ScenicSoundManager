@@ -5,7 +5,7 @@
 3. **First launch:** macOS will refuse to open the app because it isn't code-signed yet. Open **System Settings → Privacy & Security**, scroll down, and click **"Open Anyway"**, then confirm. You only have to do this once.
    - On macOS Sonoma (14) or earlier you can instead right-click the app and choose **Open**.
 
-**Upgrading from an older version?** Back up your library first (**File → Back Up Database…**) so you can roll back to the old version if anything goes wrong. The app also snapshots your database automatically before upgrading its format, but your own backup is the sure thing.
+**Upgrading from an older version?** Back up your library first (**File → Back Up Database…**) so you can roll back to the old version if anything goes wrong, then **quit the app** before replacing it in Applications. The app also snapshots your database automatically before upgrading its format, but your own backup is the sure thing.
 
 ## Feedback
 

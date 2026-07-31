@@ -1,4 +1,1 @@
-- The library now reminds you that you can drag audio files anywhere onto it to import them (small hint under the file table).
-- Fixed the master volume starting at 0% on a fresh install — it now defaults to 100%.
-- Creating tags is easier to find: a labeled **Create new tag** button sits next to **Clear** at the top of the tag filter (previously a small "+" icon below the tags).
-- Tags selected in the filter now show a ✓ checkmark, so your active filter is easy to see on any tag color.
+- Only one copy of the app can run at a time now — launching a second shows a reminder instead. Two copies sharing one library could corrupt it during a version upgrade, and the update prompt now reminds you to quit before installing a new version.
