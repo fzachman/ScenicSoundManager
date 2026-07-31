@@ -123,6 +123,16 @@ class TagManager(QWidget):
         clear_btn.clicked.connect(self.clear_filter)
         header_layout.addWidget(clear_btn)
 
+        if self._allow_manage:
+            add_btn = QPushButton()
+            add_btn.setFixedSize(24, 24)
+            add_btn.setIcon(self._icons.icon("plus"))
+            add_btn.setIconSize(add_btn.size())
+            add_btn.setToolTip("Create new tag")
+            add_btn.setStyleSheet(Styles.compact_icon_button_style())
+            add_btn.clicked.connect(self._create_tag)
+            header_layout.addWidget(add_btn)
+
         header_layout.addStretch()
 
         layout.addLayout(header_layout)
@@ -144,19 +154,6 @@ class TagManager(QWidget):
 
         scroll.setWidget(self.tags_container)
         layout.addWidget(scroll)
-
-        if self._allow_manage:
-            footer_layout = QHBoxLayout()
-            add_btn = QPushButton()
-            add_btn.setFixedSize(24, 24)
-            add_btn.setIcon(self._icons.icon("plus"))
-            add_btn.setIconSize(add_btn.size())
-            add_btn.setToolTip("Create new tag")
-            add_btn.setStyleSheet(Styles.compact_icon_button_style())
-            add_btn.clicked.connect(self._create_tag)
-            footer_layout.addWidget(add_btn)
-            footer_layout.addStretch()
-            layout.addLayout(footer_layout)
 
     def refresh_tags(self):
         """Reload tags from database"""
