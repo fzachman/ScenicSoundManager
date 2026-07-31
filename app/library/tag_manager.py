@@ -1,6 +1,6 @@
 """Tag management widget"""
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -124,12 +124,14 @@ class TagManager(QWidget):
         header_layout.addWidget(clear_btn)
 
         if self._allow_manage:
+            # No custom stylesheet: inherits the global QPushButton look so it
+            # reads as a button next to Clear. Square, matching Clear's height.
             add_btn = QPushButton()
-            add_btn.setFixedSize(24, 24)
             add_btn.setIcon(self._icons.icon("plus"))
-            add_btn.setIconSize(add_btn.size())
+            add_btn.setIconSize(QSize(14, 14))
             add_btn.setToolTip("Create new tag")
-            add_btn.setStyleSheet(Styles.compact_icon_button_style())
+            side = clear_btn.sizeHint().height()
+            add_btn.setFixedSize(side, side)
             add_btn.clicked.connect(self._create_tag)
             header_layout.addWidget(add_btn)
 
