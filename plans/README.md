@@ -40,6 +40,7 @@ for future audio-test work: `python-vlc` IS importable in this env (so
 | 009 | Repair library: find + relink moved audio files (user-requested feature) | Feature | M–L | — | SHIPPED 2026-07-22 (see `009-repair-library.md`): File → Repair Library… with Spotlight + folder-walk candidate search, fingerprint-confirmed matches, preview/accept UI. Possible follow-up: "show unlinked files" filter in Library tab |
 | 010 | First real build (py2app), VLC-missing dialog, release/versioning conventions | Infra | M | — | IN PROGRESS 2026-07-22 (see `010-first-build.md`): no VLC bundling for beta (require VLC.app), GitHub Releases for artifacts, semver from `app.__version__` |
 | 012 | Windows support: platform-neutral paths, then PyInstaller build | Feature | L | — | TODO, deferred by design (see `012-windows-support.md`): phase 1 (paths via QStandardPaths) cheap and anytime; phase 2 waits for real Windows demand |
+| 013 | Tag create/edit redesign: distinct default palette, native color picker + copy-from-tag | Polish | M | — | TODO, stowed 2026-07-31 (see `013-tag-creation-redesign.md`); beta feedback + owner gripes; pill text-contrast fix could ship independently |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
