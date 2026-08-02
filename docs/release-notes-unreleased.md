@@ -1,1 +1,2 @@
 - Only one copy of the app can run at a time now — launching a second shows a reminder instead. Two copies sharing one library could corrupt it during a version upgrade, and the update prompt now reminds you to quit before installing a new version.
+- The window remembers its size and position between launches (the soundboard already remembered its height, collapsed state, and popped-out position — now the window around it keeps up).

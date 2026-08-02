@@ -962,3 +962,85 @@ class TestMasterVolumeDefault:
         window = make_window()
         assert window.audio_engine.master_volume == 0
         assert window.master_slider.value() == 0
+
+
+class TestWindowStatePersistence:
+    """closeEvent persists window geometry + dock layout; __init__ restores.
+
+    Offscreen caveat: the virtual screen is tiny, so Qt's fit-to-screen
+    logic rewrites restored window geometry (verified exact on a real
+    display). These tests pin what is deterministic headless: the dock's
+    floating state and size, and that geometry bytes were saved at all.
+    """
+
+    @pytest.fixture
+    def clean_ui_settings(self):
+        def _clear():
+            settings = QSettings()
+            settings.beginGroup(main_window_module.MainWindow.SETTINGS_UI_GROUP)
+            settings.remove(main_window_module.MainWindow.SETTINGS_WINDOW_GEOMETRY)
+            settings.remove(main_window_module.MainWindow.SETTINGS_WINDOW_STATE)
+            settings.endGroup()
+
+        _clear()
+        yield
+        _clear()
+
+    @pytest.fixture
+    def make_window(self, qapp, tmp_path, monkeypatch, clean_ui_settings):
+        monkeypatch.setattr(
+            main_window_module,
+            "DatabaseConnection",
+            lambda **kw: DatabaseConnection(str(tmp_path / "test.db")),
+        )
+        windows = []
+
+        def factory():
+            window = main_window_module.MainWindow()
+            window.show()
+            qapp.processEvents()
+            windows.append(window)
+            return window
+
+        yield factory
+        for window in windows:
+            window.db.close()
+
+    def test_floating_dock_state_and_size_round_trip(self, qapp, make_window):
+        first = make_window()
+        first.soundboard_dock.setFloating(True)
+        qapp.processEvents()
+        first.soundboard_dock.resize(500, 260)
+        qapp.processEvents()
+        first.close()
+        qapp.processEvents()
+
+        second = make_window()
+        assert second.soundboard_dock.isFloating()
+        assert second.soundboard_dock.size().width() == 500
+        assert second.soundboard_dock.size().height() == 260
+
+    def test_redocking_round_trips_too(self, qapp, make_window):
+        first = make_window()
+        first.soundboard_dock.setFloating(True)
+        qapp.processEvents()
+        first.soundboard_dock.setFloating(False)
+        qapp.processEvents()
+        first.close()
+        qapp.processEvents()
+
+        second = make_window()
+        assert not second.soundboard_dock.isFloating()
+
+    def test_close_saves_window_geometry_bytes(self, qapp, make_window):
+        first = make_window()
+        first.close()
+        qapp.processEvents()
+
+        settings = QSettings()
+        settings.beginGroup(main_window_module.MainWindow.SETTINGS_UI_GROUP)
+        geometry = settings.value(
+            main_window_module.MainWindow.SETTINGS_WINDOW_GEOMETRY
+        )
+        settings.endGroup()
+        assert geometry is not None and len(bytes(geometry)) > 0

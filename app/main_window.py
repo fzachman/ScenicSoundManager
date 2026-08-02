@@ -70,6 +70,7 @@ class MainWindow(QMainWindow):
     SETTINGS_UI_GROUP = "ui"
     SETTINGS_ACTIVE_TAB = "active_tab"
     SETTINGS_WINDOW_STATE = "window_state"
+    SETTINGS_WINDOW_GEOMETRY = "window_geometry"
     SETTINGS_LAST_SCENE_ID = "last_scene_id"
     SETTINGS_LAST_PLAYLIST_ID = "last_playlist_id"
     SETTINGS_SKIP_UPDATE = "updates/skip_version"
@@ -817,17 +818,25 @@ class MainWindow(QMainWindow):
         settings.endGroup()
 
     def _save_window_state(self):
-        """Persist dock layout (soundboard height / floating geometry)."""
+        """Persist window geometry + dock layout (soundboard height /
+        floating geometry)."""
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_UI_GROUP)
+        settings.setValue(self.SETTINGS_WINDOW_GEOMETRY, self.saveGeometry())
         settings.setValue(self.SETTINGS_WINDOW_STATE, self.saveState())
         settings.endGroup()
 
     def _restore_window_state(self):
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_UI_GROUP)
+        geometry = settings.value(self.SETTINGS_WINDOW_GEOMETRY)
         state = settings.value(self.SETTINGS_WINDOW_STATE)
         settings.endGroup()
+        # Qt-recommended order: geometry first, then dock state. Qt sanity-
+        # checks restored geometry against the current screens, so a window
+        # saved on a disconnected monitor comes back on a visible one.
+        if geometry is not None:
+            self.restoreGeometry(geometry)
         if state is not None:
             self.restoreState(state)
 
