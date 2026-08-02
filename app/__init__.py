@@ -1,6 +1,6 @@
 """SoundManager - D&D Audio Soundscape Manager"""
 
-__version__ = "0.9.2"
+__version__ = "0.9.3"
 
 # User-facing product name (menu bar, window title, About box). The internal
 # QApplication/QSettings name stays "SoundManager" — renaming it would orphan
