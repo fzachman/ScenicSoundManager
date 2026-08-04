@@ -134,9 +134,18 @@ def test_accept_persists_and_applies_theme(remote_settings, theme_settings):
     assert Styles.active_theme == "light"
 
 
-def test_reject_leaves_theme_untouched(remote_settings, theme_settings):
+def test_theme_previews_live_on_selection(remote_settings, theme_settings):
     dialog = SettingsDialog()
     dialog.theme_combo.setCurrentIndex(dialog.theme_combo.findData("light"))
+    # Applied immediately for preview, but not yet persisted.
+    assert Styles.active_theme == "light"
+    assert not theme_settings.contains(SETTINGS_THEME_KEY)
+
+
+def test_reject_reverts_theme_preview(remote_settings, theme_settings):
+    dialog = SettingsDialog()
+    dialog.theme_combo.setCurrentIndex(dialog.theme_combo.findData("light"))
+    assert Styles.active_theme == "light"
     dialog.reject()
     assert not theme_settings.contains(SETTINGS_THEME_KEY)
     assert Styles.active_theme == "dark"

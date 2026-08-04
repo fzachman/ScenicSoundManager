@@ -2,8 +2,9 @@
 
 Two sections: appearance (theme) and the remote-control WebSocket server.
 The dialog reads and writes the QSettings each is configured from; the theme
-applies live on OK, and MainWindow restarts the remote server after an
-accepted change (see ``remote_config_changed``).
+previews live as it's picked (OK persists, Cancel reverts), and MainWindow
+restarts the remote server after an accepted change (see
+``remote_config_changed``).
 """
 
 from PyQt6.QtCore import QSettings
@@ -50,8 +51,17 @@ class SettingsDialog(QDialog):
         self.theme_combo.setStyleSheet(Styles.combobox_style())
         self.theme_combo.addItem("Dark", "dark")
         self.theme_combo.addItem("Light", "light")
+        # AdjustToContents alone undersizes with the stylesheet + popup
+        # checkmark; the minimum width keeps the label from clipping.
+        self.theme_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+        self.theme_combo.setMinimumWidth(140)
         current_index = self.theme_combo.findData(theme_manager.saved_theme())
         self.theme_combo.setCurrentIndex(max(current_index, 0))
+        # Live preview: apply (but don't persist) as soon as a theme is
+        # picked; OK persists it, Cancel/close reverts to the saved theme.
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_selected)
         theme_row.addWidget(self.theme_combo)
         theme_row.addStretch()
         layout.addLayout(theme_row)
@@ -104,6 +114,9 @@ class SettingsDialog(QDialog):
     def _on_enabled_toggled(self, checked: bool):
         self.port_spinbox.setEnabled(checked)
 
+    def _on_theme_selected(self, _index: int):
+        theme_manager.set_theme(self.theme_combo.currentData())
+
     @staticmethod
     def _read_remote_settings() -> tuple[bool, int]:
         settings = QSettings()
@@ -125,6 +138,11 @@ class SettingsDialog(QDialog):
         settings.endGroup()
         theme_manager.save_and_apply(self.theme_combo.currentData())
         super().accept()
+
+    def reject(self):
+        # Undo any live theme preview (Cancel, Esc, or window close).
+        theme_manager.set_theme(theme_manager.saved_theme())
+        super().reject()
 
     def remote_config_changed(self) -> bool:
         """True if the accepted values differ from what the dialog opened with
