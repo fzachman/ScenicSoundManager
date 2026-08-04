@@ -2,7 +2,7 @@
 and tinted icon rendering."""
 
 import pytest
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QSettings, QSize
 
 from app.shared.icons import IconLibrary
 from app.shared.styles import Styles
@@ -125,3 +125,13 @@ class TestIconTinting:
         dark_icon = library.icon("plus")
         Styles.set_theme("light")
         assert library.icon("plus") is not dark_icon
+
+    def test_icon_respects_requested_size_at_high_dpr(self, qapp):
+        """Regression: a fixed pre-rendered pixmap ignored setIconSize on 2x
+        displays and overflowed its button; the SVG engine must render at the
+        requested logical size for any device pixel ratio."""
+        icon = IconLibrary().icon("play-solid")
+        for logical in (12, 16):
+            pixmap = icon.pixmap(QSize(logical, logical), 2.0)
+            size = pixmap.deviceIndependentSize()
+            assert (size.width(), size.height()) == (logical, logical)
