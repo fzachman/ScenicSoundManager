@@ -1,3 +1,3 @@
-- New in Settings: choose between the Dark and Light themes — the whole app switches instantly, no restart needed. (The light theme is a first cut; polish is coming.)
+- New in Settings: choose between the Dark and Light themes — picking one previews it instantly across the whole app, OK keeps it, Cancel switches back. No restart needed. (The light theme is a first cut; polish is coming.)
 - Tag labels now automatically use dark or light text based on the tag's color, so bright tags (yellow, lime) are finally readable.
-- Toolbar and playback icons render crisper on Retina displays and now match the color of the button they sit on.
+- Playback and toolbar icons now match the color of the button they sit on (some previously rendered black).
