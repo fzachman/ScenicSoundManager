@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..shared.styles import Styles
+from ..shared.theme import theme_manager
 
 
 class PaginationBar(QWidget):
@@ -37,6 +38,8 @@ class PaginationBar(QWidget):
         self._setup_ui()
         self._restore_page_size()
         self._update_display()
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
 
     def _setup_ui(self):
         layout = QHBoxLayout(self)
@@ -45,20 +48,17 @@ class PaginationBar(QWidget):
 
         # File count label (left side)
         self.count_label = QLabel()
-        self.count_label.setStyleSheet(Styles.subtle_text_style(size=12))
         layout.addWidget(self.count_label)
 
         layout.addStretch()
 
         # Page size selector
-        size_label = QLabel("Show:")
-        size_label.setStyleSheet(Styles.subtle_text_style(size=12))
-        layout.addWidget(size_label)
+        self._size_label = QLabel("Show:")
+        layout.addWidget(self._size_label)
 
         self.page_size_combo = QComboBox()
         self.page_size_combo.addItems(self.PAGE_SIZE_OPTIONS)
         self.page_size_combo.setFixedWidth(70)
-        self.page_size_combo.setStyleSheet(self._combobox_style())
         self.page_size_combo.currentTextChanged.connect(self._on_page_size_changed)
         layout.addWidget(self.page_size_combo)
 
@@ -87,8 +87,21 @@ class PaginationBar(QWidget):
     def _nav_button(self, text: str) -> QPushButton:
         btn = QPushButton(text)
         btn.setFixedSize(28, 24)
-        btn.setStyleSheet(self._nav_button_style())
         return btn
+
+    def _apply_theme_styles(self):
+        """Apply palette-dependent styles; re-run on theme change."""
+        self.count_label.setStyleSheet(Styles.subtle_text_style(size=12))
+        self._size_label.setStyleSheet(Styles.subtle_text_style(size=12))
+        self.page_size_combo.setStyleSheet(self._combobox_style())
+        nav_style = self._nav_button_style()
+        for btn in (self.first_btn, self.prev_btn, self.next_btn, self.last_btn):
+            btn.setStyleSheet(nav_style)
+        # Restyle the live page-number buttons in place (no rebuild: keeps
+        # the current page window untouched).
+        for page_btn in self._page_buttons:
+            is_current = int(page_btn.text()) - 1 == self._current_page
+            page_btn.setStyleSheet(self._page_button_style(is_current))
 
     def set_files(self, files: list, preserve_page: bool = False):
         """Store full file list and optionally reset to page 0"""

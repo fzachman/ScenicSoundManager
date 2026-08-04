@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from .no_scroll_slider import NoScrollSlider
 from .styles import Styles
+from .theme import theme_manager
 
 
 def _format_ms(position_ms: int) -> str:
@@ -49,7 +50,6 @@ class PositionScrubber(QWidget):
 
         self.position_label = QLabel("0:00")
         self.position_label.setFixedWidth(45)
-        self.position_label.setStyleSheet(Styles.subtle_text_style(size=11))
         self.position_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
@@ -65,12 +65,19 @@ class PositionScrubber(QWidget):
 
         self.duration_label = QLabel("--:--")
         self.duration_label.setFixedWidth(45)
-        self.duration_label.setStyleSheet(Styles.subtle_text_style(size=11))
         self.duration_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.duration_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
         layout.addWidget(self.duration_label)
+
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
+
+    def _apply_theme_styles(self) -> None:
+        """Re-apply palette-dependent styles; re-run on theme change."""
+        self.position_label.setStyleSheet(Styles.subtle_text_style(size=11))
+        self.duration_label.setStyleSheet(Styles.subtle_text_style(size=11))
 
     # --- Drive from the player ---
 

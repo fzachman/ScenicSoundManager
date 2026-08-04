@@ -22,6 +22,7 @@ from ..audio import AudioEngine, TrackPlayer
 from ..database import AudioFile, DatabaseConnection
 from ..shared.icons import IconLibrary
 from ..shared.styles import Styles
+from ..shared.theme import theme_manager
 from .tag_manager import TagAssigner
 
 _log = get_logger(__name__)
@@ -111,6 +112,26 @@ class FileTableWidget(QTableWidget):
 
         self._setup_table()
         self._setup_column_button()
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
+
+    def _apply_theme_styles(self):
+        """Re-apply palette-dependent icons/styles; re-run on theme change.
+
+        Row play/pause buttons bake icon colors at render time, so each is
+        re-rendered with its current playing/stopped state. TagAssigner cell
+        widgets restyle themselves via their own theme wiring.
+        """
+        self._column_btn.setIcon(self._icons.icon("list"))
+        self._column_btn.setStyleSheet(self._column_button_style())
+        for row in range(self.rowCount()):
+            item = self.item(row, self.COL_TITLE)
+            playing = (
+                self._playing_file_id is not None
+                and item is not None
+                and item.data(Qt.ItemDataRole.UserRole) == self._playing_file_id
+            )
+            self._update_play_button(row, playing)
 
     def _setup_table(self):
         """Configure table settings"""
@@ -206,7 +227,9 @@ class FileTableWidget(QTableWidget):
 
         play_btn = QPushButton()
         play_btn.setFixedSize(16, 16)
-        play_btn.setIcon(self._icons.icon("play-solid"))
+        play_btn.setIcon(
+            self._icons.icon("play-solid", Styles.contrast_text_color(Styles.SUCCESS))
+        )
         play_btn.setIconSize(QSize(12, 12))
         play_btn.setStyleSheet(Styles.small_play_button_style())
         play_btn.setProperty("file_id", audio_file.id)
@@ -319,12 +342,20 @@ class FileTableWidget(QTableWidget):
             if btn:
                 if playing:
                     btn.setText("")
-                    btn.setIcon(self._icons.icon("pause-solid"))
+                    btn.setIcon(
+                        self._icons.icon(
+                            "pause-solid", Styles.contrast_text_color(Styles.DANGER)
+                        )
+                    )
                     btn.setIconSize(QSize(12, 12))
                     btn.setStyleSheet(Styles.small_stop_button_style())
                 else:
                     btn.setText("")
-                    btn.setIcon(self._icons.icon("play-solid"))
+                    btn.setIcon(
+                        self._icons.icon(
+                            "play-solid", Styles.contrast_text_color(Styles.SUCCESS)
+                        )
+                    )
                     btn.setIconSize(QSize(12, 12))
                     btn.setStyleSheet(Styles.small_play_button_style())
 
@@ -670,10 +701,8 @@ class FileTableWidget(QTableWidget):
         header = self.horizontalHeader()
         self._column_btn = QPushButton(header)
         self._column_btn.setFixedSize(24, 24)
-        self._column_btn.setIcon(self._icons.icon("list"))
         self._column_btn.setIconSize(QSize(14, 14))
         self._column_btn.setToolTip("Customize columns")
-        self._column_btn.setStyleSheet(self._column_button_style())
         self._column_btn.clicked.connect(self._show_column_menu)
         header.installEventFilter(self)
         self._reposition_column_button()

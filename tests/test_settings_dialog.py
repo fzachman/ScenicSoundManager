@@ -1,10 +1,12 @@
-"""Tests for the app Settings dialog (remote-control section)."""
+"""Tests for the app Settings dialog (appearance + remote-control sections)."""
 
 import pytest
 from PyQt6.QtCore import QSettings
 
 from app.remote import DEFAULT_PORT, SETTINGS_ENABLED, SETTINGS_GROUP, SETTINGS_PORT
 from app.settings_dialog import SettingsDialog
+from app.shared.styles import Styles
+from app.shared.theme import DEFAULT_THEME, SETTINGS_THEME_KEY
 
 
 @pytest.fixture(autouse=True)
@@ -101,3 +103,40 @@ def test_remote_config_changed_true_on_port_change(remote_settings):
     dialog.port_spinbox.setValue(DEFAULT_PORT + 1)
     dialog.accept()
     assert dialog.remote_config_changed() is True
+
+
+@pytest.fixture
+def theme_settings(qapp):
+    """Clean theme setting and restore the dark theme around each test."""
+    settings = QSettings()
+    settings.remove(SETTINGS_THEME_KEY)
+    yield settings
+    settings.remove(SETTINGS_THEME_KEY)
+    Styles.set_theme(DEFAULT_THEME)
+
+
+def test_theme_combo_defaults_to_dark(remote_settings, theme_settings):
+    dialog = SettingsDialog()
+    assert dialog.theme_combo.currentData() == "dark"
+
+
+def test_theme_combo_reflects_saved_theme(remote_settings, theme_settings):
+    theme_settings.setValue(SETTINGS_THEME_KEY, "light")
+    dialog = SettingsDialog()
+    assert dialog.theme_combo.currentData() == "light"
+
+
+def test_accept_persists_and_applies_theme(remote_settings, theme_settings):
+    dialog = SettingsDialog()
+    dialog.theme_combo.setCurrentIndex(dialog.theme_combo.findData("light"))
+    dialog.accept()
+    assert theme_settings.value(SETTINGS_THEME_KEY, type=str) == "light"
+    assert Styles.active_theme == "light"
+
+
+def test_reject_leaves_theme_untouched(remote_settings, theme_settings):
+    dialog = SettingsDialog()
+    dialog.theme_combo.setCurrentIndex(dialog.theme_combo.findData("light"))
+    dialog.reject()
+    assert not theme_settings.contains(SETTINGS_THEME_KEY)
+    assert Styles.active_theme == "dark"

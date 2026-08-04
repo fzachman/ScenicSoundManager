@@ -1,27 +1,117 @@
 """Application styling constants and reusable stylesheets."""
 
+from typing import ClassVar
+
 
 class Styles:
-    """Application-wide style constants and stylesheets."""
+    """Application-wide style constants and stylesheets.
 
-    # Color palette
-    PRIMARY = "#5CA4FF"
-    PRIMARY_DARK = "#4388E0"
-    SECONDARY = "#7A8597"
-    SUCCESS = "#41C784"
-    WARNING = "#F2C14E"
-    DANGER = "#F36B6B"
+    Palette tokens (PRIMARY, BACKGROUND, ...) are class attributes whose
+    values belong to the active theme; call set_theme() to swap them.
+    Stylesheet helpers read the tokens at call time, so styles built after
+    a swap automatically use the new palette.
+    """
 
-    BACKGROUND = "#13171D"
-    BACKGROUND_ELEVATED = "#1A2029"
-    BACKGROUND_LIGHT = "#222A35"
-    BACKGROUND_LIGHTER = "#2B3543"
-    BACKGROUND_HOVER = "#354256"
-    TEXT = "#F3F6FB"
-    TEXT_MUTED = "#A1ADBE"
-    TEXT_SUBTLE = "#7A8698"
-    BORDER = "#344154"
-    BORDER_STRONG = "#4A586E"
+    DARK_PALETTE: ClassVar[dict[str, str]] = {
+        "PRIMARY": "#5CA4FF",
+        "PRIMARY_DARK": "#4388E0",
+        "SECONDARY": "#7A8597",
+        "SUCCESS": "#41C784",
+        "SUCCESS_DARK": "#33A66D",
+        "WARNING": "#F2C14E",
+        "WARNING_DARK": "#D9AA3C",
+        "DANGER": "#F36B6B",
+        "DANGER_DARK": "#DA5A5A",
+        "BACKGROUND": "#13171D",
+        "BACKGROUND_ELEVATED": "#1A2029",
+        "BACKGROUND_LIGHT": "#222A35",
+        "BACKGROUND_LIGHTER": "#2B3543",
+        "BACKGROUND_HOVER": "#354256",
+        "TEXT": "#F3F6FB",
+        "TEXT_MUTED": "#A1ADBE",
+        "TEXT_SUBTLE": "#7A8698",
+        "BORDER": "#344154",
+        "BORDER_STRONG": "#4A586E",
+    }
+
+    # Provisional values — to be refined by the design pass.
+    LIGHT_PALETTE: ClassVar[dict[str, str]] = {
+        "PRIMARY": "#2F6FDB",
+        "PRIMARY_DARK": "#2458B8",
+        "SECONDARY": "#68748A",
+        "SUCCESS": "#1F9D61",
+        "SUCCESS_DARK": "#188550",
+        "WARNING": "#E0A626",
+        "WARNING_DARK": "#C4901D",
+        "DANGER": "#D64545",
+        "DANGER_DARK": "#BC3A3A",
+        "BACKGROUND": "#F5F7FA",
+        "BACKGROUND_ELEVATED": "#FFFFFF",
+        "BACKGROUND_LIGHT": "#EDF1F6",
+        "BACKGROUND_LIGHTER": "#E2E8F0",
+        "BACKGROUND_HOVER": "#D5DEEA",
+        "TEXT": "#1A2230",
+        "TEXT_MUTED": "#5A6678",
+        "TEXT_SUBTLE": "#8592A6",
+        "BORDER": "#D3DCE8",
+        "BORDER_STRONG": "#AEBACB",
+    }
+
+    PALETTES: ClassVar[dict[str, dict[str, str]]] = {
+        "dark": DARK_PALETTE,
+        "light": LIGHT_PALETTE,
+    }
+
+    active_theme: ClassVar[str] = "dark"
+
+    # Active palette tokens — assigned by set_theme() at the bottom of
+    # this module and whenever the theme changes.
+    PRIMARY: ClassVar[str]
+    PRIMARY_DARK: ClassVar[str]
+    SECONDARY: ClassVar[str]
+    SUCCESS: ClassVar[str]
+    SUCCESS_DARK: ClassVar[str]
+    WARNING: ClassVar[str]
+    WARNING_DARK: ClassVar[str]
+    DANGER: ClassVar[str]
+    DANGER_DARK: ClassVar[str]
+    BACKGROUND: ClassVar[str]
+    BACKGROUND_ELEVATED: ClassVar[str]
+    BACKGROUND_LIGHT: ClassVar[str]
+    BACKGROUND_LIGHTER: ClassVar[str]
+    BACKGROUND_HOVER: ClassVar[str]
+    TEXT: ClassVar[str]
+    TEXT_MUTED: ClassVar[str]
+    TEXT_SUBTLE: ClassVar[str]
+    BORDER: ClassVar[str]
+    BORDER_STRONG: ClassVar[str]
+
+    @classmethod
+    def set_theme(cls, name: str) -> None:
+        """Activate a palette by name; unknown names fall back to dark."""
+        palette = cls.PALETTES.get(name, cls.DARK_PALETTE)
+        cls.active_theme = name if name in cls.PALETTES else "dark"
+        for key, value in palette.items():
+            setattr(cls, key, value)
+
+    @staticmethod
+    def tint(color: str, alpha: float) -> str:
+        """Translucent rgba() form of a hex color, for overlay tints."""
+        color = color.lstrip("#")
+        r, g, b = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
+        return f"rgba({r}, {g}, {b}, {alpha})"
+
+    @staticmethod
+    def contrast_text_color(background: str) -> str:
+        """Black-ish or white text, whichever reads better on background."""
+        hex_color = background.lstrip("#")
+        r, g, b = (
+            int(hex_color[0:2], 16),
+            int(hex_color[2:4], 16),
+            int(hex_color[4:6], 16),
+        )
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return "#11161C" if luminance > 186 else "#FFFFFF"
 
     # Tag colors
     TAG_COLORS = [
@@ -43,17 +133,19 @@ class Styles:
         "#FF8A65",  # Deep Orange
     ]
 
-    # Main application stylesheet
-    APP_STYLESHEET = f"""
+    @classmethod
+    def app_stylesheet(cls) -> str:
+        """Full application stylesheet for the active theme."""
+        return f"""
         QMainWindow, QWidget {{
-            background-color: {BACKGROUND};
-            color: {TEXT};
+            background-color: {cls.BACKGROUND};
+            color: {cls.TEXT};
             font-size: 13px;
         }}
 
         QWidget {{
-            selection-background-color: {PRIMARY};
-            selection-color: {TEXT};
+            selection-background-color: {cls.PRIMARY};
+            selection-color: {cls.TEXT};
         }}
 
         QTabWidget {{
@@ -71,10 +163,10 @@ class Styles:
         }}
 
         QTabBar::tab {{
-            background-color: {BACKGROUND_ELEVATED};
-            color: {TEXT_MUTED};
+            background-color: {cls.BACKGROUND_ELEVATED};
+            color: {cls.TEXT_MUTED};
             padding: 12px 22px;
-            border: 1px solid {BORDER};
+            border: 1px solid {cls.BORDER};
             border-bottom: none;
             border-top-left-radius: 14px;
             border-top-right-radius: 14px;
@@ -86,59 +178,59 @@ class Styles:
         }}
 
         QTabBar::tab:selected {{
-            background-color: {BACKGROUND_LIGHT};
-            color: {TEXT};
-            border-color: {BORDER_STRONG};
+            background-color: {cls.BACKGROUND_LIGHT};
+            color: {cls.TEXT};
+            border-color: {cls.BORDER_STRONG};
         }}
 
         QTabBar::tab:hover:!selected {{
-            background-color: {BACKGROUND_LIGHT};
-            color: {TEXT};
+            background-color: {cls.BACKGROUND_LIGHT};
+            color: {cls.TEXT};
         }}
 
         QPushButton {{
-            background-color: {BACKGROUND_LIGHT};
-            color: {TEXT};
-            border: 1px solid {BORDER};
+            background-color: {cls.BACKGROUND_LIGHT};
+            color: {cls.TEXT};
+            border: 1px solid {cls.BORDER};
             padding: 9px 16px;
             border-radius: 10px;
             font-weight: 600;
         }}
 
         QPushButton:hover {{
-            background-color: {BACKGROUND_HOVER};
-            border-color: {BORDER_STRONG};
+            background-color: {cls.BACKGROUND_HOVER};
+            border-color: {cls.BORDER_STRONG};
         }}
 
         QPushButton:pressed {{
-            background-color: {BACKGROUND_LIGHTER};
+            background-color: {cls.BACKGROUND_LIGHTER};
         }}
 
         QPushButton:disabled {{
-            background-color: {BACKGROUND_ELEVATED};
-            color: {TEXT_SUBTLE};
-            border-color: {BORDER};
+            background-color: {cls.BACKGROUND_ELEVATED};
+            color: {cls.TEXT_SUBTLE};
+            border-color: {cls.BORDER};
         }}
 
         QLineEdit {{
-            background-color: {BACKGROUND_ELEVATED};
-            color: {TEXT};
-            border: 1px solid {BORDER};
+            background-color: {cls.BACKGROUND_ELEVATED};
+            color: {cls.TEXT};
+            border: 1px solid {cls.BORDER};
             padding: 9px 12px;
             border-radius: 10px;
         }}
 
         QLineEdit:focus {{
-            border-color: {PRIMARY};
-            background-color: {BACKGROUND_LIGHT};
+            border-color: {cls.PRIMARY};
+            background-color: {cls.BACKGROUND_LIGHT};
         }}
 
         QTableWidget {{
-            background-color: {BACKGROUND_ELEVATED};
-            alternate-background-color: {BACKGROUND};
-            color: {TEXT};
-            border: 1px solid {BORDER};
-            gridline-color: {BORDER};
+            background-color: {cls.BACKGROUND_ELEVATED};
+            alternate-background-color: {cls.BACKGROUND};
+            color: {cls.TEXT};
+            border: 1px solid {cls.BORDER};
+            gridline-color: {cls.BORDER};
         }}
 
         QTableWidget::item {{
@@ -149,42 +241,42 @@ class Styles:
         QTableWidget QLineEdit {{
             padding: 0px 8px;
             border-radius: 0px;
-            border: 1px solid {PRIMARY};
-            background-color: {BACKGROUND_LIGHT};
+            border: 1px solid {cls.PRIMARY};
+            background-color: {cls.BACKGROUND_LIGHT};
         }}
 
         QTableWidget::item:selected {{
-            background-color: {BACKGROUND_HOVER};
-            color: {TEXT};
+            background-color: {cls.BACKGROUND_HOVER};
+            color: {cls.TEXT};
         }}
 
         QAbstractScrollArea::corner {{
-            background-color: {BACKGROUND_ELEVATED};
+            background-color: {cls.BACKGROUND_ELEVATED};
             border: none;
         }}
 
         QTableCornerButton::section {{
-            background-color: {BACKGROUND_LIGHT};
+            background-color: {cls.BACKGROUND_LIGHT};
             border: none;
-            border-right: 1px solid {BORDER};
-            border-bottom: 1px solid {BORDER};
+            border-right: 1px solid {cls.BORDER};
+            border-bottom: 1px solid {cls.BORDER};
         }}
 
         QHeaderView::section {{
-            background-color: {BACKGROUND_LIGHT};
-            color: {TEXT_MUTED};
+            background-color: {cls.BACKGROUND_LIGHT};
+            color: {cls.TEXT_MUTED};
             padding: 10px 8px;
             border: none;
-            border-right: 1px solid {BORDER};
-            border-bottom: 1px solid {BORDER};
+            border-right: 1px solid {cls.BORDER};
+            border-bottom: 1px solid {cls.BORDER};
             font-size: 12px;
             font-weight: 600;
         }}
 
         QListWidget {{
-            background-color: {BACKGROUND_ELEVATED};
-            color: {TEXT};
-            border: 1px solid {BORDER};
+            background-color: {cls.BACKGROUND_ELEVATED};
+            color: {cls.TEXT};
+            border: 1px solid {cls.BORDER};
             padding-top: 8px;
             padding-bottom: 8px;
             outline: none;
@@ -198,37 +290,37 @@ class Styles:
         }}
 
         QListWidget::item:selected {{
-            background-color: {BACKGROUND_LIGHTER};
-            border-color: {PRIMARY};
-            color: {TEXT};
+            background-color: {cls.BACKGROUND_LIGHTER};
+            border-color: {cls.PRIMARY};
+            color: {cls.TEXT};
         }}
 
         QListWidget::item:hover:!selected {{
-            background-color: {BACKGROUND_LIGHT};
-            border-color: {BORDER};
+            background-color: {cls.BACKGROUND_LIGHT};
+            border-color: {cls.BORDER};
         }}
 
         QSlider::groove:horizontal {{
             height: 6px;
-            background-color: {BACKGROUND_ELEVATED};
+            background-color: {cls.BACKGROUND_ELEVATED};
             border-radius: 3px;
         }}
 
         QSlider::handle:horizontal {{
-            background-color: {PRIMARY};
+            background-color: {cls.PRIMARY};
             width: 16px;
             margin: -6px 0;
             border-radius: 8px;
-            border: 2px solid {BACKGROUND};
+            border: 2px solid {cls.BACKGROUND};
         }}
 
         QSlider::sub-page:horizontal {{
-            background-color: {PRIMARY};
+            background-color: {cls.PRIMARY};
             border-radius: 3px;
         }}
 
         QCheckBox {{
-            color: {TEXT};
+            color: {cls.TEXT};
             spacing: 8px;
         }}
 
@@ -236,13 +328,13 @@ class Styles:
             width: 18px;
             height: 18px;
             border-radius: 4px;
-            border: 1px solid {BORDER};
-            background-color: {BACKGROUND_ELEVATED};
+            border: 1px solid {cls.BORDER};
+            background-color: {cls.BACKGROUND_ELEVATED};
         }}
 
         QCheckBox::indicator:checked {{
-            background-color: {PRIMARY};
-            border-color: {PRIMARY};
+            background-color: {cls.PRIMARY};
+            border-color: {cls.PRIMARY};
         }}
 
         QScrollArea {{
@@ -251,20 +343,20 @@ class Styles:
         }}
 
         QScrollBar:vertical {{
-            background-color: {BACKGROUND};
+            background-color: {cls.BACKGROUND};
             width: 12px;
             border: none;
             margin: 4px;
         }}
 
         QScrollBar::handle:vertical {{
-            background-color: {BACKGROUND_LIGHTER};
+            background-color: {cls.BACKGROUND_LIGHTER};
             border-radius: 6px;
             min-height: 30px;
         }}
 
         QScrollBar::handle:vertical:hover {{
-            background-color: {BACKGROUND_HOVER};
+            background-color: {cls.BACKGROUND_HOVER};
         }}
 
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
@@ -272,20 +364,20 @@ class Styles:
         }}
 
         QScrollBar:horizontal {{
-            background-color: {BACKGROUND};
+            background-color: {cls.BACKGROUND};
             height: 12px;
             border: none;
             margin: 4px;
         }}
 
         QScrollBar::handle:horizontal {{
-            background-color: {BACKGROUND_LIGHTER};
+            background-color: {cls.BACKGROUND_LIGHTER};
             border-radius: 6px;
             min-width: 30px;
         }}
 
         QScrollBar::handle:horizontal:hover {{
-            background-color: {BACKGROUND_HOVER};
+            background-color: {cls.BACKGROUND_HOVER};
         }}
 
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
@@ -293,33 +385,33 @@ class Styles:
         }}
 
         QSplitter::handle {{
-            background-color: {BORDER};
+            background-color: {cls.BORDER};
             width: 1px;
         }}
 
         QMainWindow::separator {{
-            background-color: {BORDER};
+            background-color: {cls.BORDER};
             height: 3px;
         }}
 
         QMainWindow::separator:hover {{
-            background-color: {PRIMARY};
+            background-color: {cls.PRIMARY};
         }}
 
         QDialog, QInputDialog {{
-            background-color: {BACKGROUND};
-            color: {TEXT};
+            background-color: {cls.BACKGROUND};
+            color: {cls.TEXT};
         }}
 
         QLabel {{
-            color: {TEXT};
+            color: {cls.TEXT};
             background: transparent;
         }}
 
         QMenu {{
-            background-color: {BACKGROUND_LIGHT};
-            color: {TEXT};
-            border: 1px solid {BORDER};
+            background-color: {cls.BACKGROUND_LIGHT};
+            color: {cls.TEXT};
+            border: 1px solid {cls.BORDER};
             border-radius: 10px;
             padding: 6px;
         }}
@@ -330,13 +422,13 @@ class Styles:
         }}
 
         QMenu::item:selected {{
-            background-color: {BACKGROUND_HOVER};
+            background-color: {cls.BACKGROUND_HOVER};
         }}
 
         QToolTip {{
-            background-color: {BACKGROUND_LIGHT};
-            color: {TEXT};
-            border: 1px solid {BORDER};
+            background-color: {cls.BACKGROUND_LIGHT};
+            color: {cls.TEXT};
+            border: 1px solid {cls.BORDER};
             padding: 6px 8px;
         }}
     """
@@ -472,7 +564,7 @@ class Styles:
         width = "2px" if border_color else "1px"
         return f"""
             background-color: {color};
-            color: white;
+            color: {Styles.contrast_text_color(color)};
             padding: 3px 10px;
             border-radius: 11px;
             min-height: 18px;
@@ -502,8 +594,8 @@ class Styles:
         return f"""
             QPushButton {{
                 background-color: {color};
-                color: white;
-                border: 1px solid rgba(255, 255, 255, 0.25);
+                color: {Styles.contrast_text_color(color)};
+                border: 1px solid {Styles.tint(Styles.contrast_text_color(color), 0.25)};
                 border-radius: 8px;
                 font-size: 12px;
                 font-weight: 700;
@@ -520,8 +612,8 @@ class Styles:
     def playback_button_style(is_active: bool) -> str:
         """Style for primary play and pause actions."""
         background = Styles.WARNING if is_active else Styles.SUCCESS
-        hover = "#D9AA3C" if is_active else "#33A66D"
-        text_color = "#11161C" if is_active else "white"
+        hover = Styles.WARNING_DARK if is_active else Styles.SUCCESS_DARK
+        text_color = Styles.contrast_text_color(background)
         return f"""
             QPushButton {{
                 background-color: {background};
@@ -548,7 +640,7 @@ class Styles:
         return f"""
             QPushButton {{
                 background-color: {Styles.SUCCESS};
-                color: white;
+                color: {Styles.contrast_text_color(Styles.SUCCESS)};
                 min-width: {size}px;
                 max-width: {size}px;
                 min-height: {size}px;
@@ -558,7 +650,7 @@ class Styles:
                 padding: 0;
             }}
             QPushButton:hover {{
-                background-color: #33A66D;
+                background-color: {Styles.SUCCESS_DARK};
             }}
         """
 
@@ -589,7 +681,7 @@ class Styles:
         return f"""
             QPushButton {{
                 background-color: {Styles.PRIMARY};
-                color: white;
+                color: {Styles.contrast_text_color(Styles.PRIMARY)};
                 border: none;
                 border-radius: {radius}px;
                 padding: 6px 12px;
@@ -627,7 +719,9 @@ class Styles:
         background = Styles.PRIMARY if active else Styles.BACKGROUND_LIGHTER
         border = Styles.PRIMARY if active else Styles.BORDER
         hover = Styles.PRIMARY_DARK if active else Styles.BACKGROUND_HOVER
-        color = "white" if active else Styles.TEXT_MUTED
+        color = (
+            Styles.contrast_text_color(Styles.PRIMARY) if active else Styles.TEXT_MUTED
+        )
         return f"""
             QPushButton {{
                 background-color: {background};
@@ -702,7 +796,7 @@ class Styles:
             }}
             QPushButton:hover {{
                 color: {Styles.DANGER};
-                background-color: rgba(243, 107, 107, 0.12);
+                background-color: {Styles.tint(Styles.DANGER, 0.12)};
             }}
         """
 
@@ -730,7 +824,7 @@ class Styles:
         border = Styles.PRIMARY if active else Styles.BORDER
         text = Styles.PRIMARY if active else Styles.TEXT_MUTED
         background = (
-            "rgba(92, 164, 255, 0.12)" if active else Styles.BACKGROUND_ELEVATED
+            Styles.tint(Styles.PRIMARY, 0.12) if active else Styles.BACKGROUND_ELEVATED
         )
         return f"""
             color: {text};
@@ -764,7 +858,7 @@ class Styles:
         return f"""
             QPushButton {{
                 background-color: {Styles.SUCCESS};
-                color: white;
+                color: {Styles.contrast_text_color(Styles.SUCCESS)};
                 min-width: 20px;
                 max-width: 20px;
                 min-height: 20px;
@@ -774,7 +868,7 @@ class Styles:
                 padding: 0 0 0 1px;
             }}
             QPushButton:hover {{
-                background-color: #33A66D;
+                background-color: {Styles.SUCCESS_DARK};
             }}
         """
 
@@ -784,7 +878,7 @@ class Styles:
         return f"""
             QPushButton {{
                 background-color: {Styles.DANGER};
-                color: white;
+                color: {Styles.contrast_text_color(Styles.DANGER)};
                 min-width: 20px;
                 max-width: 20px;
                 min-height: 20px;
@@ -794,6 +888,10 @@ class Styles:
                 padding: 0;
             }}
             QPushButton:hover {{
-                background-color: #DA5A5A;
+                background-color: {Styles.DANGER_DARK};
             }}
         """
+
+
+# Populate the active palette tokens at import time.
+Styles.set_theme("dark")

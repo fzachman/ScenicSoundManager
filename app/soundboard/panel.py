@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 
 from ..shared.icons import IconLibrary
 from ..shared.styles import Styles
+from ..shared.theme import theme_manager
 
 
 class SoundboardTitleBar(QWidget):
@@ -36,16 +37,16 @@ class SoundboardTitleBar(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("soundboardTitleBar")
-        self.setStyleSheet(Styles.dock_title_bar_style("QWidget#soundboardTitleBar"))
         self._icons = IconLibrary()
+        self._collapsed = False
+        self._floating = False
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(18, 6, 12, 6)
         layout.setSpacing(8)
 
-        title = QLabel("Soundboard")
-        title.setStyleSheet(Styles.title_style(size=13))
-        layout.addWidget(title)
+        self._title_label = QLabel("Soundboard")
+        layout.addWidget(self._title_label)
         layout.addStretch()
 
         self.collapse_btn = self._make_button()
@@ -56,8 +57,8 @@ class SoundboardTitleBar(QWidget):
         self.popout_btn.clicked.connect(self.popout_toggle_requested)
         layout.addWidget(self.popout_btn)
 
-        self.set_collapsed(False)
-        self.set_floating(False)
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
 
     def _make_button(self) -> QPushButton:
         btn = QPushButton()
@@ -65,16 +66,28 @@ class SoundboardTitleBar(QWidget):
         # NoFocus so a clicked button doesn't swallow the Space transport key.
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setStyleSheet(Styles.compact_icon_button_style())
         return btn
 
+    def _apply_theme_styles(self) -> None:
+        """Apply palette-dependent styles; re-run on theme change."""
+        self.setStyleSheet(Styles.dock_title_bar_style("QWidget#soundboardTitleBar"))
+        self._title_label.setStyleSheet(Styles.title_style(size=13))
+        for btn in (self.collapse_btn, self.popout_btn):
+            btn.setStyleSheet(Styles.compact_icon_button_style())
+        # Icons are rasterized with a baked palette color: re-render them for
+        # the current state without changing it.
+        self.set_collapsed(self._collapsed)
+        self.set_floating(self._floating)
+
     def set_collapsed(self, collapsed: bool) -> None:
+        self._collapsed = collapsed
         # The dock sits at the bottom of the window: expanding grows upward.
         icon = "chevron-up" if collapsed else "chevron-down"
         self.collapse_btn.setIcon(self._icons.icon(icon))
         self.collapse_btn.setToolTip("Expand" if collapsed else "Collapse")
 
     def set_floating(self, floating: bool) -> None:
+        self._floating = floating
         # Collapse is a docked-only affordance; a floating window resizes freely.
         self.collapse_btn.setVisible(not floating)
         icon = "minimize-2" if floating else "maximize-2"
@@ -108,7 +121,10 @@ class SoundboardDock(QDockWidget):
         self._title_bar.popout_toggle_requested.connect(self._toggle_floating)
         self.topLevelChanged.connect(self._title_bar.set_floating)
 
+        self._placeholder_label: QLabel | None = None
         self.setWidget(content if content is not None else self._build_placeholder())
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
 
         settings = QSettings()
         settings.beginGroup(self.SETTINGS_GROUP)
@@ -129,9 +145,14 @@ class SoundboardDock(QDockWidget):
         layout = QVBoxLayout(content)
         label = QLabel("Soundboard coming soon")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet(Styles.subtle_text_style(size=12))
         layout.addWidget(label)
+        self._placeholder_label = label
         return content
+
+    def _apply_theme_styles(self) -> None:
+        """Apply palette-dependent styles; re-run on theme change."""
+        if self._placeholder_label is not None:
+            self._placeholder_label.setStyleSheet(Styles.subtle_text_style(size=12))
 
     @property
     def collapsed(self) -> bool:

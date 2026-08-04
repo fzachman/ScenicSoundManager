@@ -1,2 +1,3 @@
-- Only one copy of the app can run at a time now — launching a second shows a reminder instead. Two copies sharing one library could corrupt it during a version upgrade, and the update prompt now reminds you to quit before installing a new version.
-- The window remembers its size and position between launches (the soundboard already remembered its height, collapsed state, and popped-out position — now the window around it keeps up).
+- New in Settings: choose between the Dark and Light themes — the whole app switches instantly, no restart needed. (The light theme is a first cut; polish is coming.)
+- Tag labels now automatically use dark or light text based on the tag's color, so bright tags (yellow, lime) are finally readable.
+- Toolbar and playback icons render crisper on Retina displays and now match the color of the button they sit on.

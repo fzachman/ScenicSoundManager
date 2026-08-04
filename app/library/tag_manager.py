@@ -18,6 +18,7 @@ from ..shared.dialogs import TagEditDialog
 from ..shared.icons import IconLibrary
 from ..shared.layouts import FlowLayout, clear_layout
 from ..shared.styles import Styles
+from ..shared.theme import theme_manager
 
 NO_TAG_ID = -1
 
@@ -33,6 +34,7 @@ class TagBadge(QWidget):
         super().__init__(parent)
         self.tag = tag
         self.removable = removable
+        self._remove_btn: QPushButton | None = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -59,6 +61,7 @@ class TagBadge(QWidget):
             remove_btn.setStyleSheet(Styles.tag_remove_button_style(color))
             remove_btn.clicked.connect(lambda: self.remove_clicked.emit(self.tag))
             layout.addWidget(remove_btn)
+            self._remove_btn = remove_btn
 
         self.setSizePolicy(
             QSizePolicy.Policy.Fixed,
@@ -70,6 +73,17 @@ class TagBadge(QWidget):
             self.clicked.emit(self.tag)
         elif event.button() == Qt.MouseButton.RightButton:
             self.right_clicked.emit(self.tag)
+
+    def apply_theme_styles(self) -> None:
+        """Re-apply the default palette-derived badge styles.
+
+        Only for badges in the neutral state — owners that override the label
+        style (selected/excluded filter states) rebuild their badges instead.
+        """
+        color = self.tag.color or Styles.TAG_COLORS[0]
+        self.label.setStyleSheet(Styles.tag_badge_style(color))
+        if self._remove_btn is not None:
+            self._remove_btn.setStyleSheet(Styles.tag_remove_button_style(color))
 
     def set_label_style(self, style: str) -> None:
         """Override the tag label style"""
@@ -110,9 +124,12 @@ class TagManager(QWidget):
         self._excluded_tag_ids: set[int] = set()
         self._icons = IconLibrary()
         self._tags_scroll: QScrollArea | None = None
+        self._tags: list[Tag] = []
 
         self._setup_ui()
+        self._apply_theme_styles()
         self.refresh_tags()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -122,9 +139,8 @@ class TagManager(QWidget):
         # Header with add button
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(4, 0, 4, 0)
-        header_label = QLabel(self._header_text)
-        header_label.setStyleSheet(Styles.title_style(size=14))
-        header_layout.addWidget(header_label)
+        self._header_label = QLabel(self._header_text)
+        header_layout.addWidget(self._header_label)
 
         clear_btn = QPushButton("Clear")
         clear_btn.setToolTip("Clear tag filter")
@@ -159,13 +175,27 @@ class TagManager(QWidget):
         scroll.setWidget(self.tags_container)
         layout.addWidget(scroll)
 
+    def _apply_theme_styles(self):
+        """Apply palette-dependent styles; re-run on theme change.
+
+        Badge styles bake palette tokens, so the badges are rebuilt from the
+        cached tag list — no DB reload, included/excluded ids preserved.
+        """
+        self._header_label.setStyleSheet(Styles.title_style(size=14))
+        self._rebuild_badges()
+
     def refresh_tags(self):
-        """Reload tags from database"""
+        """Reload tags from database and rebuild the badge grid"""
+        self._tags = self.db.get_all_tags()
+        self._rebuild_badges()
+
+    def _rebuild_badges(self):
+        """Rebuild tag badges from the cached tag list"""
         self.tags_container.setUpdatesEnabled(False)
         clear_layout(self.tags_layout)
 
-        # Add "No Tag" pseudo tag first
-        no_tag = Tag(id=NO_TAG_ID, name="No Tag", color="#FFFFFF")
+        # Add "No Tag" pseudo tag first (inverse chip: TEXT color as background)
+        no_tag = Tag(id=NO_TAG_ID, name="No Tag", color=Styles.TEXT)
         no_tag_badge = TagBadge(no_tag, removable=False)
         no_tag_badge.clicked.connect(self._toggle_tag_filter)
         no_tag_badge.right_clicked.connect(self._exclude_tag_filter)
@@ -176,8 +206,8 @@ class TagManager(QWidget):
             no_tag_badge.set_selected(no_tag_selected)
             border_color = Styles.PRIMARY if no_tag_selected else Styles.BORDER
             no_tag_badge.set_label_style(f"""
-                background-color: #FFFFFF;
-                color: #222;
+                background-color: {Styles.TEXT};
+                color: {Styles.contrast_text_color(Styles.TEXT)};
                 border: 1px solid {border_color};
                 padding: 3px 10px;
                 border-radius: 11px;
@@ -188,8 +218,7 @@ class TagManager(QWidget):
         self.tags_layout.addWidget(no_tag_badge)
 
         # Add tag badges
-        tags = self.db.get_all_tags()
-        for tag in tags:
+        for tag in self._tags:
             badge = TagBadge(tag, removable=False)
             badge.clicked.connect(self._toggle_tag_filter)
             if self._allow_manage:
@@ -401,6 +430,8 @@ class TagAssigner(QWidget):
         self.audio_file_id = audio_file_id
         self._icons = IconLibrary()
         self._setup_ui()
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
 
     def _setup_ui(self):
         layout = QHBoxLayout(self)
@@ -411,14 +442,25 @@ class TagAssigner(QWidget):
         self.refresh_tags()
 
         # Add tag button
-        add_btn = QPushButton()
-        add_btn.setFixedSize(20, 20)
-        add_btn.setIcon(self._icons.icon("plus"))
-        add_btn.setIconSize(add_btn.size())
-        add_btn.setToolTip("Add tag")
-        add_btn.clicked.connect(self._show_add_menu)
-        layout.addWidget(add_btn)
+        self._add_btn = QPushButton()
+        self._add_btn.setFixedSize(20, 20)
+        self._add_btn.setIconSize(self._add_btn.size())
+        self._add_btn.setToolTip("Add tag")
+        self._add_btn.clicked.connect(self._show_add_menu)
+        layout.addWidget(self._add_btn)
         layout.addStretch()
+
+    def _apply_theme_styles(self):
+        """Re-apply palette-dependent icons/badge styles; re-run on theme change."""
+        self._add_btn.setIcon(self._icons.icon("plus"))
+        layout = self.layout()
+        if layout is None:
+            return
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            widget = item.widget() if item else None
+            if isinstance(widget, TagBadge):
+                widget.apply_theme_styles()
 
     def refresh_tags(self):
         """Refresh displayed tags"""

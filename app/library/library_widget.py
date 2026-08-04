@@ -18,6 +18,7 @@ from ..audio import AudioEngine
 from ..database import AudioFile, DatabaseConnection
 from ..shared.dialogs import DuplicateFilesDialog, FilePickerDialog
 from ..shared.styles import Styles
+from ..shared.theme import theme_manager
 from .file_table import FileTableWidget
 from .metadata import MetadataExtractor, compute_fingerprint
 from .pagination_bar import PaginationBar
@@ -37,6 +38,8 @@ class LibraryWidget(QWidget):
 
         self.setAcceptDrops(True)
         self._setup_ui()
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
         self._load_files()
 
     def _setup_ui(self):
@@ -97,20 +100,23 @@ class LibraryWidget(QWidget):
 
         self.import_hint = QLabel("Drag files anywhere on the library to import")
         self.import_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.import_hint.setStyleSheet(
-            Styles.subtle_text_style(11, f"color: {Styles.TEXT_SUBTLE};")
-        )
         table_area.addWidget(self.import_hint)
 
         # Drop hint (empty-library placeholder; swaps with the table, so it
         # shares the table's slot and stretch)
         self.drop_hint = QLabel("Drop audio files here to add to library")
         self.drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.drop_hint.setStyleSheet(Styles.empty_state_style())
         self.drop_hint.hide()
         table_area.addWidget(self.drop_hint, 1)
 
         layout.addLayout(table_area, 1)
+
+    def _apply_theme_styles(self):
+        """Apply palette-dependent styles; re-run on theme change."""
+        self.import_hint.setStyleSheet(
+            Styles.subtle_text_style(11, f"color: {Styles.TEXT_SUBTLE};")
+        )
+        self.drop_hint.setStyleSheet(Styles.empty_state_style())
 
     def _load_files(self):
         """Load files from database"""

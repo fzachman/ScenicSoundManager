@@ -31,13 +31,13 @@ class TrackControl(SceneControlCard):
 
         self._init_card_state()
         self._base_style = Styles.card_frame_style("TrackControl")
-        self.setStyleSheet(self._base_style)
         if self.track.audio_file:
             self.setToolTip(self.track.audio_file.file_path)
 
+        self._missing_label: QLabel | None = None
         self._setup_ui()
         self._connect_player_signals()
-        self._update_play_mode_ui()
+        self._apply_theme_styles()
 
     # --- Hooks for the shared base ---
 
@@ -65,6 +65,17 @@ class TrackControl(SceneControlCard):
         # TrackControl refreshes the repeat button after a play-mode restyle.
         self._update_repeat_button()
 
+    def _apply_theme_styles(self) -> None:
+        # _base_style bakes palette colors into a string, so recompute it
+        # before the base re-applies the card frame style.
+        self._base_style = Styles.card_frame_style("TrackControl")
+        super()._apply_theme_styles()
+        self.title_label.setStyleSheet(Styles.title_style(size=14))
+        if self._missing_label is not None:
+            self._missing_label.setStyleSheet(
+                f"color: {Styles.WARNING}; font-size: 11px; font-weight: 700;"
+            )
+
     def _on_volume_applied(self, value: int) -> None:
         if self.player:
             self.player.target_volume = value
@@ -87,21 +98,17 @@ class TrackControl(SceneControlCard):
             self.track.audio_file.display_title if self.track.audio_file else "Unknown"
         )
         self.title_label = QLabel(title)
-        self.title_label.setStyleSheet(Styles.title_style(size=14))
         self.title_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
         top_row.addWidget(self.title_label, 1)
 
-        # File missing indicator
+        # File missing indicator (styled by _apply_theme_styles)
         if self.track.audio_file and not os.path.exists(
             self.track.audio_file.file_path
         ):
-            missing_label = QLabel("⚠️ File not found")
-            missing_label.setStyleSheet(
-                f"color: {Styles.WARNING}; font-size: 11px; font-weight: 700;"
-            )
-            top_row.addWidget(missing_label)
+            self._missing_label = QLabel("⚠️ File not found")
+            top_row.addWidget(self._missing_label)
 
         # Play/Pause button (shared builder; styled by _update_play_mode_ui)
         top_row.addWidget(self._build_play_button())

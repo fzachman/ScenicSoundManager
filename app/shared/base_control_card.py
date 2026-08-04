@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 
 from .icons import IconLibrary
 from .styles import Styles
+from .theme import theme_manager
 from .volume_slider import VolumeSlider
 
 
@@ -44,8 +45,8 @@ class SceneControlCard(QFrame):
        ``_build_play_button()``) and ``self.repeat_btn`` (via
        ``_build_repeat_button()``); the volume row comes from
        ``_build_volume_row()``
-    6. ``self._update_play_mode_ui()`` — reads ``self.play_btn``, so it must run
-       after step 5
+    6. ``self._apply_theme_styles()`` — reads ``self.play_btn`` (via
+       ``_update_play_mode_ui``), so it must run after step 5
 
     ``_update_play_mode_ui`` and ``_setup_ui`` stay per-subclass because the row
     composition and accent styling genuinely differ; everything identical (or
@@ -74,6 +75,12 @@ class SceneControlCard(QFrame):
     volume: VolumeSlider
     volume_slider: QSlider
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # Bound-method slot: PyQt auto-disconnects when this widget is
+        # destroyed, so no manual cleanup is needed.
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
+
     # --- Card state scaffolding ---
 
     def _init_card_state(self) -> None:
@@ -87,6 +94,18 @@ class SceneControlCard(QFrame):
         self._play_mode = bool(self._model.play_mode)
         self._repeat_mode = bool(self._model.is_repeat)
         self.setFrameStyle(QFrame.Shape.StyledPanel)
+
+    # --- Theme ---
+
+    def _apply_theme_styles(self) -> None:
+        """Re-apply palette-dependent styles/icons; re-run on theme change.
+
+        Subclasses override to add their own styling (recomputing any cached
+        style strings BEFORE calling ``super()._apply_theme_styles()``, since
+        the state-aware updates below read them).
+        """
+        self._update_play_mode_ui()  # play button + card frame style
+        self._update_repeat_button()
 
     # --- Shared builders (the subclass _setup_ui places the returned widgets) ---
 
@@ -115,7 +134,6 @@ class SceneControlCard(QFrame):
         """Create the repeat toggle button (already styled) and return it."""
         self.repeat_btn = QPushButton()
         self.repeat_btn.setFixedSize(28, 28)
-        self.repeat_btn.setIcon(self._icons.icon("repeat"))
         self.repeat_btn.setIconSize(QSize(14, 14))
         self.repeat_btn.clicked.connect(self._toggle_repeat)
         self._update_repeat_button()
@@ -147,6 +165,12 @@ class SceneControlCard(QFrame):
         self.repeat_changed.emit(self._entity_id, self._repeat_mode)
 
     def _update_repeat_button(self) -> None:
+        icon_color = (
+            Styles.contrast_text_color(Styles.PRIMARY)
+            if self._repeat_mode
+            else Styles.TEXT_MUTED
+        )
+        self.repeat_btn.setIcon(self._icons.icon("repeat", icon_color))
         self.repeat_btn.setStyleSheet(
             Styles.icon_toggle_button_style(self._repeat_mode, size=28)
         )
@@ -181,11 +205,16 @@ class SceneControlCard(QFrame):
         self._update_repeat_button()
 
     def _update_play_mode_ui(self) -> None:
-        self.play_btn.setIcon(self._icons.icon("play-solid"))
         if self._play_mode:
+            self.play_btn.setIcon(
+                self._icons.icon(
+                    "play-solid", Styles.contrast_text_color(Styles.SUCCESS)
+                )
+            )
             self.play_btn.setStyleSheet(Styles.play_button_style(size=28))
             self.setStyleSheet(self._active_card_style())
         else:
+            self.play_btn.setIcon(self._icons.icon("play-solid", Styles.TEXT_MUTED))
             self.play_btn.setStyleSheet(Styles.play_button_inactive_style(size=28))
             self.setStyleSheet(self._inactive_card_style())
         self._after_play_mode_update()

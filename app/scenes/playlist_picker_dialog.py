@@ -45,7 +45,7 @@ class PlaylistSelectItem(QFrame):
         type_label.setStyleSheet(f"""
             QLabel {{
                 background-color: {color};
-                color: white;
+                color: {Styles.contrast_text_color(color)};
                 border-radius: 4px;
                 font-size: 10px;
                 font-weight: bold;

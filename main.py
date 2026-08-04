@@ -75,6 +75,11 @@ def main():
         )
         sys.exit(0)
 
+    # Activate the persisted theme before any widget builds its styles.
+    from app.shared.theme import theme_manager
+
+    theme_manager.apply_saved_theme()
+
     # Create and show main window
     window = MainWindow()
     window.show()

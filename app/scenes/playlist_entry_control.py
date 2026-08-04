@@ -43,9 +43,9 @@ class PlaylistEntryControl(SceneControlCard):
             self.setToolTip(f"Playlist: {self.entry.playlist.name}")
 
         self._setup_ui()
-        # Note: no setStyleSheet here — _update_play_mode_ui applies the frame
-        # style for both states.
-        self._update_play_mode_ui()
+        # Note: no setStyleSheet here — _update_play_mode_ui (via
+        # _apply_theme_styles) applies the frame style for both states.
+        self._apply_theme_styles()
 
     # --- Hooks for the shared base ---
 
@@ -68,6 +68,39 @@ class PlaylistEntryControl(SceneControlCard):
             background_color=Styles.BACKGROUND_LIGHT,
         )
 
+    # --- Theme ---
+
+    def _apply_theme_styles(self) -> None:
+        # _base_style bakes palette colors into a string, so recompute it
+        # before the base re-applies the card frame style.
+        self._base_style = Styles.card_frame_style(
+            "PlaylistEntryControl",
+            accent_color=Styles.PRIMARY,
+            border_color=Styles.PRIMARY,
+        )
+        super()._apply_theme_styles()
+        self._type_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {Styles.PRIMARY};
+                color: {Styles.contrast_text_color(Styles.PRIMARY)};
+                border-radius: 8px;
+                font-size: 10px;
+                font-weight: 700;
+            }}
+        """)
+        self.title_label.setStyleSheet(Styles.title_style(size=14))
+        self.now_playing_label.setStyleSheet(
+            f"color: {Styles.SUCCESS}; font-size: 11px; font-weight: 700; padding-left: 32px;"
+        )
+        self.next_btn.setIcon(
+            self._icons.icon("skip-forward", Styles.contrast_text_color(Styles.PRIMARY))
+        )
+        # Momentary action, but styled with the active-accent (PRIMARY blue) look
+        # so it matches the shuffle/repeat buttons.
+        self.next_btn.setStyleSheet(Styles.icon_toggle_button_style(True, size=28))
+        self.info_label.setStyleSheet(Styles.subtle_text_style(size=11))
+        self._update_shuffle_button()
+
     # --- UI ---
 
     def _setup_ui(self):
@@ -77,25 +110,15 @@ class PlaylistEntryControl(SceneControlCard):
         # Top row: playlist icon + title + remove
         top_row = QHBoxLayout()
 
-        # Playlist type indicator
-        type_label = QLabel("PL")
-        type_label.setFixedSize(28, 28)
-        type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        type_label.setStyleSheet(f"""
-            QLabel {{
-                background-color: {Styles.PRIMARY};
-                color: white;
-                border-radius: 8px;
-                font-size: 10px;
-                font-weight: 700;
-            }}
-        """)
-        top_row.addWidget(type_label)
+        # Playlist type indicator (styled by _apply_theme_styles)
+        self._type_label = QLabel("PL")
+        self._type_label.setFixedSize(28, 28)
+        self._type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top_row.addWidget(self._type_label)
 
         # Title
         name = self.entry.playlist.name if self.entry.playlist else "Unknown Playlist"
         self.title_label = QLabel(name)
-        self.title_label.setStyleSheet(Styles.title_style(size=14))
         self.title_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
@@ -108,9 +131,6 @@ class PlaylistEntryControl(SceneControlCard):
 
         # Now-playing row: shows currently playing track title
         self.now_playing_label = QLabel("")
-        self.now_playing_label.setStyleSheet(
-            f"color: {Styles.SUCCESS}; font-size: 11px; font-weight: 700; padding-left: 32px;"
-        )
         self.now_playing_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
@@ -129,12 +149,8 @@ class PlaylistEntryControl(SceneControlCard):
 
         self.next_btn = QPushButton()
         self.next_btn.setFixedSize(28, 28)
-        self.next_btn.setIcon(self._icons.icon("skip-forward"))
         self.next_btn.setIconSize(QSize(14, 14))
-        # Momentary action, but styled with the active-accent (PRIMARY blue) look
-        # so it matches the shuffle/repeat buttons and the icon stays legible —
-        # the transparent utility style left the black glyph on the dark card.
-        self.next_btn.setStyleSheet(Styles.icon_toggle_button_style(True, size=28))
+        # Icon/style applied by _apply_theme_styles.
         self.next_btn.setToolTip("Next track")
         self.next_btn.clicked.connect(lambda: self.next_requested.emit(self._entity_id))
         position_row.addWidget(self.next_btn)
@@ -159,7 +175,6 @@ class PlaylistEntryControl(SceneControlCard):
         else:
             info_text = "Unknown"
         self.info_label = QLabel(info_text)
-        self.info_label.setStyleSheet(Styles.subtle_text_style(size=11))
         self.info_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
@@ -170,7 +185,6 @@ class PlaylistEntryControl(SceneControlCard):
         # Shuffle toggle (unique to playlist entries)
         self.shuffle_btn = QPushButton()
         self.shuffle_btn.setFixedSize(28, 28)
-        self.shuffle_btn.setIcon(self._icons.icon("shuffle"))
         self.shuffle_btn.setIconSize(QSize(14, 14))
         self.shuffle_btn.clicked.connect(self._toggle_shuffle)
         bottom_row.addWidget(self.shuffle_btn)
@@ -220,6 +234,12 @@ class PlaylistEntryControl(SceneControlCard):
 
     def _update_shuffle_button(self):
         """Update shuffle button appearance"""
+        icon_color = (
+            Styles.contrast_text_color(Styles.PRIMARY)
+            if self._shuffle_mode
+            else Styles.TEXT_MUTED
+        )
+        self.shuffle_btn.setIcon(self._icons.icon("shuffle", icon_color))
         self.shuffle_btn.setStyleSheet(
             Styles.icon_toggle_button_style(self._shuffle_mode, size=28)
         )

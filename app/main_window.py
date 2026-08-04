@@ -52,6 +52,7 @@ from .scenes import ScenesWidget
 from .settings_dialog import SettingsDialog
 from .shared.logging import get_logger
 from .shared.styles import Styles
+from .shared.theme import theme_manager
 from .soundboard import SoundboardContent, SoundboardDock
 from .update_check import UpdateChecker
 
@@ -106,11 +107,9 @@ class MainWindow(QMainWindow):
             # but the user must be told why the app is silent.
             QTimer.singleShot(0, self._warn_missing_audio)
 
-        # Apply global styles
-        self.setStyleSheet(Styles.APP_STYLESHEET)
-
-        # Set up UI
+        # Set up UI (applies global styles at the end of _setup_ui)
         self._setup_ui()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
         # After _setup_ui: the facade's state snapshots rely on MainWindow's
         # playback slots being connected (and thus invoked) first.
         self.remote_facade = RemoteControlFacade(self)
@@ -138,14 +137,13 @@ class MainWindow(QMainWindow):
 
         top_bar_widget = QWidget()
         top_bar_widget.setObjectName("topBarWidget")
-        top_bar_widget.setStyleSheet(Styles.widget_panel_style("QWidget#topBarWidget"))
+        self._top_bar_widget = top_bar_widget
         master_bar = QHBoxLayout(top_bar_widget)
         master_bar.setContentsMargins(18, 14, 18, 14)
         master_bar.setSpacing(14)
 
-        master_label = QLabel("Master Volume")
-        master_label.setStyleSheet(Styles.title_style(size=13))
-        master_bar.addWidget(master_label)
+        self._master_label = QLabel("Master Volume")
+        master_bar.addWidget(self._master_label)
 
         self.master_slider = QSlider(Qt.Orientation.Horizontal)
         # Don't hold keyboard focus, so the playback arrow shortcuts aren't
@@ -161,7 +159,6 @@ class MainWindow(QMainWindow):
 
         self.master_value_label = QLabel(f"{self.audio_engine.master_volume}%")
         self.master_value_label.setFixedWidth(50)
-        self.master_value_label.setStyleSheet(Styles.subtle_text_style(size=12))
         master_bar.addWidget(self.master_value_label)
 
         master_bar.addStretch()
@@ -171,12 +168,10 @@ class MainWindow(QMainWindow):
         current_layout.setContentsMargins(0, 0, 0, 0)
         current_layout.setSpacing(4)
 
-        current_label = QLabel("Currently Playing")
-        current_label.setStyleSheet(Styles.subtle_text_style(size=11))
-        current_layout.addWidget(current_label)
+        self._current_label = QLabel("Currently Playing")
+        current_layout.addWidget(self._current_label)
 
         self.current_scene_btn = QPushButton("None")
-        self.current_scene_btn.setStyleSheet(Styles.ghost_button_style())
         self.current_scene_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         current_layout.addWidget(self.current_scene_btn)
 
@@ -224,6 +219,19 @@ class MainWindow(QMainWindow):
 
         # Native menu bar
         self._setup_menus()
+
+        self._apply_theme_styles()
+
+    def _apply_theme_styles(self):
+        """Apply palette-dependent styles; re-run on theme change."""
+        self.setStyleSheet(Styles.app_stylesheet())
+        self._top_bar_widget.setStyleSheet(
+            Styles.widget_panel_style("QWidget#topBarWidget")
+        )
+        self._master_label.setStyleSheet(Styles.title_style(size=13))
+        self.master_value_label.setStyleSheet(Styles.subtle_text_style(size=12))
+        self._current_label.setStyleSheet(Styles.subtle_text_style(size=11))
+        self.current_scene_btn.setStyleSheet(Styles.ghost_button_style())
 
     def _setup_menus(self):
         """Build the native menu bar.

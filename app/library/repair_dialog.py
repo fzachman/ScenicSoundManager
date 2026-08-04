@@ -120,7 +120,9 @@ class RepairItem(QFrame):
 
         self.preview_btn = QPushButton()
         self.preview_btn.setFixedSize(22, 22)
-        self.preview_btn.setIcon(self._icons.icon("play-solid"))
+        self.preview_btn.setIcon(
+            self._icons.icon("play-solid", Styles.contrast_text_color(Styles.SUCCESS))
+        )
         self.preview_btn.setIconSize(QSize(12, 12))
         self.preview_btn.setStyleSheet(Styles.small_play_button_style())
         self.preview_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -167,10 +169,18 @@ class RepairItem(QFrame):
         if self.relinked or not self.entry.candidates:
             return
         if playing:
-            self.preview_btn.setIcon(self._icons.icon("pause-solid"))
+            self.preview_btn.setIcon(
+                self._icons.icon(
+                    "pause-solid", Styles.contrast_text_color(Styles.DANGER)
+                )
+            )
             self.preview_btn.setStyleSheet(Styles.small_stop_button_style())
         else:
-            self.preview_btn.setIcon(self._icons.icon("play-solid"))
+            self.preview_btn.setIcon(
+                self._icons.icon(
+                    "play-solid", Styles.contrast_text_color(Styles.SUCCESS)
+                )
+            )
             self.preview_btn.setStyleSheet(Styles.small_play_button_style())
         self.preview_btn.setIconSize(QSize(12, 12))
 

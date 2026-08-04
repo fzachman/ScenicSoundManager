@@ -147,7 +147,7 @@ class TagEditDialog(QDialog):
         self._selected_is_custom = False
         self._selected_color = color
         for btn_color, btn in self._color_buttons.items():
-            border = "white" if btn_color == color else "transparent"
+            border = Styles.TEXT if btn_color == color else "transparent"
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {btn_color};
@@ -155,7 +155,7 @@ class TagEditDialog(QDialog):
                     border-radius: 4px;
                 }}
                 QPushButton:hover {{
-                    border-color: white;
+                    border-color: {Styles.TEXT};
                 }}
             """)
         self._set_custom_button_style(self._custom_color, selected=False)
@@ -175,7 +175,7 @@ class TagEditDialog(QDialog):
                     border-radius: 4px;
                 }}
                 QPushButton:hover {{
-                    border-color: white;
+                    border-color: {Styles.TEXT};
                 }}
             """)
         self._set_custom_button_style(self._custom_color, selected=True)
@@ -186,8 +186,8 @@ class TagEditDialog(QDialog):
         self.value_slider.setEnabled(enabled)
 
     def _set_custom_button_style(self, color: str, selected: bool):
-        border = "white" if selected else "transparent"
-        text_color = "#000000" if self._is_light_color(color) else "#FFFFFF"
+        border = Styles.TEXT if selected else "transparent"
+        text_color = Styles.contrast_text_color(color)
         self.custom_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {color};
@@ -196,7 +196,7 @@ class TagEditDialog(QDialog):
                 border-radius: 4px;
             }}
             QPushButton:hover {{
-                border-color: white;
+                border-color: {Styles.TEXT};
             }}
         """)
 
@@ -237,6 +237,8 @@ class TagEditDialog(QDialog):
             self._update_custom_color_from_sliders()
 
     def _set_hue_slider_style(self):
+        # White handle and rainbow gradient are theme-independent: they ride
+        # on fixed spectrum colors, not the palette.
         self.hue_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 height: 8px;
@@ -312,13 +314,6 @@ class TagEditDialog(QDialog):
     def _hex_to_rgb(color: str) -> tuple[int, int, int]:
         color = color.lstrip("#")
         return int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
-
-    @staticmethod
-    def _is_light_color(color: str) -> bool:
-        r, g, b = TagEditDialog._hex_to_rgb(color)
-        luminance = 0.299 * r + 0.587 * g + 0.114 * b
-        return luminance > 186
-
 
 class ConfirmDialog(QDialog):
     """Simple confirmation dialog"""
@@ -697,7 +692,9 @@ class FileSelectItem(QFrame):
         # Preview button
         self.preview_btn = QPushButton()
         self.preview_btn.setFixedSize(16, 16)
-        self.preview_btn.setIcon(self._icons.icon("play-solid"))
+        self.preview_btn.setIcon(
+            self._icons.icon("play-solid", Styles.contrast_text_color(Styles.SUCCESS))
+        )
         self.preview_btn.setIconSize(QSize(12, 12))
         self.preview_btn.setStyleSheet(Styles.small_play_button_style())
         self.preview_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -744,11 +741,19 @@ class FileSelectItem(QFrame):
         """Update preview button appearance"""
         self._preview_playing = playing
         if playing:
-            self.preview_btn.setIcon(self._icons.icon("pause-solid"))
+            self.preview_btn.setIcon(
+                self._icons.icon(
+                    "pause-solid", Styles.contrast_text_color(Styles.DANGER)
+                )
+            )
             self.preview_btn.setIconSize(QSize(12, 12))
             self.preview_btn.setStyleSheet(Styles.small_stop_button_style())
         else:
-            self.preview_btn.setIcon(self._icons.icon("play-solid"))
+            self.preview_btn.setIcon(
+                self._icons.icon(
+                    "play-solid", Styles.contrast_text_color(Styles.SUCCESS)
+                )
+            )
             self.preview_btn.setIconSize(QSize(12, 12))
             self.preview_btn.setStyleSheet(Styles.small_play_button_style())
 

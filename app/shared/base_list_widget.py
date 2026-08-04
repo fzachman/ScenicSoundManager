@@ -17,6 +17,7 @@ from ..library.search_bar import SearchBar
 from .dialogs import TextInputDialog
 from .icons import IconLibrary
 from .styles import Styles
+from .theme import theme_manager
 
 
 class BaseListWidget(QWidget):
@@ -39,8 +40,17 @@ class BaseListWidget(QWidget):
         self.setMaximumWidth(300)
 
         self._setup_ui()
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
         self.refresh()
         self._update_order_button_state()
+
+    def _apply_theme_styles(self):
+        """Re-apply palette-dependent styles/icons; re-run on theme change."""
+        self._header_label.setStyleSheet(Styles.title_style(size=16))
+        # Icons rasterize with a baked color, so re-set on theme change.
+        self.order_btn.setIcon(self._icons.icon("list"))
+        self.order_btn.setStyleSheet(Styles.compact_icon_button_style())
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -50,18 +60,16 @@ class BaseListWidget(QWidget):
         # Header
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(4, 0, 4, 0)
-        header_label = QLabel(f"{self._entity_name}s")
-        header_label.setStyleSheet(Styles.title_style(size=16))
-        header_layout.addWidget(header_label)
+        self._header_label = QLabel(f"{self._entity_name}s")
+        header_layout.addWidget(self._header_label)
         header_layout.addStretch()
 
+        # Icon/style applied by _apply_theme_styles.
         self.order_btn = QPushButton()
         self.order_btn.setCheckable(True)
         self.order_btn.setFixedSize(28, 28)
-        self.order_btn.setIcon(self._icons.icon("list"))
         self.order_btn.setIconSize(self.order_btn.size())
         self.order_btn.setToolTip(f"Unlock {self._entity_name} Order")
-        self.order_btn.setStyleSheet(Styles.compact_icon_button_style())
         self.order_btn.toggled.connect(self._set_ordering_enabled)
         header_layout.addWidget(self.order_btn)
         layout.addLayout(header_layout)

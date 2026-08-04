@@ -29,6 +29,7 @@ from ..database import DatabaseConnection, Soundboard, SoundboardButton
 from ..shared.icons import IconLibrary
 from ..shared.layouts import FlowLayout, clear_layout
 from ..shared.styles import Styles
+from ..shared.theme import theme_manager
 from ..shared.volume_slider import VolumeSlider
 from .edit_dialog import SoundboardEditDialog
 
@@ -52,6 +53,7 @@ class SoundboardButtonCell(QFrame):
     def __init__(self, button: SoundboardButton, icons: IconLibrary, parent=None):
         super().__init__(parent)
         self.button = button
+        self._icons = icons
         self._playing = False
         self._drag_start_pos: QPoint | None = None
 
@@ -75,16 +77,15 @@ class SoundboardButtonCell(QFrame):
         self.grabber = QPushButton()
         self.grabber.setFixedSize(22, 34)
         self.grabber.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.grabber.setIcon(icons.icon("list"))
         self.grabber.setToolTip("Drag to reorder")
         self.grabber.setCursor(Qt.CursorShape.OpenHandCursor)
-        self.grabber.setStyleSheet(Styles.compact_icon_button_style())
         self.grabber.installEventFilter(self)
         layout.addWidget(self.grabber)
 
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
-        self._apply_style()
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
 
     def eventFilter(self, obj, event):
         """Start a drag from the grabber (a QPushButton eats mouse events,
@@ -134,6 +135,12 @@ class SoundboardButtonCell(QFrame):
     def _apply_style(self) -> None:
         self.trigger_btn.setStyleSheet(Styles.soundboard_button_style(self._playing))
 
+    def _apply_theme_styles(self) -> None:
+        """Apply palette-dependent styles; re-run on theme change."""
+        self.grabber.setIcon(self._icons.icon("list"))
+        self.grabber.setStyleSheet(Styles.compact_icon_button_style())
+        self._apply_style()  # keeps the current playing state
+
     def _show_context_menu(self, pos):
         menu = QMenu(self)
 
@@ -171,6 +178,7 @@ class SoundboardGrid(QWidget):
         self.setAcceptDrops(True)
         self.grid_layout = FlowLayout(self, margin=0, spacing=8)
         self._drop_zone: QFrame | None = None
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
 
     def populate(self, cells: list[SoundboardButtonCell]) -> None:
         clear_layout(self.grid_layout)
@@ -185,16 +193,23 @@ class SoundboardGrid(QWidget):
         zone = QFrame()
         zone.setFixedSize(174, 34)
         zone.setToolTip("Drop here to move a sound to the end")
-        zone.setStyleSheet(
-            f"""
+        zone.setStyleSheet(self._drop_zone_style())
+        return zone
+
+    @staticmethod
+    def _drop_zone_style() -> str:
+        return f"""
             QFrame {{
                 background-color: transparent;
                 border: 1px dashed {Styles.BORDER};
                 border-radius: 8px;
             }}
             """
-        )
-        return zone
+
+    def _apply_theme_styles(self) -> None:
+        """Apply palette-dependent styles; re-run on theme change."""
+        if self._drop_zone is not None:
+            self._drop_zone.setStyleSheet(self._drop_zone_style())
 
     def cells_in_order(self) -> list[SoundboardButtonCell]:
         cells = []
@@ -293,6 +308,7 @@ class SoundboardContent(QWidget):
         self._cells_by_button_id: dict[int, SoundboardButtonCell] = {}
 
         self._setup_ui()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
         self.player.button_started.connect(self._on_button_started)
         self.player.button_stopped.connect(self._on_button_stopped)
         self._reload_boards(select_id=self._restore_last_board_id())
@@ -307,7 +323,6 @@ class SoundboardContent(QWidget):
 
         self.board_combo = QComboBox()
         self.board_combo.setMinimumWidth(220)
-        self.board_combo.setStyleSheet(Styles.combobox_style())
         # NoFocus on all controls here: focused widgets would swallow the
         # Space/arrow transport keys (same rationale as the master slider).
         self.board_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -328,7 +343,6 @@ class SoundboardContent(QWidget):
 
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.stop_btn.setStyleSheet(Styles.secondary_button_style(compact=True))
         self.stop_btn.clicked.connect(self.player.stop)
         controls.addWidget(self.stop_btn)
 
@@ -336,7 +350,6 @@ class SoundboardContent(QWidget):
 
         self.empty_label = QLabel("")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setStyleSheet(Styles.subtle_text_style(size=12))
         layout.addWidget(self.empty_label)
 
         scroll = QScrollArea()
@@ -347,6 +360,8 @@ class SoundboardContent(QWidget):
         scroll.setWidget(self.grid)
         layout.addWidget(scroll, 1)
 
+        self._apply_theme_styles()
+
     def _icon_button(self, icon_name: str, tooltip: str) -> QPushButton:
         btn = QPushButton()
         btn.setFixedSize(28, 28)
@@ -354,8 +369,20 @@ class SoundboardContent(QWidget):
         btn.setIcon(self._icons.icon(icon_name))
         btn.setToolTip(tooltip)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setStyleSheet(Styles.compact_icon_button_style())
         return btn
+
+    def _apply_theme_styles(self) -> None:
+        """Apply palette-dependent styles; re-run on theme change.
+
+        Button cells and the grid's drop zone subscribe individually, so
+        they are deliberately not restyled here.
+        """
+        self.board_combo.setStyleSheet(Styles.combobox_style())
+        self.stop_btn.setStyleSheet(Styles.secondary_button_style(compact=True))
+        self.empty_label.setStyleSheet(Styles.subtle_text_style(size=12))
+        for btn, icon_name in ((self.add_btn, "plus"), (self.edit_btn, "edit-2")):
+            btn.setStyleSheet(Styles.compact_icon_button_style())
+            btn.setIcon(self._icons.icon(icon_name))
 
     # Board selection / loading
 

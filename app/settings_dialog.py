@@ -1,13 +1,15 @@
 """Application settings dialog (app menu > Settings...).
 
-Currently a single section: the remote-control WebSocket server. The dialog
-reads and writes the QSettings the server is configured from; MainWindow
-restarts the server after an accepted change (see ``remote_config_changed``).
+Two sections: appearance (theme) and the remote-control WebSocket server.
+The dialog reads and writes the QSettings each is configured from; the theme
+applies live on OK, and MainWindow restarts the remote server after an
+accepted change (see ``remote_config_changed``).
 """
 
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -18,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from .remote import DEFAULT_PORT, SETTINGS_ENABLED, SETTINGS_GROUP, SETTINGS_PORT
 from .shared.styles import Styles
+from .shared.theme import theme_manager
 
 
 class SettingsDialog(QDialog):
@@ -35,6 +38,25 @@ class SettingsDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
+
+        appearance_title = QLabel("Appearance")
+        appearance_title.setStyleSheet(Styles.title_style(size=14))
+        layout.addWidget(appearance_title)
+
+        theme_row = QHBoxLayout()
+        theme_row.setSpacing(8)
+        theme_row.addWidget(QLabel("Theme"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.setStyleSheet(Styles.combobox_style())
+        self.theme_combo.addItem("Dark", "dark")
+        self.theme_combo.addItem("Light", "light")
+        current_index = self.theme_combo.findData(theme_manager.saved_theme())
+        self.theme_combo.setCurrentIndex(max(current_index, 0))
+        theme_row.addWidget(self.theme_combo)
+        theme_row.addStretch()
+        layout.addLayout(theme_row)
+
+        layout.addSpacing(8)
 
         title = QLabel("Remote Control")
         title.setStyleSheet(Styles.title_style(size=14))
@@ -101,6 +123,7 @@ class SettingsDialog(QDialog):
         settings.setValue(SETTINGS_ENABLED, self.enabled_checkbox.isChecked())
         settings.setValue(SETTINGS_PORT, self.port_spinbox.value())
         settings.endGroup()
+        theme_manager.save_and_apply(self.theme_combo.currentData())
         super().accept()
 
     def remote_config_changed(self) -> bool:

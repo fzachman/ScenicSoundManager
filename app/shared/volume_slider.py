@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from .no_scroll_slider import NoScrollSlider
 from .styles import Styles
+from .theme import theme_manager
 
 
 class VolumeSlider(QWidget):
@@ -30,10 +31,9 @@ class VolumeSlider(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        label = QLabel("Vol:")
-        label.setStyleSheet(Styles.subtle_text_style(size=12))
-        label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        layout.addWidget(label)
+        self._label = QLabel("Vol:")
+        self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout.addWidget(self._label)
 
         self.slider = NoScrollSlider()
         self.slider.setMinimum(0)
@@ -46,11 +46,18 @@ class VolumeSlider(QWidget):
 
         self.value_label = QLabel(f"{round(initial_volume * 100)}%")
         self.value_label.setFixedWidth(40)
-        self.value_label.setStyleSheet(Styles.subtle_text_style(size=12))
         self.value_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
         layout.addWidget(self.value_label)
+
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
+
+    def _apply_theme_styles(self) -> None:
+        """Re-apply palette-dependent styles; re-run on theme change."""
+        self._label.setStyleSheet(Styles.subtle_text_style(size=12))
+        self.value_label.setStyleSheet(Styles.subtle_text_style(size=12))
 
     def set_volume_silently(self, volume: float) -> None:
         """Set the slider without emitting changed/committed.
