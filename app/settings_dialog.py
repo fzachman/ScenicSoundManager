@@ -48,7 +48,6 @@ class SettingsDialog(QDialog):
         theme_row.setSpacing(8)
         theme_row.addWidget(QLabel("Theme"))
         self.theme_combo = QComboBox()
-        self.theme_combo.setStyleSheet(Styles.combobox_style())
         self.theme_combo.addItem("Dark", "dark")
         self.theme_combo.addItem("Light", "light")
         # AdjustToContents alone undersizes with the stylesheet + popup
@@ -72,14 +71,13 @@ class SettingsDialog(QDialog):
         title.setStyleSheet(Styles.title_style(size=14))
         layout.addWidget(title)
 
-        description = QLabel(
+        self._description = QLabel(
             "Lets local apps (e.g. a Stream Deck) drive playback over a "
             "WebSocket on this machine. Changes apply immediately; changing "
             "the port disconnects current clients."
         )
-        description.setWordWrap(True)
-        description.setStyleSheet(Styles.subtle_text_style(size=12))
-        layout.addWidget(description)
+        self._description.setWordWrap(True)
+        layout.addWidget(self._description)
 
         self.enabled_checkbox = QCheckBox("Enable remote control")
         self.enabled_checkbox.setChecked(self._initial_enabled)
@@ -110,6 +108,16 @@ class SettingsDialog(QDialog):
         button_layout.addWidget(cancel_btn)
         button_layout.addWidget(ok_btn)
         layout.addLayout(button_layout)
+
+        # Unlike other transient dialogs, this one stays open across theme
+        # changes (it causes them), so its own explicitly-set styles must
+        # re-apply live — a widget's own stylesheet beats the inherited one.
+        self._apply_theme_styles()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
+
+    def _apply_theme_styles(self):
+        self.theme_combo.setStyleSheet(Styles.combobox_style())
+        self._description.setStyleSheet(Styles.subtle_text_style(size=12))
 
     def _on_enabled_toggled(self, checked: bool):
         self.port_spinbox.setEnabled(checked)

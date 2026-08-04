@@ -142,6 +142,16 @@ def test_theme_previews_live_on_selection(remote_settings, theme_settings):
     assert not theme_settings.contains(SETTINGS_THEME_KEY)
 
 
+def test_dialog_restyles_itself_on_theme_preview(remote_settings, theme_settings):
+    # The dialog stays open across the theme change it triggers, so its own
+    # explicitly-styled widgets (the combo) must re-apply the new palette.
+    dialog = SettingsDialog()
+    dialog.theme_combo.setCurrentIndex(dialog.theme_combo.findData("light"))
+    assert (
+        Styles.LIGHT_PALETTE["BACKGROUND_ELEVATED"] in dialog.theme_combo.styleSheet()
+    )
+
+
 def test_reject_reverts_theme_preview(remote_settings, theme_settings):
     dialog = SettingsDialog()
     dialog.theme_combo.setCurrentIndex(dialog.theme_combo.findData("light"))
