@@ -24,6 +24,7 @@ from ..shared.icons import IconLibrary
 from ..shared.layouts import clear_layout
 from ..shared.position_scrubber import PositionScrubber
 from ..shared.styles import Styles
+from ..shared.theme import theme_manager
 from ..shared.volume_slider import VolumeSlider
 
 _log = get_logger(__name__)
@@ -45,11 +46,24 @@ class PlaylistTrackItem(QFrame):
         self._icons = IconLibrary()
         self._drag_start_pos = None
         self._now_playing = False
+        self._artist_label: QLabel | None = None
+        self._tag_labels: list[tuple[QLabel, str | None]] = []
 
         self.setFrameStyle(QFrame.Shape.StyledPanel)
-        self._apply_style()
 
         self._setup_ui()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
+
+    def _apply_theme_styles(self):
+        """Re-apply palette-dependent styles; connected to theme_changed."""
+        self._apply_style()
+        self._apply_position_label_style()
+        self._title_label.setStyleSheet(Styles.title_style(size=14))
+        if self._artist_label is not None:
+            self._artist_label.setStyleSheet(Styles.subtle_text_style(size=11))
+        for tag_label, color in self._tag_labels:
+            tag_label.setStyleSheet(Styles.tag_badge_style(color or Styles.PRIMARY))
+        self._remove_btn.setStyleSheet(Styles.remove_button_style())
 
     def _apply_style(self):
         if self._now_playing:
@@ -64,12 +78,9 @@ class PlaylistTrackItem(QFrame):
         else:
             self.setStyleSheet(Styles.card_frame_style("PlaylistTrackItem"))
 
-    def set_now_playing(self, playing: bool):
-        """Set now-playing highlight state"""
-        self._now_playing = playing
-        self._apply_style()
-        # Update position label color to indicate playing
-        if playing:
+    def _apply_position_label_style(self):
+        """Position label color indicates playing; shared with theme re-apply."""
+        if self._now_playing:
             self.position_label.setStyleSheet(
                 f"color: {Styles.PRIMARY}; font-size: 13px; font-weight: 700;"
             )
@@ -77,6 +88,12 @@ class PlaylistTrackItem(QFrame):
             self.position_label.setStyleSheet(
                 Styles.subtle_text_style(size=13, extra="font-weight: 700;")
             )
+
+    def set_now_playing(self, playing: bool):
+        """Set now-playing highlight state"""
+        self._now_playing = playing
+        self._apply_style()
+        self._apply_position_label_style()
         # The scrubber only seeks the playing track; reset it when playback
         # moves on so the fill doesn't freeze at a stale position.
         self.scrubber.slider.setEnabled(playing)
@@ -91,41 +108,34 @@ class PlaylistTrackItem(QFrame):
         self.position_label = QLabel(str(self.position + 1))
         self.position_label.setFixedWidth(28)
         self.position_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.position_label.setStyleSheet(
-            Styles.subtle_text_style(size=13, extra="font-weight: 700;")
-        )
         layout.addWidget(self.position_label)
 
         # Track info
         info_layout = QVBoxLayout()
         if self.track.audio_file:
-            title_label = QLabel(self.track.audio_file.display_title)
-            title_label.setStyleSheet(Styles.title_style(size=14))
-            info_layout.addWidget(title_label)
+            self._title_label = QLabel(self.track.audio_file.display_title)
+            info_layout.addWidget(self._title_label)
 
             # Artist and tags row
             detail_layout = QHBoxLayout()
             detail_layout.setSpacing(6)
 
             if self.track.audio_file.artist:
-                artist_label = QLabel(self.track.audio_file.artist)
-                artist_label.setStyleSheet(Styles.subtle_text_style(size=11))
-                detail_layout.addWidget(artist_label)
+                self._artist_label = QLabel(self.track.audio_file.artist)
+                detail_layout.addWidget(self._artist_label)
 
             # Tags
             if self.track.audio_file.tags:
                 for tag in self.track.audio_file.tags:
                     tag_label = QLabel(tag.name)
-                    color = tag.color or Styles.PRIMARY
-                    tag_label.setStyleSheet(Styles.tag_badge_style(color))
+                    self._tag_labels.append((tag_label, tag.color))
                     detail_layout.addWidget(tag_label)
 
             detail_layout.addStretch()
             info_layout.addLayout(detail_layout)
         else:
-            title_label = QLabel("Unknown Track")
-            title_label.setStyleSheet(Styles.title_style(size=14))
-            info_layout.addWidget(title_label)
+            self._title_label = QLabel("Unknown Track")
+            info_layout.addWidget(self._title_label)
 
         # Volume + scrubber row. The scrubber's duration label replaces the
         # old standalone duration label; its slider is live only while this
@@ -156,12 +166,15 @@ class PlaylistTrackItem(QFrame):
         layout.addLayout(info_layout, 1)
 
         # Remove button
-        remove_btn = QPushButton("×")
-        remove_btn.setFixedSize(24, 24)
-        remove_btn.setToolTip("Remove from playlist")
-        remove_btn.setStyleSheet(Styles.remove_button_style())
-        remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.track.id))
-        layout.addWidget(remove_btn)
+        self._remove_btn = QPushButton("×")
+        self._remove_btn.setFixedSize(24, 24)
+        self._remove_btn.setToolTip("Remove from playlist")
+        self._remove_btn.clicked.connect(
+            lambda: self.remove_requested.emit(self.track.id)
+        )
+        layout.addWidget(self._remove_btn)
+
+        self._apply_theme_styles()
 
     def update_position(self, position: int):
         """Update the displayed position number"""
@@ -320,6 +333,7 @@ class PlaylistEditor(QWidget):
         )
 
         self._setup_ui()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -331,12 +345,10 @@ class PlaylistEditor(QWidget):
         header.setSpacing(10)
 
         self.title_label = QLabel("Select a playlist")
-        self.title_label.setStyleSheet(Styles.title_style(size=28))
         self.title_label.mouseDoubleClickEvent = self._start_title_edit
         header.addWidget(self.title_label)
 
         self.title_edit = QLineEdit()
-        self.title_edit.setStyleSheet(Styles.title_input_style(size=28))
         self.title_edit.editingFinished.connect(self._finish_title_edit)
         self.title_edit.hide()
         header.addWidget(self.title_edit)
@@ -350,22 +362,17 @@ class PlaylistEditor(QWidget):
         self.shuffle_btn.setChecked(False)
         self.shuffle_btn.clicked.connect(self._toggle_shuffle)
         self.shuffle_btn.setEnabled(False)
-        self._sync_shuffle_button()
         header.addWidget(self.shuffle_btn)
 
         self.next_btn = QPushButton("Next")
         self.next_btn.setToolTip("Next track")
-        self.next_btn.setStyleSheet(Styles.secondary_button_style(compact=True))
         self.next_btn.clicked.connect(self._next_track)
         self.next_btn.setEnabled(False)
         header.addWidget(self.next_btn)
 
+        # Icon + style applied by _apply_theme_styles via _sync_play_button
         self.play_toggle_btn = QPushButton("Play")
-        self.play_toggle_btn.setIcon(self._icons.icon("play"))
         self.play_toggle_btn.setIconSize(QSize(16, 16))
-        self.play_toggle_btn.setStyleSheet(
-            Styles.playback_button_style(is_active=False)
-        )
         self.play_toggle_btn.clicked.connect(self._toggle_play)
         self.play_toggle_btn.setEnabled(False)
         header.addWidget(self.play_toggle_btn)
@@ -402,9 +409,23 @@ class PlaylistEditor(QWidget):
             "No tracks in this playlist.\nClick '+ Add Tracks' to add audio files."
         )
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setStyleSheet(Styles.empty_state_style())
         self.empty_label.hide()
         layout.addWidget(self.empty_label)
+
+        self._apply_theme_styles()
+
+    def _apply_theme_styles(self):
+        """Re-apply palette-dependent styles; connected to theme_changed.
+
+        Track item rows restyle themselves — each PlaylistTrackItem holds its
+        own theme_changed connection.
+        """
+        self.title_label.setStyleSheet(Styles.title_style(size=28))
+        self.title_edit.setStyleSheet(Styles.title_input_style(size=28))
+        self.next_btn.setStyleSheet(Styles.secondary_button_style(compact=True))
+        self.empty_label.setStyleSheet(Styles.empty_state_style())
+        self._sync_shuffle_button()
+        self._sync_play_button()
 
     def load_playlist(self, playlist: Playlist):
         """Load a playlist for editing"""
@@ -1025,10 +1046,14 @@ class PlaylistEditor(QWidget):
         )
         if is_active:
             self.play_toggle_btn.setText("Pause")
-            self.play_toggle_btn.setIcon(self._icons.icon("pause"))
+            self.play_toggle_btn.setIcon(
+                self._icons.icon("pause", Styles.contrast_text_color(Styles.WARNING))
+            )
         else:
             self.play_toggle_btn.setText("Play")
-            self.play_toggle_btn.setIcon(self._icons.icon("play"))
+            self.play_toggle_btn.setIcon(
+                self._icons.icon("play", Styles.contrast_text_color(Styles.SUCCESS))
+            )
         self.play_toggle_btn.setStyleSheet(
             Styles.playback_button_style(is_active=is_active)
         )

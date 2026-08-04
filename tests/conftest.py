@@ -7,6 +7,7 @@ session-scoped ``qapp`` fixture. A live ``QApplication`` is required for
 which the audio fade tests depend on.
 """
 
+import gc
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -32,3 +33,20 @@ def qapp():
     settings.setValue("enabled", False)
     settings.endGroup()
     return app
+
+
+@pytest.fixture(autouse=True)
+def _deterministic_qt_teardown(qapp):
+    """Destroy leftover Qt objects at the test boundary, not mid-test.
+
+    Without this, a Qt object from a finished test (a QWebSocket, or any
+    widget still connected to theme_manager.theme_changed) can be garbage-
+    collected while a later test is mid-emit or constructing widgets;
+    C++-side destruction during an arbitrary GC pass aborts the process
+    ("Fatal Python error: Aborted"). Pump pending deleteLater events and
+    collect while the loop is idle instead.
+    """
+    yield
+    qapp.processEvents()
+    gc.collect()
+    qapp.processEvents()

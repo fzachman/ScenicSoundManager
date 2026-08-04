@@ -26,15 +26,15 @@ class TestStylesPalette:
     def test_set_theme_swaps_tokens(self):
         dark_background = Styles.BACKGROUND
         Styles.set_theme("light")
-        assert Styles.BACKGROUND == Styles.LIGHT_PALETTE["BACKGROUND"]
+        assert Styles.LIGHT_PALETTE["BACKGROUND"] == Styles.BACKGROUND
         assert Styles.active_theme == "light"
         Styles.set_theme("dark")
-        assert Styles.BACKGROUND == dark_background
+        assert dark_background == Styles.BACKGROUND
 
     def test_unknown_theme_falls_back_to_dark(self):
         Styles.set_theme("solarized")
         assert Styles.active_theme == "dark"
-        assert Styles.PRIMARY == Styles.DARK_PALETTE["PRIMARY"]
+        assert Styles.DARK_PALETTE["PRIMARY"] == Styles.PRIMARY
 
     def test_palettes_define_identical_token_sets(self):
         assert set(Styles.DARK_PALETTE) == set(Styles.LIGHT_PALETTE)

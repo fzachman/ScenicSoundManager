@@ -5,7 +5,6 @@ real MainWindow, all on the offscreen QApplication's event loop — network I/O
 is pumped by processEvents, no threads and no extra dependencies.
 """
 
-import gc
 import json
 import os
 import time
@@ -22,21 +21,8 @@ import app.main_window as main_window_module
 from app.database import AudioFile, DatabaseConnection, Scene, Soundboard
 from app.remote.server import RemoteControlServer
 
-
-@pytest.fixture(autouse=True)
-def _deterministic_qt_teardown(qapp):
-    """Destroy leftover Qt objects at the test boundary, not mid-test.
-
-    Without this, a QWebSocket/QWebSocketServer from a finished test can be
-    garbage-collected while the next test is constructing its MainWindow;
-    C++-side destruction during an arbitrary GC pass aborts the process
-    ("Fatal Python error: Aborted"). Pump pending deleteLater events and
-    collect while the loop is idle instead.
-    """
-    yield
-    qapp.processEvents()
-    gc.collect()
-    qapp.processEvents()
+# Deterministic Qt teardown (deleteLater pump + gc.collect at the test
+# boundary) is provided suite-wide by the autouse fixture in conftest.py.
 
 
 @pytest.fixture

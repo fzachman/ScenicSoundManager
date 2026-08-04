@@ -33,6 +33,7 @@ from ..shared.dialogs import AudioFileSearchDialog, TextInputDialog
 from ..shared.icons import IconLibrary
 from ..shared.layouts import clear_layout
 from ..shared.styles import Styles
+from ..shared.theme import theme_manager
 from .playlist_entry_control import PlaylistEntryControl
 from .track_control import TrackControl
 
@@ -69,6 +70,7 @@ class SceneEditor(QWidget):
         self._icons = IconLibrary()
 
         self._setup_ui()
+        theme_manager.theme_changed.connect(self._apply_theme_styles)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -80,18 +82,14 @@ class SceneEditor(QWidget):
         header.setSpacing(12)
 
         self.title_label = QLabel("Select a scene")
-        self.title_label.setStyleSheet(Styles.title_style(size=28))
         header.addWidget(self.title_label)
 
         header.addStretch()
 
-        # Master controls
+        # Master controls (icon + style applied by _apply_theme_styles via
+        # _sync_scene_play_button)
         self.play_toggle_btn = QPushButton("Play")
-        self.play_toggle_btn.setIcon(self._icons.icon("play"))
         self.play_toggle_btn.setIconSize(QSize(16, 16))
-        self.play_toggle_btn.setStyleSheet(
-            Styles.playback_button_style(is_active=False)
-        )
         self.play_toggle_btn.clicked.connect(self._toggle_scene_play)
         self.play_toggle_btn.setEnabled(False)
         header.addWidget(self.play_toggle_btn)
@@ -121,7 +119,6 @@ class SceneEditor(QWidget):
             btn = QPushButton(f"Preset {slot}")
             btn.setCheckable(True)
             btn.setEnabled(False)
-            btn.setStyleSheet(Styles.toggle_off_style())
             # clicked (not toggled): programmatic setChecked in
             # _sync_preset_buttons must never re-enter the handler.
             btn.clicked.connect(lambda _checked, s=slot: self._on_preset_clicked(s))
@@ -154,9 +151,24 @@ class SceneEditor(QWidget):
             "No tracks in this scene.\nClick '+ Add Tracks' or '+ Add Playlist' to get started."
         )
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setStyleSheet(Styles.empty_state_style())
         self.empty_label.hide()
         layout.addWidget(self.empty_label)
+
+        self._apply_theme_styles()
+
+    def _apply_theme_styles(self):
+        """Re-apply palette-dependent styles; connected to theme_changed."""
+        self.title_label.setStyleSheet(Styles.title_style(size=28))
+        self.empty_label.setStyleSheet(Styles.empty_state_style())
+        self._sync_scene_play_button()
+        # Style-only re-apply: _sync_preset_buttons would also overwrite the
+        # checked state from _preset_slot, which a theme swap must not do.
+        for btn in self._preset_buttons.values():
+            btn.setStyleSheet(
+                Styles.toggle_on_style()
+                if btn.isChecked()
+                else Styles.toggle_off_style()
+            )
 
     def load_scene(self, scene: Scene):
         """Load a scene for editing"""
@@ -894,10 +906,14 @@ class SceneEditor(QWidget):
         is_playing = self._is_current_scene_active() and self._scene_playing
         if is_playing:
             self.play_toggle_btn.setText("Pause")
-            self.play_toggle_btn.setIcon(self._icons.icon("pause"))
+            self.play_toggle_btn.setIcon(
+                self._icons.icon("pause", Styles.contrast_text_color(Styles.WARNING))
+            )
         else:
             self.play_toggle_btn.setText("Play")
-            self.play_toggle_btn.setIcon(self._icons.icon("play"))
+            self.play_toggle_btn.setIcon(
+                self._icons.icon("play", Styles.contrast_text_color(Styles.SUCCESS))
+            )
         self.play_toggle_btn.setStyleSheet(
             Styles.playback_button_style(is_active=is_playing)
         )
