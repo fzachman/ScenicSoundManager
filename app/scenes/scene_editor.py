@@ -268,9 +268,12 @@ class SceneEditor(QWidget):
         )
         if dialog.exec():
             files = dialog.get_selected_files()
+            play_mode = self._default_play_mode_for_new_content()
             for file in files:
                 position = len(self._current_scene.tracks)
-                self.db.add_track_to_scene(self._current_scene.id, file.id, position)
+                self.db.add_track_to_scene(
+                    self._current_scene.id, file.id, position, play_mode=play_mode
+                )
 
             self._refresh_tracks()
             self.scene_modified.emit()
@@ -321,7 +324,10 @@ class SceneEditor(QWidget):
             if playlist:
                 position = len(self._current_scene.playlist_entries)
                 self.db.add_playlist_to_scene(
-                    self._current_scene.id, playlist.id, position
+                    self._current_scene.id,
+                    playlist.id,
+                    position,
+                    play_mode=self._default_play_mode_for_new_content(),
                 )
                 self._refresh_tracks()
                 self.scene_modified.emit()
@@ -900,6 +906,18 @@ class SceneEditor(QWidget):
         return bool(
             self._current_scene and self._current_scene.id == self._active_scene_id
         )
+
+    def _default_play_mode_for_new_content(self) -> bool:
+        """Default play mode for tracks/playlist entries being added.
+
+        Adding to the scene that is audibly playing must never change what
+        the players hear mid-session, so new content arrives with play mode
+        off there; everywhere else (stopped, paused, or a different scene)
+        it defaults on so a freshly built scene plays on the first press.
+        Seeded into every preset slot, so a preset switch can't surprise-
+        start it either.
+        """
+        return not (self._is_current_scene_active() and self._scene_playing)
 
     def _sync_scene_play_button(self):
         """Sync play button with current scene playback state"""

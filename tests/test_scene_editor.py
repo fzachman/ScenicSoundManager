@@ -438,6 +438,136 @@ class TestSwitchWhilePaused:
         assert player.target_volume == 45
 
 
+class TestNewContentDefaultPlayMode:
+    """Adding a track or playlist to the audibly-playing scene must never
+    change what's heard: new content arrives with play mode off there. In
+    every other state (stopped, paused, or while a *different* scene plays)
+    the default stays on, so a freshly built scene plays on the first press."""
+
+    def _add_file_via_dialog(self, editor, db, title="New Track"):
+        file = AudioFile(
+            file_path=f"/fake/{title}.mp3", title=title, duration_seconds=60.0
+        )
+        file.id = db.add_audio_file(file)
+        dialog = MagicMock()
+        dialog.exec.return_value = True
+        dialog.get_selected_files.return_value = [file]
+        with patch(
+            "app.scenes.scene_editor.AudioFileSearchDialog", return_value=dialog
+        ):
+            editor._add_tracks()
+        return file.id
+
+    def _added_track(self, db, scene_id, file_id, slot=None):
+        tracks = db.get_scene_tracks(scene_id, slot=slot)
+        return next(t for t in tracks if t.audio_file_id == file_id)
+
+    def _add_playlist_via_dialog(self, editor, db):
+        playlist_id = db.add_playlist(Playlist(name="Second Playlist"))
+        file = AudioFile(
+            file_path="/fake/second_pl.mp3", title="Second PL", duration_seconds=60.0
+        )
+        file_id = db.add_audio_file(file)
+        db.add_track_to_playlist(playlist_id, file_id, position=0)
+        dialog = MagicMock()
+        dialog.exec.return_value = True
+        dialog.get_selected_playlist.return_value = Playlist(
+            id=playlist_id, name="Second Playlist"
+        )
+        with patch(
+            "app.scenes.playlist_picker_dialog.PlaylistPickerDialog",
+            return_value=dialog,
+        ):
+            editor._add_playlist_entry()
+        return playlist_id
+
+    def _added_entry(self, db, scene_id, playlist_id):
+        scene = db.get_scene(scene_id)
+        return next(e for e in scene.playlist_entries if e.playlist_id == playlist_id)
+
+    def test_add_while_playing_defaults_off_in_every_slot(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+
+        file_id = self._add_file_via_dialog(editor, db)
+
+        for slot in (1, 2, 3):
+            assert self._added_track(db, scene.scene_id, file_id, slot).play_mode is (
+                False
+            )
+
+    def test_add_while_playing_stays_silent(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+
+        file_id = self._add_file_via_dialog(editor, db)
+
+        track = self._added_track(db, scene.scene_id, file_id)
+        player = editor.mixer.get_player(track.id)
+        assert player is not None  # ready to fade in when toggled on
+        assert not player._is_fading()
+        # And the pre-existing tracks weren't disturbed by the refresh.
+        for track_id in scene.track_ids:
+            assert editor.mixer.get_player(track_id) is not None
+
+    def test_toggle_on_after_silent_add_fades_in(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+        file_id = self._add_file_via_dialog(editor, db)
+        track = self._added_track(db, scene.scene_id, file_id)
+
+        editor._on_track_play_mode_changed(track.id, True)
+
+        player = editor.mixer.get_player(track.id)
+        assert player._is_fading()
+
+    def test_add_while_stopped_defaults_on(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+
+        file_id = self._add_file_via_dialog(editor, db)
+
+        assert self._added_track(db, scene.scene_id, file_id).play_mode is True
+
+    def test_add_while_paused_defaults_on(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+        editor.toggle_playback()  # pause
+
+        file_id = self._add_file_via_dialog(editor, db)
+
+        assert self._added_track(db, scene.scene_id, file_id).play_mode is True
+
+    def test_add_to_other_scene_while_one_plays_defaults_on(
+        self, editor, db, scene, second_scene
+    ):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+        _load(editor, db, second_scene.scene_id)  # editing B while A plays
+
+        file_id = self._add_file_via_dialog(editor, db)
+
+        assert self._added_track(db, second_scene.scene_id, file_id).play_mode is True
+
+    def test_add_playlist_while_playing_defaults_off_and_silent(
+        self, editor, db, scene
+    ):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+
+        playlist_id = self._add_playlist_via_dialog(editor, db)
+
+        entry = self._added_entry(db, scene.scene_id, playlist_id)
+        assert entry.play_mode is False
+        assert entry.id not in editor._playlist_players
+
+    def test_add_playlist_while_stopped_defaults_on(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+
+        playlist_id = self._add_playlist_via_dialog(editor, db)
+
+        assert self._added_entry(db, scene.scene_id, playlist_id).play_mode is True
+
+
 class TestEndedTrackRevive:
     """A non-repeat track that finished must be revivable (bug: it stayed
     dead — Ended VLC players ignore set_time and never fire another end
