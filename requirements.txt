@@ -12,7 +12,10 @@ mutagen==1.47.0
 structlog==25.5.0
 
 # Development / CI
-py2app==0.28.9
+# Each platform installs only its own app builder: py2app makes the macOS
+# .app (setup.py), PyInstaller the Windows build (windows.spec, CI-only).
+py2app==0.28.9; sys_platform == "darwin"
+pyinstaller==6.22.3; sys_platform == "win32"
 pytest==9.0.3
 ruff==0.15.20
 mypy==2.1.0

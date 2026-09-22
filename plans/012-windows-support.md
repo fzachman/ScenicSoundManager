@@ -113,6 +113,33 @@ Optional cleanup: the py2app-only frozen-bundle VLC code (`main.py`
    VLC-guarded tests run rather than skip, pytest, PyInstaller, zip,
    `actions/upload-artifact`. `permissions: contents: read`.
 
+**Steps 7–9 DONE 2026-09-22 (CI-only, by owner's choice — no dev tools on
+the Windows machine).**
+- `windows.spec` at the repo root; `resources/app_icon.ico` committed
+  (16–256px, generated from the PNG with Pillow). `pyinstaller==6.22.3`
+  win32-only in `requirements.txt`; `py2app` is now darwin-only.
+- Workflow: two parallel jobs. `test` (VLC via choco, preflight, pytest)
+  and `build` (PyInstaller → `scripts/smoke_test_build.py` → zip →
+  `upload-artifact@v7` with `archive: false`, so the download is the exact
+  zip a release attaches, named `ScenicSoundManager-<version>-windows.zip`).
+  Triggers: `pull_request`, push to `main`, `workflow_dispatch`.
+  GOTCHA: the dispatch button only exists once the workflow is on `main`, so
+  the first run comes from a PR.
+- Smoke test: launches the exe offscreen on the clean runner, waits for the
+  new `app_started` log line (added to `main.py`), checks it is still alive,
+  and checks the DB has seeded tags (proves both SQL data files were found).
+  It refuses to run if a library already exists (never touches a real
+  install).
+- Found and fixed: structlog raises `SystemError` for colored console output
+  on Windows without colorama — `CONSOLE_COLORS` in `app/shared/logging.py`
+  turns colors off on win32 (the windowed exe has no console, but source runs
+  and the tests do).
+- Validated locally on macOS first: the same spec builds a runnable folder.
+  To run it without touching the real app's macOS preferences (startup
+  writes last scene/playlist/board), build a scratch copy of the spec with a
+  runtime hook that points every default `QSettings()` at a temp INI dir,
+  and set `HOME` to a temp dir for the data/log folders.
+
 ### Phase 4 — test (owner, on Windows)
 
 10. Download the artifact, install 64-bit VLC, then check: SmartScreen at

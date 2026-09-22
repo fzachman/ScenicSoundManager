@@ -29,7 +29,7 @@ def main():
     """Main entry point"""
     setup_environment()
 
-    from app.shared.logging import configure_logging
+    from app.shared.logging import configure_logging, get_logger
 
     configure_logging()
 
@@ -83,6 +83,11 @@ def main():
     # Create and show main window
     window = MainWindow()
     window.show()
+    # One line per launch: which version started, for support logs and the
+    # Windows CI smoke test (.github/workflows/windows-build.yml).
+    from app import __version__
+
+    get_logger("main").info("app_started", version=__version__, platform=sys.platform)
 
     # Run event loop
     sys.exit(app.exec())

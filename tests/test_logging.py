@@ -61,6 +61,17 @@ def test_warning_reaches_console_too(log_file, capsys):
     assert "warning_event" in capsys.readouterr().err
 
 
+def test_console_without_colors_is_plain_text(log_file, capsys, monkeypatch):
+    # The Windows path: colored output there would need colorama, and
+    # structlog raises SystemError without it.
+    monkeypatch.setattr(app_logging, "CONSOLE_COLORS", False)
+    app_logging.configure_logging()
+    app_logging.get_logger("test.module").warning("plain_event")
+    err = capsys.readouterr().err
+    assert "plain_event" in err
+    assert "\x1b[" not in err
+
+
 def test_qt_warnings_go_to_file_not_console(log_file, capsys):
     # Qt library noise (e.g. QWebSocket's destructor wildcard-disconnect
     # warnings on every quit with a connected remote client) must not reach

@@ -15,6 +15,10 @@ from .. import paths
 LOG_DIR = paths.LOG_DIR
 LOG_FILE_NAME = "soundmanager.log"
 
+# structlog raises SystemError for colored console output on Windows unless
+# colorama is installed; plain text there beats a new dependency.
+CONSOLE_COLORS = sys.platform != "win32"
+
 _MAX_LOG_BYTES = 5 * 1024 * 1024
 _BACKUP_COUNT = 3
 
@@ -103,11 +107,11 @@ def configure_logging() -> None:
     root.addHandler(file_handler)
     root.setLevel(logging.INFO)
 
-    # A py2app windowed build can run without usable std streams.
+    # A windowed build (py2app, PyInstaller) can run without std streams.
     if sys.stderr is not None:
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setLevel(logging.WARNING)
-        console_handler.setFormatter(formatter(colors=True))
+        console_handler.setFormatter(formatter(colors=CONSOLE_COLORS))
         root.addHandler(console_handler)
 
     qInstallMessageHandler(_qt_message_handler)

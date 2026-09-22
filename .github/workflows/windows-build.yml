@@ -1,0 +1,95 @@
+name: Windows build
+
+# Builds the Windows app (plan 012) and uploads the zip as a workflow
+# artifact: download it from the run page to test on a real Windows machine.
+# Nothing here tags or publishes — `just release` attaches a tested artifact.
+# The workflow_dispatch trigger only appears in the Actions tab once this
+# file is on main; before that, open a PR to get a run.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (Windows)
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install 64-bit VLC
+        # Without libVLC the VLC-guarded tests silently skip.
+        run: choco install vlc --no-progress -y
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Preflight — VLC and Qt must actually load
+        run: |
+          python -c "from app.audio.engine import VLC_AVAILABLE; assert VLC_AVAILABLE, 'libvlc failed to import'"
+          python -c "from PyQt6.QtWidgets import QApplication; QApplication([])"
+
+      - name: Run tests
+        run: pytest
+
+  build:
+    name: Build + smoke test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller --noconfirm --clean windows.spec
+
+      - name: Smoke test the build
+        # No VLC on this job: startup must also survive the VLC-missing path.
+        run: python scripts/smoke_test_build.py "dist/ScenicSound Manager/ScenicSound Manager.exe"
+
+      - name: Zip the build
+        id: zip
+        run: |
+          $version = python -c "from app import __version__; print(__version__)"
+          $zip = "dist/ScenicSoundManager-$version-windows.zip"
+          Compress-Archive -Path "dist/ScenicSound Manager" -DestinationPath $zip
+          "path=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Upload the zip as an artifact
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.zip.outputs.path }}
+          # Upload the zip as-is (no second zip layer): the download is the
+          # exact file a release would attach.
+          archive: false
+          if-no-files-found: error
