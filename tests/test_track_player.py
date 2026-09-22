@@ -710,3 +710,62 @@ class TestEndedRevive:
         player.restart()
 
         player.media_player.audio_set_volume.assert_called_once_with(40)
+
+
+@pytest.mark.skipif(vlc is None, reason="python-vlc not importable")
+class TestVolumeSurvivesRestart:
+    """VLC forgets the player volume across a stop/play cycle (issue #6):
+    a repeating track came back at 100% while the slider still showed the
+    user's level. The Playing state event re-applies the current volume."""
+
+    def test_repeat_wraparound_reapplies_volume_on_playing(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player.repeat = True
+        player.target_volume = 50
+        player.media_player.audio_set_volume.reset_mock()
+
+        player._handle_end_reached()  # VLC stop/play -> volume lost on VLC side
+        player._handle_state_change(vlc.State.Playing)
+
+        player.media_player.audio_set_volume.assert_called_with(50)
+
+    def test_playing_event_reapplies_volume_scaled_by_master(self, qapp, mock_engine):
+        mock_engine.master_volume = 50
+        player = _make_player(mock_engine)
+        player.target_volume = 60
+        player.media_player.audio_set_volume.reset_mock()
+
+        player._handle_state_change(vlc.State.Playing)
+
+        player.media_player.audio_set_volume.assert_called_once_with(30)
+
+    def test_non_playing_state_does_not_touch_volume(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player.target_volume = 50
+        player.media_player.audio_set_volume.reset_mock()
+
+        player._handle_state_change(vlc.State.Paused)
+        player._handle_state_change(vlc.State.Stopped)
+
+        player.media_player.audio_set_volume.assert_not_called()
+
+    def test_playing_event_mid_fade_uses_fade_position_not_target(
+        self, qapp, mock_engine
+    ):
+        # Mid-fade the ramp owns the volume; the Playing event must not snap
+        # it to the target and undo the fade.
+        player = _make_player(mock_engine)
+        player.target_volume = 80
+        player.fade_in(1000, start_playing=False)  # current is now 0
+        player.media_player.audio_set_volume.reset_mock()
+
+        player._handle_state_change(vlc.State.Playing)
+
+        player.media_player.audio_set_volume.assert_called_once_with(0)
+        player._stop_fade()
+
+    def test_playing_event_after_release_is_safe(self, qapp, mock_engine):
+        player = _make_player(mock_engine)
+        player.release()
+
+        player._handle_state_change(vlc.State.Playing)  # must not raise

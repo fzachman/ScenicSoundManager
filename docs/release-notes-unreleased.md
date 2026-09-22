@@ -2,3 +2,4 @@
 - Tag labels now automatically use dark or light text based on the tag's color, so bright tags (yellow, lime) are finally readable.
 - Playback and toolbar icons now match the color of the button they sit on (some previously rendered black).
 - Adding a track or playlist to the scene that's currently playing no longer blasts it into the mix — it arrives with play mode off, ready to flip on when the moment's right. Adding to a stopped scene still defaults to on.
+- Fixed: a repeating scene track no longer jumps back to full volume each time it loops — it stays at the level you set on its slider.

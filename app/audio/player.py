@@ -333,7 +333,9 @@ class TrackPlayer(QObject):
         """Handle end reached in main thread"""
         self.end_reached.emit()
         if self._repeat and self.media_player:
-            # Restart playback
+            # Restart playback. The stop/play cycle makes VLC forget the
+            # player volume (it comes back at 100); _handle_state_change
+            # re-applies _current_volume once VLC reports Playing.
             self.media_player.stop()
             self.media_player.play()
         else:
@@ -354,6 +356,11 @@ class TrackPlayer(QObject):
     def _handle_state_change(self, state: Any) -> None:
         """Handle a state change in the main thread"""
         if vlc is not None and state == vlc.State.Playing:
+            # VLC resets the output volume to 100 whenever playback is
+            # (re)started after a stop — repeat wrap-around, restart() — so
+            # push our volume back in now that VLC is ready to accept it.
+            # Idempotent on a plain play()/resume: it re-sets the same value.
+            self._apply_volume(self._current_volume)
             # Fast path for a pending revive seek; confirmation (and retry
             # on a dropped set_time) stays with the position timer.
             self._apply_pending_seek()
