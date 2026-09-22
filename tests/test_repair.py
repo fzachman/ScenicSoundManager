@@ -87,7 +87,12 @@ class TestClassifyCandidate:
 class TestSpotlightSearch:
     def test_returns_empty_when_mdfind_unavailable(self, monkeypatch):
         monkeypatch.setattr(repair.shutil, "which", lambda name: None)
+        assert not repair.spotlight_available()
         assert repair.spotlight_search("a.mp3") == []
+
+    def test_available_when_mdfind_on_path(self, monkeypatch):
+        monkeypatch.setattr(repair.shutil, "which", lambda name: "/usr/bin/mdfind")
+        assert repair.spotlight_available()
 
     def test_query_quotes_filename(self, monkeypatch):
         seen = {}

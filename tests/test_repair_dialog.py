@@ -21,7 +21,9 @@ def db(tmp_path):
 
 @pytest.fixture(autouse=True)
 def no_spotlight(monkeypatch):
-    """Default every test to 'Spotlight finds nothing'; tests override."""
+    """Default every test to 'Spotlight present, finds nothing'; tests
+    override. Present on any host, so the Spotlight flow also runs in CI."""
+    monkeypatch.setattr(repair, "spotlight_available", lambda: True)
     monkeypatch.setattr(repair, "spotlight_search", lambda name: [])
 
 
@@ -178,6 +180,55 @@ class TestFolderFlow:
         dialog.search_folder_btn.click()
 
         assert not dialog.items[0].entry.candidates
+
+
+class TestWithoutSpotlight:
+    """Off macOS there is no mdfind: the folder search is the only search."""
+
+    @pytest.fixture(autouse=True)
+    def spotlight_queries(self, monkeypatch):
+        # Record, don't raise: an exception inside showEvent can abort the
+        # whole PyQt test process instead of failing one test.
+        queries: list[str] = []
+        monkeypatch.setattr(repair, "spotlight_available", lambda: False)
+        monkeypatch.setattr(
+            repair, "spotlight_search", lambda name: queries.append(name) or []
+        )
+        return queries
+
+    def test_open_skips_spotlight_and_points_at_folder_search(
+        self, qapp, db, tmp_path, spotlight_queries
+    ):
+        add_entry(db, str(tmp_path / "gone.mp3"), b"x")
+
+        dialog = make_dialog(qapp, db)
+
+        assert spotlight_queries == []
+        header = dialog.header_label.text()
+        assert "1 library file points" in header
+        assert "Use Search a Folder…" in header
+        assert "Matches found" not in header
+        assert dialog.search_folder_btn.isEnabled()
+
+    def test_folder_search_switches_header_to_match_count(
+        self, qapp, db, tmp_path, monkeypatch
+    ):
+        content = b"tavern chatter" * 200
+        add_entry(db, str(tmp_path / "old/Tavern.mp3"), content)
+        moved = tmp_path / "root" / "Tavern.mp3"
+        moved.parent.mkdir()
+        moved.write_bytes(content)
+        monkeypatch.setattr(
+            "app.library.repair_dialog.QFileDialog.getExistingDirectory",
+            staticmethod(lambda *a, **k: str(tmp_path / "root")),
+        )
+        dialog = make_dialog(qapp, db)
+
+        dialog.search_folder_btn.click()
+
+        header = dialog.header_label.text()
+        assert "Matches found for 1" in header
+        assert "Use Search a Folder…" not in header
 
 
 class TestPreview:

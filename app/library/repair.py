@@ -89,13 +89,18 @@ def classify_candidate(audio_file: AudioFile, path: str) -> Candidate | None:
     )
 
 
+def spotlight_available() -> bool:
+    """True when Spotlight's `mdfind` exists (macOS only)."""
+    return shutil.which("mdfind") is not None
+
+
 def spotlight_search(filename: str) -> list[str]:
     """Find files named exactly `filename` via Spotlight (macOS mdfind).
 
     Returns [] when Spotlight is unavailable (non-macOS, unindexed
     volumes) — the folder-walk fallback covers those cases.
     """
-    if shutil.which("mdfind") is None:
+    if not spotlight_available():
         return []
     # No shell involved (argv), so only the query language's own quoting
     # matters: double-quoted string with backslash escapes.

@@ -1,7 +1,8 @@
 """Repair Library dialog: relink unlinked entries to files found on disk.
 
 Flow (plan 009): on open, list every library entry whose path no longer
-exists and search Spotlight for same-named files automatically. Each row
+exists and search Spotlight for same-named files automatically (macOS
+only; elsewhere the folder search is the only way to find them). Each row
 shows its candidates with a confidence badge (hash match = exact), a
 preview button, and a Relink button. "Search a Folder…" walks a chosen
 root for the entries that are still unresolved (catches renamed files by
@@ -196,6 +197,7 @@ class RepairLibraryDialog(QDialog):
         self._preview_player = None
         self._preview_item: RepairItem | None = None
         self._scanned_spotlight = False
+        self._searched = False  # any search (Spotlight or folder) has run
 
         self.setWindowTitle("Repair Library")
         self.setMinimumSize(720, 420)
@@ -247,7 +249,8 @@ class RepairLibraryDialog(QDialog):
         if self._scanned_spotlight or not self.entries:
             return
         self._scanned_spotlight = True
-        self._scan_spotlight()
+        if repair.spotlight_available():
+            self._scan_spotlight()
 
     def _scan_spotlight(self):
         progress = self._make_progress("Searching Spotlight for moved files…")
@@ -259,6 +262,7 @@ class RepairLibraryDialog(QDialog):
             )
         finally:
             progress.close()
+        self._searched = True
         self._refresh_items()
 
     def _search_folder(self):
@@ -276,6 +280,7 @@ class RepairLibraryDialog(QDialog):
             )
         finally:
             progress.close()
+        self._searched = True
         self._refresh_items()
 
     def _pending_entries(self) -> list[UnlinkedEntry]:
@@ -310,16 +315,23 @@ class RepairLibraryDialog(QDialog):
         elif pending == 0:
             text = "All unlinked files have been relinked."
         else:
-            with_candidates = sum(
-                1 for item in self.items if not item.relinked and item.entry.candidates
-            )
             noun = "file points" if pending == 1 else "files point"
-            text = (
-                f"{pending} library {noun} to paths that no longer exist."
-                f" Matches found for {with_candidates}."
-                " Exact matches are confirmed by content fingerprint;"
-                " preview possible matches before relinking."
-            )
+            text = f"{pending} library {noun} to paths that no longer exist."
+            if not self._searched:
+                # No automatic Spotlight scan off macOS: point at the folder
+                # search rather than reporting "Matches found for 0".
+                text += " Use Search a Folder… to look for them."
+            else:
+                with_candidates = sum(
+                    1
+                    for item in self.items
+                    if not item.relinked and item.entry.candidates
+                )
+                text += (
+                    f" Matches found for {with_candidates}."
+                    " Exact matches are confirmed by content fingerprint;"
+                    " preview possible matches before relinking."
+                )
         self.header_label.setText(text)
 
     def _on_relink_requested(

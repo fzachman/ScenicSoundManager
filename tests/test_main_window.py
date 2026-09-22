@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 import app.main_window as main_window_module
+from app import APP_DISPLAY_NAME
 from app.audio import TRANSITION_FADE_MS
 from app.database import DatabaseConnection, Playlist
 
@@ -476,6 +477,99 @@ def test_menu_bar_has_expected_menus(main_window):
         "Soundboards",
         "Help",
     ]
+
+
+def _menu_texts(menu):
+    return ["---" if a.isSeparator() else a.text() for a in menu.actions()]
+
+
+@pytest.fixture(params=[True, False], ids=["macos", "windows"])
+def platform_window(request, qapp, tmp_path, monkeypatch):
+    """A MainWindow built as if on macOS or Windows (the flags are read at
+    construction, so they must be patched before the window exists)."""
+    monkeypatch.setattr(main_window_module, "IS_MACOS", request.param)
+    monkeypatch.setattr(main_window_module, "IS_WINDOWS", not request.param)
+    db_path = str(tmp_path / "test.db")
+    monkeypatch.setattr(
+        main_window_module,
+        "DatabaseConnection",
+        lambda **kw: DatabaseConnection(db_path),
+    )
+    window = main_window_module.MainWindow()
+    yield window
+    window.db.close()
+
+
+def test_file_and_help_menus_follow_platform_conventions(platform_window):
+    file_menu, help_menu = (
+        a.menu()
+        for a in platform_window.menuBar().actions()
+        if a.text() in ("File", "Help")
+    )
+    maintenance = ["Back Up Database…", "Restore Database…", "Repair Library…"]
+    if main_window_module.IS_MACOS:
+        # About/Settings/Quit are only anchored here; their MenuRoles move
+        # them into the macOS application menu.
+        assert _menu_texts(file_menu) == [
+            f"About {APP_DISPLAY_NAME}",
+            "Settings…",
+            f"Quit {APP_DISPLAY_NAME}",
+            "Import",
+            "---",
+            *maintenance,
+        ]
+        assert _menu_texts(help_menu) == ["Keyboard Shortcuts", "Send Feedback…"]
+    else:
+        assert _menu_texts(file_menu) == [
+            "Import",
+            "---",
+            *maintenance,
+            "---",
+            "Settings…",
+            "---",
+            "Exit",
+        ]
+        assert _menu_texts(help_menu) == [
+            "Keyboard Shortcuts",
+            "Send Feedback…",
+            "---",
+            f"About {APP_DISPLAY_NAME}",
+        ]
+
+
+@pytest.mark.parametrize(
+    ("is_macos", "expected", "absent"),
+    [(True, "⌘1", "Ctrl+"), (False, "Ctrl+1", "⌘")],
+)
+def test_shortcuts_help_uses_platform_modifier(
+    main_window, monkeypatch, is_macos, expected, absent
+):
+    shown = []
+    monkeypatch.setattr(main_window_module, "IS_MACOS", is_macos)
+    monkeypatch.setattr(
+        main_window_module.QMessageBox,
+        "information",
+        staticmethod(lambda parent, title, text: shown.append(text)),
+    )
+
+    main_window._show_shortcuts_help()
+
+    assert expected in shown[0]
+    assert absent not in shown[0]
+
+
+def test_missing_vlc_hint_on_windows_asks_for_64_bit(monkeypatch):
+    monkeypatch.setattr(main_window_module, "IS_WINDOWS", True)
+    text, url = main_window_module.missing_vlc_hint()
+    assert "64-bit" in text
+    assert url == main_window_module.VLC_WINDOWS_DOWNLOAD_URL
+
+
+def test_missing_vlc_hint_elsewhere_is_generic(monkeypatch):
+    monkeypatch.setattr(main_window_module, "IS_WINDOWS", False)
+    text, url = main_window_module.missing_vlc_hint()
+    assert "64-bit" not in text
+    assert url == main_window_module.VLC_DOWNLOAD_URL
 
 
 def test_dynamic_menus_are_populated_at_startup(main_window):

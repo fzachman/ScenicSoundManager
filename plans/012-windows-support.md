@@ -86,6 +86,13 @@ code won (see "Corrections" below).
 6. **Style (conditional):** only if the first Windows test shows stylesheet
    problems, `app.setStyle("Fusion")` on `win32` only.
 
+**Steps 3–5 DONE 2026-09-22.** Also found and fixed: the Keyboard Shortcuts
+dialog hardcoded `⌘` glyphs (now `Ctrl+` off macOS). Platform flags are
+module constants in `app/main_window.py` (`IS_MACOS`, `IS_WINDOWS`) so tests
+cover both layouts on any host; Repair Library keys off
+`repair.spotlight_available()` (a capability check, not a platform check).
+Step 6 waits for the first Windows test.
+
 Optional cleanup: the py2app-only frozen-bundle VLC code (`main.py`
 `setup_environment`, `AudioEngine._configure_vlc_paths`) looks for
 `libvlc.dylib` under `../Resources`. Dead on Windows, harmless.

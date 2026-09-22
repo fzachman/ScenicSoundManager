@@ -62,6 +62,36 @@ logger = get_logger(__name__)
 # README and docs/release-notes-base.md — update all three together.
 FEEDBACK_FORM_URL = "https://forms.gle/QyTAhJCRd18NvHNn6"
 
+VLC_DOWNLOAD_URL = "https://www.videolan.org/vlc/"
+VLC_WINDOWS_DOWNLOAD_URL = "https://www.videolan.org/vlc/download-windows.html"
+
+# Platform-dependent chrome: menu layout, shortcut glyphs, and the VLC hint.
+# Module constants so tests can exercise every platform on any host.
+IS_MACOS = sys.platform == "darwin"
+IS_WINDOWS = sys.platform == "win32"
+
+
+def missing_vlc_hint() -> tuple[str, str]:
+    """The VLC-missing dialog's body text and download URL for this platform."""
+    if IS_WINDOWS:
+        # 64-bit Python can't load a 32-bit libVLC, so a 32-bit VLC install
+        # looks exactly like no VLC at all.
+        return (
+            f"{APP_DISPLAY_NAME} uses VLC for audio playback, but it couldn't "
+            "find a 64-bit VLC installation.\n\n"
+            "Everything except playback will still work. To enable audio, "
+            "install the 64-bit version of VLC from videolan.org (the 32-bit "
+            "version won't work) and relaunch this app.",
+            VLC_WINDOWS_DOWNLOAD_URL,
+        )
+    return (
+        f"{APP_DISPLAY_NAME} uses VLC for audio playback, and it doesn't "
+        "appear to be installed.\n\n"
+        "Everything except playback will still work. To enable audio, "
+        "install VLC from videolan.org and relaunch this app.",
+        VLC_DOWNLOAD_URL,
+    )
+
 
 class MainWindow(QMainWindow):
     """Main application window"""
@@ -239,7 +269,9 @@ class MainWindow(QMainWindow):
         macOS relocates the About/Settings/Quit actions out of the File menu
         into the application menu via their MenuRoles (the app menu's *name*
         comes from the bundle plist, so it reads "Python" when running
-        unbundled). The Scenes/Playlists/Soundboards menus rebuild from the
+        unbundled). Other platforms have no application menu, so there
+        Settings and Exit go at the bottom of File and About at the bottom
+        of Help. The Scenes/Playlists/Soundboards menus rebuild from the
         database on every aboutToShow, so they never go stale and need no
         CRUD signal wiring.
         """
@@ -253,21 +285,21 @@ class MainWindow(QMainWindow):
         about_action = QAction(f"About {APP_DISPLAY_NAME}", self)
         about_action.setMenuRole(QAction.MenuRole.AboutRole)
         about_action.triggered.connect(self._show_about)
-        file_menu.addAction(about_action)
 
         settings_action = QAction("Settings…", self)
         settings_action.setMenuRole(QAction.MenuRole.PreferencesRole)
         settings_action.setShortcut(QKeySequence.StandardKey.Preferences)
         settings_action.triggered.connect(self._show_settings)
-        file_menu.addAction(settings_action)
 
         # close(), not QApplication.quit(): closeEvent owns the teardown
         # (audio stop, remote server stop, DB close, engine release).
-        quit_action = QAction(f"Quit {APP_DISPLAY_NAME}", self)
+        quit_action = QAction(f"Quit {APP_DISPLAY_NAME}" if IS_MACOS else "Exit", self)
         quit_action.setMenuRole(QAction.MenuRole.QuitRole)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         quit_action.triggered.connect(self.close)
-        file_menu.addAction(quit_action)
+
+        if IS_MACOS:
+            file_menu.addActions([about_action, settings_action, quit_action])
 
         import_menu = QMenu("Import", self)
         file_menu.addMenu(import_menu)
@@ -289,6 +321,11 @@ class MainWindow(QMainWindow):
         repair_action = QAction("Repair Library…", self)
         repair_action.triggered.connect(self._repair_library)
         file_menu.addAction(repair_action)
+        if not IS_MACOS:
+            file_menu.addSeparator()
+            file_menu.addAction(settings_action)
+            file_menu.addSeparator()
+            file_menu.addAction(quit_action)
 
         # The transport keys (Space/→) are deliberately NOT bound as action
         # shortcuts: they live in the application event filter so they can
@@ -348,6 +385,9 @@ class MainWindow(QMainWindow):
         feedback_action = QAction("Send Feedback…", self)
         feedback_action.triggered.connect(self._send_feedback)
         help_menu.addAction(feedback_action)
+        if not IS_MACOS:
+            help_menu.addSeparator()
+            help_menu.addAction(about_action)
 
         # Populate the dynamic menus now, not just on aboutToShow: the macOS
         # native menu bar HIDES empty menus, so without an initial build the
@@ -494,17 +534,18 @@ class MainWindow(QMainWindow):
         self.remote_server = self._start_remote_server()
 
     def _show_shortcuts_help(self):
+        mod = "⌘" if IS_MACOS else "Ctrl+"
         QMessageBox.information(
             self,
             "Keyboard Shortcuts",
             "<table cellspacing='6'>"
             "<tr><td><b>Space</b></td><td>Play / pause</td></tr>"
             "<tr><td><b>→</b></td><td>Next track (playlist)</td></tr>"
-            "<tr><td><b>⌘← / ⌘→</b></td>"
+            f"<tr><td><b>{mod}← / {mod}→</b></td>"
             "<td>Previous / next scene or playlist</td></tr>"
-            "<tr><td><b>⌘1 / ⌘2 / ⌘3</b></td>"
+            f"<tr><td><b>{mod}1 / {mod}2 / {mod}3</b></td>"
             "<td>Library / Scenes / Playlists tab</td></tr>"
-            "<tr><td><b>⌘O</b></td><td>Import audio files</td></tr>"
+            f"<tr><td><b>{mod}O</b></td><td>Import audio files</td></tr>"
             "</table>",
         )
 
@@ -567,19 +608,15 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("VLC Not Found")
-        box.setText(
-            f"{APP_DISPLAY_NAME} uses VLC for audio playback, and it doesn't "
-            "appear to be installed.\n\n"
-            "Everything except playback will still work. To enable audio, "
-            "install VLC from videolan.org and relaunch this app."
-        )
+        text, url = missing_vlc_hint()
+        box.setText(text)
         download_btn = box.addButton(
             "Open VLC Download Page", QMessageBox.ButtonRole.ActionRole
         )
         box.addButton(QMessageBox.StandardButton.Ok)
         box.exec()
         if box.clickedButton() is download_btn:
-            QDesktopServices.openUrl(QUrl("https://www.videolan.org/vlc/"))
+            QDesktopServices.openUrl(QUrl(url))
 
     def _repair_library(self):
         """File > Repair Library…: relink entries whose files moved on disk."""
