@@ -69,6 +69,10 @@ code won (see "Corrections" below).
    - Other (Linux): XDG data/state dirs.
    - No migration: Windows has no installs, macOS paths do not move.
 
+   **DONE 2026-09-22:** `paths.data_dir()` / `paths.log_dir()` take an
+   optional `platform` argument, so `tests/test_paths.py` checks every
+   platform on any host.
+
 ### Phase 2 — Windows code fixes
 
 3. **Menus.** `_setup_menus` (`app/main_window.py`) puts About / Settings /
