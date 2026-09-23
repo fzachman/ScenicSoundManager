@@ -122,9 +122,10 @@ the Windows machine).**
   and `build` (PyInstaller → `scripts/smoke_test_build.py` → zip →
   `upload-artifact@v7` with `archive: false`, so the download is the exact
   zip a release attaches, named `ScenicSoundManager-<version>-windows.zip`).
-  Triggers: `pull_request`, push to `main`, `workflow_dispatch`.
-  GOTCHA: the dispatch button only exists once the workflow is on `main`, so
-  the first run comes from a PR.
+  Triggers: push to `main`, `feature/**`, `fix/**`, plus `workflow_dispatch`.
+  Pull requests are disabled on this repo (owner's choice: sole
+  contributor), so `ci.yml` got the same push triggers. GOTCHA: the dispatch
+  button only exists once the workflow is on `main`.
 - Smoke test: launches the exe offscreen on the clean runner, waits for the
   new `app_started` log line (added to `main.py`), checks it is still alive,
   and checks the DB has seeded tags (proves both SQL data files were found).

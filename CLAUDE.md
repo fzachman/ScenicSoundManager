@@ -25,7 +25,8 @@ python setup.py py2app -A     # development alias mode
 # Windows build: CI only (PyInstaller can't cross-compile). The
 # "Windows build" workflow (.github/workflows/windows-build.yml) runs the
 # tests on Windows, builds windows.spec, smoke-tests the exe, and uploads the
-# zip as a run artifact. It runs on PRs, pushes to main, and manual dispatch.
+# zip as a run artifact. Both workflows run on pushes to main, feature/**,
+# and fix/** (pull requests are disabled on this repo).
 
 # Task runner shortcuts (justfile)
 just build                    # clean + py2app + report artifact/version

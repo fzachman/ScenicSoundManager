@@ -3,14 +3,14 @@ name: Windows build
 # Builds the Windows app (plan 012) and uploads the zip as a workflow
 # artifact: download it from the run page to test on a real Windows machine.
 # Nothing here tags or publishes — `just release` attaches a tested artifact.
-# The workflow_dispatch trigger only appears in the Actions tab once this
-# file is on main; before that, open a PR to get a run.
+# Pull requests are disabled on this repo (single contributor), so pushes to
+# the working-branch patterns trigger it instead. The workflow_dispatch
+# button only appears in the Actions tab once this file is on main.
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-  pull_request:
+    branches: [main, "feature/**", "fix/**"]
 
 concurrency:
   group: windows-build-${{ github.ref }}

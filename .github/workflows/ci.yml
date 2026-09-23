@@ -1,9 +1,10 @@
 name: CI
 
+# Pull requests are disabled on this repo (single contributor), so pushes to
+# the working-branch patterns get tested before they reach main.
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [main, "feature/**", "fix/**"]
 
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
