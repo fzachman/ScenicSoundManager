@@ -39,6 +39,7 @@ build:
     @app="$(echo dist/*.app)"; ver="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"; printf '\n✓ Built %s (version %s)\n' "$app" "$ver"
 
 # Gate, build, tag, zip, and publish the current app version to GitHub Releases
+# (macOS zip built here + the Windows zip CI built for the same commit)
 release: _preflight
     #!/bin/sh
     set -eu
@@ -67,18 +68,29 @@ release: _preflight
     read -r edit_answer || true
     case "$edit_answer" in [Yy]*) ${EDITOR:-nano} "$notes_file" ;; esac
     just check build
+    # Attach the Windows zip CI built (and you tested) for this exact commit,
+    # byte for byte — never a rebuild. Fetched before tagging, so a missing or
+    # expired artifact stops the release before anything irreversible.
+    win_zip="ScenicSoundManager-{{version}}-windows.zip"
+    win_run="$(gh run list --repo {{repo}} --workflow windows-build.yml --commit "$(git rev-parse HEAD)" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+    art_id="$(gh api "repos/{{repo}}/actions/runs/$win_run/artifacts" --jq ".artifacts[] | select(.name == \"$win_zip\" and (.expired | not)) | .id")"
+    test -n "$art_id" || { echo "✗ Windows build run $win_run has no unexpired $win_zip artifact"; exit 1; }
+    gh api "repos/{{repo}}/actions/artifacts/$art_id/zip" > "dist/$win_zip"
+    unzip -tq "dist/$win_zip" >/dev/null
+    echo "· attached Windows build from run $win_run"
     # Re-runs after a partial failure resume: the tag may already exist from
     # the failed attempt (preflight guarantees it points at HEAD).
     if ! git rev-parse -q --verify "refs/tags/v{{version}}" >/dev/null; then git tag -a "v{{version}}" -m "ScenicSound Manager {{version}}"; fi
     git push origin "v{{version}}"
-    (cd dist && ditto -c -k --keepParent "ScenicSound Manager.app" "ScenicSoundManager-{{version}}.zip")
-    gh release create "v{{version}}" "dist/ScenicSoundManager-{{version}}.zip" --repo {{repo}} $pre_flag --title "$title" --notes-file "$notes_file"
+    (cd dist && ditto -c -k --keepParent "ScenicSound Manager.app" "ScenicSoundManager-{{version}}-macos.zip")
+    gh release create "v{{version}}" "dist/ScenicSoundManager-{{version}}-macos.zip" "dist/$win_zip" --repo {{repo}} $pre_flag --title "$title" --notes-file "$notes_file"
     : > "$unreleased"
     printf '\n✓ Released v%s — https://github.com/%s/releases/tag/v%s\n' '{{version}}' '{{repo}}' '{{version}}'
     printf '· cleared %s — commit it to start the next cycle (git commit -am "Clear unreleased notes after v{{version}}")\n' "$unreleased"
 
 # Refuse to release from the wrong branch, a dirty tree, a stale/duplicate
-# version, or the wrong gh account — all BEFORE anything irreversible happens
+# version, the wrong gh account, or a commit without a green Windows build —
+# all BEFORE anything irreversible happens
 _preflight:
     @test "$(git rev-parse --abbrev-ref HEAD)" = "main" || { echo "✗ releases come from main (currently on $(git rev-parse --abbrev-ref HEAD))"; exit 1; }
     @test -z "$(git status --porcelain)" || { echo "✗ working tree not clean — commit or stash first"; exit 1; }
@@ -87,4 +99,5 @@ _preflight:
     @test "$(gh api repos/{{repo}} --jq .permissions.push 2>/dev/null)" = "true" || { echo "✗ gh can't write to {{repo}} — wrong active account? Run: gh auth switch -u fzachman"; exit 1; }
     @! gh release view "v{{version}}" --repo {{repo}} >/dev/null 2>&1 || { echo "✗ release v{{version}} already exists — bump __version__ in app/__init__.py first"; exit 1; }
     @if git rev-parse -q --verify "refs/tags/v{{version}}" >/dev/null; then test "$(git rev-parse "refs/tags/v{{version}}^{commit}")" = "$(git rev-parse HEAD)" || { echo "✗ tag v{{version}} exists but points at a different commit — bump __version__ or delete the stale tag"; exit 1; }; echo "· tag v{{version}} already at HEAD (resuming a failed release)"; fi
+    @test -n "$(gh run list --repo {{repo}} --workflow windows-build.yml --commit "$(git rev-parse HEAD)" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')" || { echo "✗ no green Windows build for $(git rev-parse --short HEAD) yet — wait for its 'Windows build' run to pass (gh run list --repo {{repo}} --workflow windows-build.yml)"; exit 1; }
     @echo "✓ preflight ok — will release {{version}} from $(git rev-parse --short HEAD)"
