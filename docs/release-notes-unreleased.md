@@ -1,2 +1,0 @@
-- **New: ScenicSound Manager for Windows (beta).** Download the `-windows.zip` file below; it needs the 64-bit version of VLC. Install steps are under Installation.
-- **macOS:** no changes to the app in this release. The macOS download is now named `-macos.zip`.
