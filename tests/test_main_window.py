@@ -8,7 +8,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QCoreApplication, QEvent, QSettings, Qt
+from PyQt6.QtCore import QCoreApplication, QEvent, QSettings, QSize, Qt
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import (
     QApplication,
@@ -1102,17 +1102,21 @@ class TestWindowStatePersistence:
 
     def test_floating_dock_state_and_size_round_trip(self, qapp, make_window):
         first = make_window()
-        first.soundboard_dock.setFloating(True)
+        dock = first.soundboard_dock
+        dock.setFloating(True)
         qapp.processEvents()
-        first.soundboard_dock.resize(500, 260)
+        # Stay above the dock's minimum width, which follows the platform's
+        # fonts (~540px on Windows): Qt clamps a smaller resize up to it.
+        target = QSize(max(500, dock.minimumSizeHint().width() + 40), 260)
+        dock.resize(target)
         qapp.processEvents()
+        assert dock.size() == target  # the resize itself took effect
         first.close()
         qapp.processEvents()
 
         second = make_window()
         assert second.soundboard_dock.isFloating()
-        assert second.soundboard_dock.size().width() == 500
-        assert second.soundboard_dock.size().height() == 260
+        assert second.soundboard_dock.size() == target
 
     def test_redocking_round_trips_too(self, qapp, make_window):
         first = make_window()
