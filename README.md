@@ -13,6 +13,14 @@ persistence.
 > Note: this README is the user/contributor entry point. For architecture notes
 > and conventions, see [`CLAUDE.md`](CLAUDE.md) and [`docs/`](docs/).
 
+## Download
+
+Get the latest beta from
+[GitHub Releases](https://github.com/fzachman/ScenicSoundManager/releases): the
+`-macos.zip` for macOS, or the `-windows.zip` for Windows. Both need
+[VLC](https://www.videolan.org/vlc/) installed (the 64-bit version on Windows).
+Each release's notes have the install steps.
+
 ## Features
 
 - **Library** — import individual files or whole folders (including drag-and-drop),
@@ -34,8 +42,9 @@ persistence.
 <img src="docs/images/library_screenshot.png" width="800"
      alt="The Library tab: imported tracks with colored tag badges, filtered by tag">
 
-Your library and scenes are stored in a local SQLite database at
-`~/Library/Application Support/ScenicSound/soundmanager.db` (macOS).
+Your library and scenes are stored in a local SQLite database:
+`~/Library/Application Support/ScenicSound/soundmanager.db` on macOS,
+`%LOCALAPPDATA%\ScenicSound\soundmanager.db` on Windows.
 
 ## Feedback & bug reports
 
@@ -78,7 +87,8 @@ venv/bin/python scripts/remote_client.py watch         # stream state events
 ```
 
 The server only listens on localhost. To turn it off or change the port, open
-**Settings…** in the app menu (⌘, on macOS); changes take effect immediately.
+**Settings…** (in the app menu on macOS, ⌘,; in the File menu on Windows);
+changes take effect immediately.
 
 For Elgato Stream Deck owners there's a ready-made
 [Stream Deck plugin](https://github.com/fzachman/SSMStreamdeckPlugin/releases)
@@ -95,8 +105,9 @@ soundboard sounds.
 - Python dependencies (PyQt6, python-vlc, mutagen, structlog) — see
   [`requirements.txt`](requirements.txt).
 
-Primarily developed on macOS; CI runs the test suite on Linux, so the app and
-tests are cross-platform. The packaged `.app` build (below) is macOS-only.
+Primarily developed on macOS; CI runs the test suite on Linux and Windows, so
+the app and tests are cross-platform. Packaged builds exist for macOS (built
+locally) and Windows (built by CI) — see below.
 
 ## Setup
 
@@ -117,16 +128,25 @@ python main.py
 
 ## Building the macOS app
 
-Requires [VLC.app](https://www.videolan.org/vlc/) installed (its libraries are
-bundled into the build):
-
 ```bash
 python setup.py py2app        # production standalone build
 python setup.py py2app -A      # development alias mode (faster; needs the source tree)
 ```
 
-If VLC.app isn't found, the build still proceeds but the resulting app will
-require VLC to be installed separately.
+The build doesn't bundle VLC: the app uses the
+[VLC.app](https://www.videolan.org/vlc/) installed on the Mac, and prompts with
+a download link if it's missing.
+
+## Building the Windows app
+
+Windows builds are made by CI only — PyInstaller can't cross-compile from
+macOS. The [Windows build](.github/workflows/windows-build.yml) workflow runs
+on every push to `main`, `feature/**`, and `fix/**`: it runs the test suite on
+Windows, builds [`windows.spec`](windows.spec) (a one-folder, windowed
+PyInstaller build), smoke-tests the exe, and uploads
+`ScenicSoundManager-<version>-windows.zip` as an artifact on the run page.
+`just release` attaches that exact zip to the GitHub release. Like the macOS
+app, it doesn't bundle VLC; users install the 64-bit version.
 
 ## Development
 

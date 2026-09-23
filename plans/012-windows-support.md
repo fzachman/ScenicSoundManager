@@ -195,6 +195,18 @@ the first Windows release needs a new version.
     database location; a `docs/release-notes-unreleased.md` bullet when the
     first Windows build ships.
 
+**Steps 11–12 DONE 2026-09-22.** Decisions: ship Windows now as **0.9.5**
+(v0.9.4 already existed, macOS-only; macOS gets no app changes), and name the
+assets `ScenicSoundManager-<version>-macos.zip` / `-windows.zip`.
+`_preflight` refuses a commit without a successful `windows-build` run;
+`release` downloads that run's artifact (by exact versioned name, unexpired)
+via `gh api .../artifacts/<id>/zip` before tagging, checks it with `unzip -t`,
+and attaches it beside the macOS zip. Merge with `--ff-only` so `main` gets
+the very commit whose build was hand-tested. Docs: macOS + Windows install
+sections in `docs/release-notes-base.md`; README Download + Windows build
+sections and DB location (also corrected the stale "VLC is bundled" claim in
+the macOS build section).
+
 ## Already cross-platform (verified 2026-09-22, no change needed)
 
 - Single-instance guard (`QLockFile`), `QSettings` (registry on Windows),
