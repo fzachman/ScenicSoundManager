@@ -69,10 +69,12 @@ release: _preflight
     case "$edit_answer" in [Yy]*) ${EDITOR:-nano} "$notes_file" ;; esac
     just check build
     # Attach the Windows zip CI built (and you tested) for this exact commit,
-    # byte for byte — never a rebuild. Fetched before tagging, so a missing or
-    # expired artifact stops the release before anything irreversible.
+    # byte for byte — never a rebuild. Take the OLDEST green run: that's the
+    # branch build you tested; the push to main rebuilds the same commit
+    # later. Fetched before tagging, so a missing or expired artifact stops
+    # the release before anything irreversible.
     win_zip="ScenicSoundManager-{{version}}-windows.zip"
-    win_run="$(gh run list --repo {{repo}} --workflow windows-build.yml --commit "$(git rev-parse HEAD)" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+    win_run="$(gh run list --repo {{repo}} --workflow windows-build.yml --commit "$(git rev-parse HEAD)" --status success --limit 50 --json databaseId --jq 'map(.databaseId) | last // empty')"
     art_id="$(gh api "repos/{{repo}}/actions/runs/$win_run/artifacts" --jq ".artifacts[] | select(.name == \"$win_zip\" and (.expired | not)) | .id")"
     test -n "$art_id" || { echo "✗ Windows build run $win_run has no unexpired $win_zip artifact"; exit 1; }
     gh api "repos/{{repo}}/actions/artifacts/$art_id/zip" > "dist/$win_zip"
