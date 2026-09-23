@@ -170,6 +170,20 @@ proves the installed VLC really provides DirectSound (an unknown `--aout`
 silently falls back to WASAPI). Re-test: fades AND per-track volumes in a
 multi-track scene.
 
+**Re-test PASSED (2026-09-22, artifact from `85afe20`, run 35804081012):**
+smooth fades, independent per-track volumes, and the owner's second report —
+"inactive" tracks audible when starting a one-track scene — is gone too (it
+was retiring players, still ramping down for 1.5s after a stop/switch,
+sharing the fading-in track's session volume). **Phase 4 DONE.** Step 6
+(Fusion style) not needed: the owner saw no stylesheet problems.
+
+Release-step facts verified 2026-09-22: `gh api
+repos/<repo>/actions/artifacts/<id>/zip` returns the exact uploaded zip for an
+`archive: false` artifact (same byte size, `ScenicSound Manager/` at the top
+level), so `just release` can attach the tested file without a rebuild.
+v0.9.4 (released 2026-09-22, macOS zip only) predates the Windows work, so
+the first Windows release needs a new version.
+
 ### Phase 5 — release
 
 11. **`just release`:** preflight requires a successful `windows-build` run
