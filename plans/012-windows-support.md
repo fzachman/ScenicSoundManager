@@ -141,6 +141,13 @@ the Windows machine).**
   runtime hook that points every default `QSettings()` at a temp INI dir,
   and set `HOME` to a temp dir for the data/log folders.
 
+**First CI runs (2026-09-22):** build + smoke test green on the first try
+(the exe logged `app_started platform=win32` and survived the VLC-missing
+path). Windows tests: 1 of 840 failed — the floating-dock size round trip
+resized below the dock's minimum width, which is wider on Windows fonts
+(~540px); test fixed. Run 35801306497 at `ef67131`: all green, artifact
+`ScenicSoundManager-0.9.4-windows.zip` (46 MB).
+
 ### Phase 4 — test (owner, on Windows)
 
 10. Download the artifact, install 64-bit VLC, then check: SmartScreen at
