@@ -1,7 +1,11 @@
 # Plan 012: Windows support
 
-**Status:** IN PROGRESS (2026-09-22, branch `feature/windows-support`).
-Re-planned 2026-09-22 against the current app. The original 2026-07-29
+**Status:** DONE — shipped in **v0.9.5** (published 2026-09-23T01:46Z) with
+`ScenicSoundManager-0.9.5-macos.zip` and `-windows.zip`; the Windows zip is
+the hand-tested artifact from run 35805614842 (45,614,562 bytes, same as
+tested). Built on `feature/windows-support`, fast-forwarded to `main` at
+`b6068fe`. Follow-ups: plan 014 (Windows CI hardening), plan 015 (dependency
+updates without PRs). Re-planned 2026-09-22 against the current app. The original 2026-07-29
 draft predated the theme system, single-instance lock, update checker,
 restore flow, and the public beta; wherever it disagreed with the code, the
 code won (see "Corrections" below).
