@@ -157,6 +157,19 @@ resized below the dock's minimum width, which is wider on Windows fonts
     Restore Database (see risks), remote control, update check,
     single-instance refusal, window size/position memory.
 
+**First owner test (2026-09-22, artifact from `ef67131`):** ~99% worked.
+One glitch: scene start/stop fades stuttered. Cause (from VLC 3.0
+`modules/audio_output/mmdevice.c`): the default Windows output (WASAPI,
+"mmdevice") sets volume on the process-wide audio session
+(`ISimpleAudioVolume`), which every player in the process shares — so
+overlapping per-player ramps fight over one level, and per-track mix levels
+collapse to the last one set. Fix: `vlc_instance_args()` in
+`app/audio/engine.py` selects `--aout=directsound` (per-buffer volume,
+`directsound.c`) plus `--no-volume-save` on win32. A Windows-only test
+proves the installed VLC really provides DirectSound (an unknown `--aout`
+silently falls back to WASAPI). Re-test: fades AND per-track volumes in a
+multi-track scene.
+
 ### Phase 5 — release
 
 11. **`just release`:** preflight requires a successful `windows-build` run

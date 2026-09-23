@@ -23,6 +23,21 @@ except (OSError, ImportError) as e:
     _log.warning("audio_playback_disabled")
 
 
+def vlc_instance_args(platform: str = sys.platform) -> list[str]:
+    """libVLC options for this platform's shared VLC instance."""
+    args = ["--no-xlib"]  # Disable X11 on macOS
+    if platform == "win32":
+        # VLC's default Windows output (WASAPI, "mmdevice") sets volume on
+        # the process-wide audio session, which every player in this process
+        # shares: per-track volumes collapse to whichever was set last, and
+        # overlapping fades fight over one level (audible stutter). The
+        # DirectSound output sets volume per player's own buffer instead.
+        # --no-volume-save keeps DirectSound from seeding each new player
+        # with the last volume any other player set.
+        args += ["--aout=directsound", "--no-volume-save"]
+    return args
+
+
 class AudioEngine:
     """Manages VLC instance and provides factory for creating players"""
 
@@ -41,7 +56,7 @@ class AudioEngine:
         self._configure_vlc_paths()
 
         try:
-            self.vlc_instance = vlc.Instance("--no-xlib")  # Disable X11 on macOS
+            self.vlc_instance = vlc.Instance(*vlc_instance_args())
             self.available = True
         except Exception as e:
             _log.warning("vlc_init_failed", error=str(e))

@@ -216,6 +216,50 @@ class TestRelease:
         assert second is not first
 
 
+class TestVlcInstanceArgs:
+    def test_windows_uses_per_player_directsound_output(self):
+        # WASAPI's volume is one process-wide session level shared by every
+        # player; DirectSound's is per player (independent mix + fades).
+        args = engine_mod.vlc_instance_args("win32")
+        assert "--aout=directsound" in args
+        assert "--no-volume-save" in args
+
+    @pytest.mark.parametrize("platform", ["darwin", "linux"])
+    def test_other_platforms_keep_the_default_output(self, platform):
+        args = engine_mod.vlc_instance_args(platform)
+        assert not any(a.startswith("--aout") for a in args)
+        assert "--no-xlib" in args
+
+    def test_engine_passes_the_platform_args_to_vlc(self, monkeypatch):
+        seen = []
+        fake_vlc = MagicMock()
+        fake_vlc.Instance.side_effect = lambda *args: seen.append(args)
+        monkeypatch.setattr(engine_mod, "VLC_AVAILABLE", True)
+        monkeypatch.setattr(engine_mod, "vlc", fake_vlc)
+
+        AudioEngine()
+
+        assert seen == [tuple(engine_mod.vlc_instance_args())]
+
+    @pytest.mark.skipif(
+        not VLC_AVAILABLE or os.name != "nt", reason="needs libVLC on Windows"
+    )
+    def test_installed_vlc_provides_directsound(self):
+        # An unknown --aout silently falls back to WASAPI (and its shared
+        # session volume), so prove the module really exists.
+        vlc = engine_mod.vlc
+        instance = vlc.Instance(*engine_mod.vlc_instance_args())
+        head = instance.audio_output_list_get()
+        names = []
+        node = head
+        while node:
+            names.append((node.contents.name or b"").decode())
+            node = node.contents.next
+        vlc.libvlc_audio_output_list_release(head)
+        instance.release()
+        assert any(n in ("directsound", "directx") for n in names), names
+
+
 class TestConfigureVlcPaths:
     """Exercise _configure_vlc_paths directly without constructing a live VLC
     instance (which itself mutates VLC_PLUGIN_PATH as a libvlc side effect).
