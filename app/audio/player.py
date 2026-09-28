@@ -40,6 +40,8 @@ class TrackPlayer(QObject):
         self._fade_steps_remaining = 0
         self._fade_volume_step = 0.0
         self._fade_callback: Callable | None = None
+        # True while a fade_out / fade_out_and_release ramps to silence
+        self._fading_out = False
 
         # End-of-media state. VLC parks the player in the Ended state where
         # play()/set_time() are no-ops; reviving needs an explicit restart().
@@ -97,11 +99,16 @@ class TrackPlayer(QObject):
     def target_volume(self, value: int) -> None:
         """Set the target volume (0-100)"""
         self._target_volume = max(0, min(100, value))
+        if self._is_fading() and self._fading_out:
+            # The ramp is taking the track to silence to pause or release
+            # it. Keep the new level for the next fade-in only: retargeting
+            # would swell the track to it just before it stops (e.g. a
+            # preset switch right after pressing Pause).
+            return
         if self._is_fading():
             # Retarget the in-flight fade from wherever the ramp currently
             # is; without this the change is silently discarded until the
-            # fade completes at its precomputed endpoint. The pending
-            # callback (e.g. pause after a fade-out) is preserved.
+            # fade completes at its precomputed endpoint.
             callback = self._fade_callback
             self._stop_fade()
             self._start_fade(self._current_volume, self._target_volume, 200, callback)
@@ -229,6 +236,7 @@ class TrackPlayer(QObject):
 
         callback = self.pause if pause_after else None
         self._start_fade(self._current_volume, 0, duration_ms, callback)
+        self._fading_out = True
 
     def fade_out_and_release(self, duration_ms: int = TRANSITION_FADE_MS) -> None:
         """Fade to silence, then release; the caller may drop its reference.
@@ -244,6 +252,7 @@ class TrackPlayer(QObject):
         _retiring_players.add(self)
         self._stop_fade()
         self._start_fade(self._current_volume, 0, duration_ms, self.release)
+        self._fading_out = True
 
     def fade_to_volume(self, target_volume: int, duration_ms: int = 500) -> None:
         """Fade to a specific volume level"""
@@ -289,6 +298,7 @@ class TrackPlayer(QObject):
 
     def _stop_fade(self) -> None:
         """Stop any ongoing fade"""
+        self._fading_out = False
         if self._fade_timer:
             self._fade_timer.stop()
             self._fade_timer = None

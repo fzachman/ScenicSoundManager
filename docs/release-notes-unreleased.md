@@ -1,1 +1,1 @@
-- Fixed: switching presets on a paused scene no longer starts sounds playing at full volume — the scene stays silent until you press Play, and then resumes with the new preset.
+- Fixed: switching presets on a paused scene no longer starts sounds playing at full volume, and switching right after pressing Pause no longer causes a short loud swell — the scene stays silent until you press Play, and then resumes with the new preset.

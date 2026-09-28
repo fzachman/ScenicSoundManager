@@ -340,17 +340,69 @@ class TestFades:
         _drive_fade_to_completion(player)
         assert player._current_volume == 70
 
-    def test_target_volume_mid_fade_preserves_pending_pause(self, qapp, mock_engine):
-        # Retargeting during a fade-out must not cancel the pause it was
-        # going to perform, or a track could keep playing in a paused scene.
+    def test_target_volume_mid_fade_out_keeps_fading_to_silence(
+        self, qapp, mock_engine
+    ):
+        # A volume change during a pause fade-out (e.g. a preset switch right
+        # after pressing Pause) must not swell the track back up before it
+        # stops, and must not cancel the pause. The new level is kept for
+        # the next fade-in.
         player = _make_player(mock_engine)
+        player.target_volume = 50
         player.fade_out(duration_ms=1000, pause_after=True)
+        player._fade_step()  # partway down
+        before = player._current_volume
         player.media_player.set_pause.reset_mock()
+        player.media_player.audio_set_volume.reset_mock()
 
-        player.target_volume = 70
+        player.target_volume = 100
+
+        assert player.target_volume == 100
+        assert player._current_volume == before  # no snap
+        player.media_player.audio_set_volume.assert_not_called()
+        assert player._is_fading()
+
+        _drive_fade_to_completion(player)
+        applied = [
+            c.args[0] for c in player.media_player.audio_set_volume.call_args_list
+        ]
+        assert applied == sorted(applied, reverse=True)  # only ever went down
+        assert player._current_volume == 0
+        player.media_player.set_pause.assert_called_once_with(1)
+
+        player.fade_in(duration_ms=500)
+        _drive_fade_to_completion(player)
+        assert player._current_volume == 100
+
+    def test_target_volume_mid_release_fade_keeps_fading_to_silence(
+        self, qapp, mock_engine
+    ):
+        player = _make_player(mock_engine)
+        player.media_player.is_playing.return_value = True
+        media_player = player.media_player
+        player.fade_out_and_release(1000)
+        player._fade_step()  # partway down
+        media_player.audio_set_volume.reset_mock()
+
+        player.target_volume = 100
         _drive_fade_to_completion(player)
 
-        player.media_player.set_pause.assert_called_once_with(1)
+        applied = [c.args[0] for c in media_player.audio_set_volume.call_args_list]
+        assert applied == sorted(applied, reverse=True)
+        media_player.release.assert_called_once()
+
+    def test_target_volume_after_fade_out_completes_snaps_again(
+        self, qapp, mock_engine
+    ):
+        # The fade-out flag must clear with the fade, or later volume
+        # changes on a paused player would be ignored until the next fade.
+        player = _make_player(mock_engine)
+        player.fade_out(duration_ms=500, pause_after=True)
+        _drive_fade_to_completion(player)
+
+        player.target_volume = 60
+
+        assert player._current_volume == 60
 
 
 class _ToggleSemanticsMediaPlayer:
