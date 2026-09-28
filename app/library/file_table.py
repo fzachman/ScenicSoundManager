@@ -1,9 +1,10 @@
 """Sortable file list table for library"""
 
 import os
+from collections.abc import Callable
 
 from PyQt6.QtCore import QByteArray, QEvent, QSettings, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -66,6 +67,8 @@ class FileTableWidget(QTableWidget):
     tags_bulk_assigned = pyqtSignal()  # Emitted after bulk tag assignment
     file_metadata_changed = pyqtSignal()  # Emitted after inline title/artist edit
     sort_requested = pyqtSignal(int, Qt.SortOrder)  # column index, sort order
+    add_to_playlist_requested = pyqtSignal(int, list)  # playlist_id, audio_file_ids
+    add_to_scene_requested = pyqtSignal(int, list)  # scene_id, audio_file_ids
     SETTINGS_GROUP = "library/file_table"
     SETTINGS_HEADER_STATE = "header_state"
     SETTINGS_COLUMN_VISIBILITY = "column_visibility"
@@ -563,6 +566,28 @@ class FileTableWidget(QTableWidget):
                     )
                 )
 
+        # Table order (not click order), so a multi-file add keeps the
+        # order the user sees.
+        selected = (self._get_file_at_row(r) for r in sorted(i.row() for i in rows))
+        file_ids = [f.id for f in selected if f is not None and f.id is not None]
+        self._add_target_submenu(
+            menu.addMenu("Add to Playlist"),
+            [
+                (p.id, p.name or "Untitled Playlist")
+                for p in self.db.get_all_playlists()
+            ],
+            empty_text="No Playlists",
+            holding_ids=self.db.get_playlists_containing_all(file_ids),
+            on_selected=lambda pid: self.add_to_playlist_requested.emit(pid, file_ids),
+        )
+        self._add_target_submenu(
+            menu.addMenu("Add to Scene"),
+            [(s.id, s.title or "Untitled Scene") for s in self.db.get_all_scenes()],
+            empty_text="No Scenes",
+            holding_ids=self.db.get_scenes_containing_all(file_ids),
+            on_selected=lambda sid: self.add_to_scene_requested.emit(sid, file_ids),
+        )
+
         tag_action = menu.addAction(f"Info ({len(rows)})")
         tag_action.triggered.connect(self._open_get_info)
 
@@ -570,6 +595,37 @@ class FileTableWidget(QTableWidget):
         delete_action.triggered.connect(self._delete_selected)
 
         menu.exec(self.mapToGlobal(pos))
+
+    @staticmethod
+    def _add_target_submenu(
+        submenu: QMenu | None,
+        targets: list[tuple[int | None, str]],
+        empty_text: str,
+        holding_ids: set[int],
+        on_selected: Callable[[int], None],
+    ):
+        """Fill an "Add to …" submenu with (id, label) targets.
+
+        Targets that already hold every selected file get a checkmark. They
+        stay clickable: the add skips files a target already holds, so
+        choosing one is a no-op.
+        """
+        if submenu is None:
+            return
+        if not targets:
+            placeholder = QAction(empty_text, submenu)
+            placeholder.setEnabled(False)
+            submenu.addAction(placeholder)
+            return
+        for target_id, label in targets:
+            if target_id is None:
+                continue
+            # "&" would otherwise be eaten as a mnemonic marker.
+            action = QAction(label.replace("&", "&&"), submenu)
+            action.setCheckable(True)
+            action.setChecked(target_id in holding_ids)
+            action.triggered.connect(lambda checked=False, i=target_id: on_selected(i))
+            submenu.addAction(action)
 
     def _delete_selected(self):
         """Delete selected files from library"""

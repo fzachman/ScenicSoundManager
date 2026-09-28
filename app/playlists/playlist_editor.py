@@ -543,16 +543,48 @@ class PlaylistEditor(QWidget):
             parent=self,
         )
         if dialog.exec():
-            files = dialog.get_selected_files()
-            for file in files:
-                position = len(self._current_playlist.tracks)
-                self.db.add_track_to_playlist(
-                    self._current_playlist.id, file.id, position
-                )
+            self.add_audio_files(
+                self._current_playlist.id,
+                [f.id for f in dialog.get_selected_files() if f.id is not None],
+            )
 
+    def add_audio_files(self, playlist_id: int, audio_file_ids: list[int]) -> int:
+        """Append library files to a playlist; return how many were added.
+
+        Works on any playlist, open in the editor or not (the library's "Add
+        to Playlist" menu targets playlists from another tab). Files the
+        playlist already holds are skipped, so re-adding is a no-op. When the
+        target is the playing playlist, playback picks the new tracks up.
+        """
+        held = {t.audio_file_id for t in self.db.get_playlist_tracks(playlist_id)}
+        new_ids = [fid for fid in dict.fromkeys(audio_file_ids) if fid not in held]
+        if not new_ids:
+            return 0
+
+        for file_id in new_ids:
+            self.db.add_track_to_playlist(playlist_id, file_id)  # appends
+        _log.info(
+            "playlist_tracks_added",
+            playlist_id=playlist_id,
+            added=len(new_ids),
+            skipped=len(audio_file_ids) - len(new_ids),
+        )
+
+        is_active = self._is_playing_this_playlist(playlist_id)
+        if self._current_playlist and self._current_playlist.id == playlist_id:
+            # Also syncs the active copy when the open playlist is playing.
             self._refresh_tracks()
+            self.play_toggle_btn.setEnabled(True)
+            self.shuffle_btn.setEnabled(True)
+        elif is_active:
+            assert self._active_playlist is not None
+            self._active_playlist.tracks = self.db.get_playlist_tracks(playlist_id)
+        if is_active:
+            # Only the playing playlist's shuffle pool changes; reshuffling
+            # after adding to some other playlist would reset the live cycle.
             self._update_shuffle_tracks()
-            self.playlist_modified.emit()
+        self.playlist_modified.emit()
+        return len(new_ids)
 
     def _remove_track(self, track_id: int):
         """Remove a track from the playlist"""

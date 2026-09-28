@@ -1194,3 +1194,49 @@ class TestScenePresets:
         # Copies are independent of the source
         db.update_scene_track_setting(track_id, volume=0.99, slot=1)
         assert db.get_scene_tracks(copy.id, slot=1)[0].volume == 0.2
+
+
+class TestContainersHoldingAll:
+    """Membership lookups behind the library's "Add to …" checkmarks: a
+    playlist/scene counts only when it already holds EVERY given file."""
+
+    @pytest.fixture
+    def file_ids(self, db):
+        return [
+            db.add_audio_file(AudioFile(file_path=f"/music/{i}.mp3", title=str(i)))
+            for i in range(3)
+        ]
+
+    def test_playlist_holding_every_file_is_returned(self, db, file_ids):
+        full = db.add_playlist(Playlist(name="Full"))
+        partial = db.add_playlist(Playlist(name="Partial"))
+        db.add_playlist(Playlist(name="Empty"))
+        for fid in file_ids[:2]:
+            db.add_track_to_playlist(full, fid)
+        db.add_track_to_playlist(partial, file_ids[0])
+
+        assert db.get_playlists_containing_all(file_ids[:2]) == {full}
+        assert db.get_playlists_containing_all([file_ids[0]]) == {full, partial}
+        assert db.get_playlists_containing_all([file_ids[2]]) == set()
+
+    def test_scene_holding_every_file_is_returned(self, db, file_ids):
+        full = db.add_scene(Scene(title="Full"))
+        partial = db.add_scene(Scene(title="Partial"))
+        for fid in file_ids[:2]:
+            db.add_track_to_scene(full, fid)
+        db.add_track_to_scene(partial, file_ids[0])
+
+        assert db.get_scenes_containing_all(file_ids[:2]) == {full}
+        assert db.get_scenes_containing_all([file_ids[0]]) == {full, partial}
+
+    def test_duplicate_ids_do_not_break_the_count(self, db, file_ids):
+        playlist_id = db.add_playlist(Playlist(name="P"))
+        db.add_track_to_playlist(playlist_id, file_ids[0])
+
+        assert db.get_playlists_containing_all([file_ids[0]] * 2) == {playlist_id}
+
+    def test_no_files_matches_nothing(self, db, file_ids):
+        db.add_track_to_playlist(db.add_playlist(Playlist(name="P")), file_ids[0])
+
+        assert db.get_playlists_containing_all([]) == set()
+        assert db.get_scenes_containing_all([]) == set()

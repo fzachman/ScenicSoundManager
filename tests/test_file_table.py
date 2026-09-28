@@ -14,13 +14,14 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QEvent, QPointF, Qt
+from PyQt6.QtCore import QEvent, QItemSelectionModel, QPoint, QPointF, Qt
 from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QAbstractItemView
+from PyQt6.QtWidgets import QAbstractItemView, QMenu
 
-from app.database import AudioFile, DatabaseConnection
+from app.database import AudioFile, DatabaseConnection, Playlist, Scene
 from app.library.file_table import FileTableWidget
+from tests.control_helpers import record
 
 DURATION_MS = 200_000
 
@@ -284,3 +285,129 @@ class TestDeadDragRemoved:
         # The old setDragEnabled(True) produced a drag payload nothing in the
         # app accepts; it also would have fought the title-cell scrubber.
         assert table.dragEnabled() is False
+
+
+def _open_context_menu(table, rows):
+    """Select ``rows`` and open the context menu without blocking; return it."""
+    table.clearSelection()
+    flags = (
+        QItemSelectionModel.SelectionFlag.Select
+        | QItemSelectionModel.SelectionFlag.Rows
+    )
+    for row in rows:
+        table.selectionModel().select(table.model().index(row, 0), flags)
+    shown = []
+
+    class RecordingMenu(QMenu):
+        def exec(self, *args, **kwargs):
+            shown.append(self)
+
+    with patch("app.library.file_table.QMenu", RecordingMenu):
+        table._show_context_menu(QPoint(0, 0))
+    assert len(shown) == 1
+    return shown[0]
+
+
+def _submenu(menu, title):
+    return next(a for a in menu.actions() if a.text() == title).menu()
+
+
+class TestAddToMenus:
+    """Right-click "Add to Playlist ▸" / "Add to Scene ▸": one entry per
+    playlist/scene (sidebar order), checkmarks on targets that already hold
+    the whole selection, and a request signal carrying the file IDs."""
+
+    def test_submenus_sit_between_play_and_info(self, table):
+        menu = _open_context_menu(table, [0])
+
+        assert [a.text() for a in menu.actions()] == [
+            "Play",
+            "Add to Playlist",
+            "Add to Scene",
+            "Info (1)",
+            "Remove (1 files)",
+        ]
+
+    def test_submenus_list_targets_in_sidebar_order(self, table, db):
+        db.add_playlist(Playlist(name="Battle Mix"))
+        db.add_playlist(Playlist(name="Tavern Tunes"))
+        db.add_scene(Scene(title="Ambush"))
+
+        menu = _open_context_menu(table, [0])
+
+        # Newest-first, same as the sidebar (add_* inserts at position 0).
+        playlists = _submenu(menu, "Add to Playlist").actions()
+        assert [a.text() for a in playlists] == ["Tavern Tunes", "Battle Mix"]
+        scenes = _submenu(menu, "Add to Scene").actions()
+        assert [a.text() for a in scenes] == ["Ambush"]
+
+    def test_empty_submenus_show_a_disabled_placeholder(self, table):
+        menu = _open_context_menu(table, [0])
+
+        for title, placeholder in [
+            ("Add to Playlist", "No Playlists"),
+            ("Add to Scene", "No Scenes"),
+        ]:
+            actions = _submenu(menu, title).actions()
+            assert [a.text() for a in actions] == [placeholder]
+            assert not actions[0].isEnabled()
+
+    def test_targets_holding_the_whole_selection_are_checked(self, table, db, files):
+        holding = db.add_playlist(Playlist(name="Holding"))
+        db.add_playlist(Playlist(name="Other"))
+        db.add_track_to_playlist(holding, files[0].id)
+        scene_id = db.add_scene(Scene(title="Scene"))
+        db.add_track_to_scene(scene_id, files[0].id)
+
+        menu = _open_context_menu(table, [0])
+        checked = [
+            a.text()
+            for a in _submenu(menu, "Add to Playlist").actions()
+            if a.isChecked()
+        ]
+        assert checked == ["Holding"]
+        assert _submenu(menu, "Add to Scene").actions()[0].isChecked()
+
+        # A partial match (only one of two selected files) is not checked.
+        menu = _open_context_menu(table, [0, 1])
+        assert not any(
+            a.isChecked() for a in _submenu(menu, "Add to Playlist").actions()
+        )
+
+    def test_choosing_a_playlist_requests_files_in_table_order(self, table, db, files):
+        playlist_id = db.add_playlist(Playlist(name="Battle Mix"))
+        requests = record(table.add_to_playlist_requested)
+
+        menu = _open_context_menu(table, [2, 0])  # selected bottom-up
+        _submenu(menu, "Add to Playlist").actions()[0].trigger()
+
+        assert requests == [(playlist_id, [files[0].id, files[2].id])]
+
+    def test_choosing_a_scene_requests_the_files(self, table, db, files):
+        scene_id = db.add_scene(Scene(title="Ambush"))
+        requests = record(table.add_to_scene_requested)
+
+        menu = _open_context_menu(table, [1])
+        _submenu(menu, "Add to Scene").actions()[0].trigger()
+
+        assert requests == [(scene_id, [files[1].id])]
+
+    def test_choosing_a_checked_target_still_requests(self, table, db, files):
+        # The no-op lives in the add itself (it skips held files), so the
+        # menu never has to guess; a checked entry sends the same request.
+        playlist_id = db.add_playlist(Playlist(name="Holding"))
+        db.add_track_to_playlist(playlist_id, files[0].id)
+        requests = record(table.add_to_playlist_requested)
+
+        menu = _open_context_menu(table, [0])
+        _submenu(menu, "Add to Playlist").actions()[0].trigger()
+
+        assert requests == [(playlist_id, [files[0].id])]
+
+    def test_ampersand_in_a_name_is_shown_literally(self, table, db):
+        db.add_playlist(Playlist(name="Rock & Roll"))
+
+        menu = _open_context_menu(table, [0])
+
+        # "&&" renders as a literal "&" instead of a mnemonic marker.
+        assert _submenu(menu, "Add to Playlist").actions()[0].text() == "Rock && Roll"

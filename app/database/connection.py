@@ -852,6 +852,12 @@ class DatabaseConnection:
         self._conn.commit()
         return track_id
 
+    def get_scenes_containing_all(self, audio_file_ids: list[int]) -> set[int]:
+        """IDs of scenes that already hold every given file as a track"""
+        return self._containers_holding_all(
+            "scene_audio_files", "scene_id", audio_file_ids
+        )
+
     def get_scene_tracks(
         self, scene_id: int, slot: int | None = None
     ) -> list[SceneAudioFile]:
@@ -1258,6 +1264,35 @@ class DatabaseConnection:
         )
         self._conn.commit()
         return self._insert_id(cursor)
+
+    def get_playlists_containing_all(self, audio_file_ids: list[int]) -> set[int]:
+        """IDs of playlists that already hold every given file"""
+        return self._containers_holding_all(
+            "playlist_tracks", "playlist_id", audio_file_ids
+        )
+
+    def _containers_holding_all(
+        self, table: str, container_column: str, audio_file_ids: list[int]
+    ) -> set[int]:
+        """Container IDs whose membership ``table`` has every given file.
+
+        ``table`` and ``container_column`` are internal constants (never user
+        input); only the file IDs are bound parameters.
+        """
+        unique_ids = list(dict.fromkeys(audio_file_ids))
+        if not unique_ids:
+            return set()
+        placeholders = ",".join("?" * len(unique_ids))
+        cursor = self._conn.execute(
+            f"""
+            SELECT {container_column} AS container_id FROM {table}
+            WHERE audio_file_id IN ({placeholders})
+            GROUP BY {container_column}
+            HAVING COUNT(DISTINCT audio_file_id) = ?
+            """,
+            [*unique_ids, len(unique_ids)],
+        )
+        return {row["container_id"] for row in cursor.fetchall()}
 
     def update_playlist_track_volume(self, track_id: int, volume: float) -> None:
         """Update a playlist track's stored volume (0.0-1.0)"""

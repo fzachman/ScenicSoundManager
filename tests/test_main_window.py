@@ -641,6 +641,25 @@ def test_soundboards_menu_checks_open_board_and_opens_on_trigger(main_window):
     assert main_window.soundboards_menu.actions()[0].isChecked()
 
 
+def test_library_add_to_menus_reach_playlists_and_scenes(main_window):
+    from app.database import AudioFile, Scene
+
+    db = main_window.db
+    file_id = db.add_audio_file(AudioFile(file_path="/music/a.mp3", title="A"))
+    playlist_id = db.add_playlist(Playlist(name="Battle Mix"))
+    scene_id = db.add_scene(Scene(title="Ambush"))
+    file_table = main_window.library_widget.file_table
+
+    file_table.add_to_playlist_requested.emit(playlist_id, [file_id])
+    file_table.add_to_scene_requested.emit(scene_id, [file_id])
+    # A second request for the same target is a no-op, not a duplicate error.
+    file_table.add_to_playlist_requested.emit(playlist_id, [file_id])
+    file_table.add_to_scene_requested.emit(scene_id, [file_id])
+
+    assert [t.audio_file_id for t in db.get_playlist_tracks(playlist_id)] == [file_id]
+    assert [t.audio_file_id for t in db.get_scene_tracks(scene_id)] == [file_id]
+
+
 def test_show_scene_switches_tab_and_selects(main_window, monkeypatch):
     seen = []
     monkeypatch.setattr(

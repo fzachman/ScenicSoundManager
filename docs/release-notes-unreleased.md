@@ -1,1 +1,3 @@
 - Fixed: switching presets on a paused scene no longer starts sounds playing at full volume, and switching right after pressing Pause no longer causes a short loud swell — the scene stays silent until you press Play, and then resumes with the new preset.
+- New: right-click files in the Library and choose **Add to Playlist** or **Add to Scene** to add them without leaving the Library. A checkmark shows the playlists and scenes that already have them, and picking one of those does nothing. Sounds added to the scene that's playing arrive switched off, so nothing starts mid-session.
+- Fixed: adding tracks to an empty playlist now turns on its Play and Shuffle buttons right away, instead of only after you pick the playlist again.

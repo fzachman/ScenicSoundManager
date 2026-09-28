@@ -87,6 +87,10 @@ class PlaylistsWidget(QWidget):
         """Select and load a playlist by ID"""
         self.playlist_list.select_playlist(playlist_id)
 
+    def add_audio_files(self, playlist_id: int, audio_file_ids: list[int]) -> int:
+        """Append library files to a playlist, skipping ones it already holds."""
+        return self.playlist_editor.add_audio_files(playlist_id, audio_file_ids)
+
     # --- Keyboard-shortcut entry points (delegated to editor / list) ---
 
     def toggle_playback(self):

@@ -808,6 +808,12 @@ class MainWindow(QMainWindow):
         self.library_widget.library_updated.connect(
             self.scenes_widget.refresh_current_scene
         )
+        # Library right-click "Add to Playlist / Add to Scene"
+        file_table = self.library_widget.file_table
+        file_table.add_to_playlist_requested.connect(
+            self.playlists_widget.add_audio_files
+        )
+        file_table.add_to_scene_requested.connect(self.scenes_widget.add_audio_files)
         self.scenes_widget.playback_state_changed.connect(
             self._on_scene_playback_changed
         )

@@ -88,6 +88,10 @@ class ScenesWidget(QWidget):
         """Select and load a scene by ID"""
         self.scene_list.select_scene(scene_id)
 
+    def add_audio_files(self, scene_id: int, audio_file_ids: list[int]) -> int:
+        """Add library files to a scene, skipping ones it already holds."""
+        return self.scene_editor.add_audio_files(scene_id, audio_file_ids)
+
     # --- Keyboard-shortcut entry points (delegated to editor / list) ---
 
     def toggle_playback(self):

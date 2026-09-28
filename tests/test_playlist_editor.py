@@ -535,3 +535,111 @@ class TestTrackScrubber:
         editor._track_items[playlist.tracks[1].id].scrubber.seek.emit(0.5)
 
         editor._player.set_position.assert_not_called()
+
+
+def _new_file(db, name):
+    return db.add_audio_file(
+        AudioFile(file_path=f"/fake/path/{name}.mp3", title=name, duration_seconds=60.0)
+    )
+
+
+def _file_ids_in_order(db, playlist_id):
+    return [t.audio_file_id for t in db.get_playlist_tracks(playlist_id)]
+
+
+class TestAddAudioFiles:
+    """add_audio_files backs the library's "Add to Playlist" menu (and the
+    editor's own "+ Add Tracks"): append missing files to ANY playlist, skip
+    held ones (re-adding is a no-op), keep open/playing state in sync."""
+
+    def test_appends_to_a_playlist_that_is_not_open(self, editor, db, playlist):
+        new_id = _new_file(db, "new")
+        before = _file_ids_in_order(db, playlist.id)
+
+        assert editor.add_audio_files(playlist.id, [new_id]) == 1
+
+        assert _file_ids_in_order(db, playlist.id) == [*before, new_id]
+        assert editor._current_playlist is None  # nothing got opened
+
+    def test_re_adding_held_files_is_a_no_op(self, editor, db, playlist):
+        held = [t.audio_file_id for t in playlist.tracks]
+        modified = []
+        editor.playlist_modified.connect(lambda: modified.append(True))
+
+        assert editor.add_audio_files(playlist.id, held) == 0
+
+        assert _file_ids_in_order(db, playlist.id) == held
+        assert modified == []
+
+    def test_mixed_selection_appends_only_missing_files_in_order(
+        self, editor, db, playlist
+    ):
+        held = [t.audio_file_id for t in playlist.tracks]
+        new_a, new_b = _new_file(db, "a"), _new_file(db, "b")
+
+        assert editor.add_audio_files(playlist.id, [new_a, held[1], new_b]) == 2
+
+        tracks = db.get_playlist_tracks(playlist.id)
+        assert [t.audio_file_id for t in tracks] == [*held, new_a, new_b]
+        # Each new track gets its own slot (the dialog path used to give a
+        # whole batch the same position, leaving their order undefined).
+        positions = [t.position for t in tracks]
+        assert positions == sorted(set(positions))
+
+    def test_adding_to_the_open_empty_playlist_enables_playback(self, editor, db):
+        empty = db.get_playlist(db.add_playlist(Playlist(name="Empty")))
+        editor.load_playlist(empty)
+        assert not editor.play_toggle_btn.isEnabled()
+
+        editor.add_audio_files(empty.id, [_new_file(db, "first")])
+
+        assert len(editor._track_items) == 1
+        assert editor.play_toggle_btn.isEnabled()
+        assert editor.shuffle_btn.isEnabled()
+
+    def test_add_tracks_dialog_into_empty_playlist_enables_playback(self, editor, db):
+        # Regression: "+ Add Tracks" on an empty playlist left Play and
+        # Shuffle disabled until the playlist was re-selected.
+        empty = db.get_playlist(db.add_playlist(Playlist(name="Empty")))
+        editor.load_playlist(empty)
+        new_id = _new_file(db, "first")
+        dialog = MagicMock()
+        dialog.exec.return_value = True
+        dialog.get_selected_files.return_value = [AudioFile(id=new_id, file_path="")]
+
+        with patch("app.shared.dialogs.AudioFileSearchDialog", return_value=dialog):
+            editor._add_tracks()
+
+        assert _file_ids_in_order(db, empty.id) == [new_id]
+        assert editor.play_toggle_btn.isEnabled()
+        assert editor.shuffle_btn.isEnabled()
+
+    def test_adding_to_the_playing_playlist_while_browsing_reaches_playback(
+        self, editor, db, playlist, second_playlist
+    ):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+        editor.load_playlist(second_playlist)  # browse away; playback continues
+        new_id = _new_file(db, "late")
+
+        editor.add_audio_files(playlist.id, [new_id])
+
+        assert editor._active_playlist.tracks[-1].audio_file_id == new_id
+        assert new_id in editor._shuffle.track_ids
+        for _ in playlist.tracks:  # sequential: past the 3 originals
+            editor.next_track()
+        assert editor._current_audio_file_id == new_id
+
+    def test_adding_to_another_playlist_leaves_the_live_shuffle_alone(
+        self, editor, db, playlist, second_playlist
+    ):
+        editor.load_playlist(playlist)
+        editor.toggle_playback()
+
+        with patch.object(editor._shuffle, "update_tracks") as update_tracks:
+            editor.add_audio_files(second_playlist.id, [_new_file(db, "other")])
+
+        update_tracks.assert_not_called()
+        assert [t.audio_file_id for t in editor._active_playlist.tracks] == [
+            t.audio_file_id for t in playlist.tracks
+        ]

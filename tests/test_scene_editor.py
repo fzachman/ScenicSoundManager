@@ -624,3 +624,96 @@ class TestEndedTrackRevive:
 
         assert player.has_ended is False
         assert player.repeat is True
+
+
+class TestAddAudioFiles:
+    """add_audio_files backs the library's "Add to Scene" menu (and the
+    editor's own "+ Add Tracks"): add missing files to ANY scene, skip held
+    ones (re-adding is a no-op). The play-mode rule of
+    TestNewContentDefaultPlayMode follows the TARGET scene, not the open one."""
+
+    def _new_file(self, db, name):
+        return db.add_audio_file(
+            AudioFile(file_path=f"/fake/{name}.mp3", title=name, duration_seconds=60.0)
+        )
+
+    def _track_for(self, db, scene_id, file_id, slot=None):
+        tracks = db.get_scene_tracks(scene_id, slot=slot)
+        return next(t for t in tracks if t.audio_file_id == file_id)
+
+    def test_appends_to_a_scene_that_is_not_open(self, editor, db, scene):
+        new_id = self._new_file(db, "new")
+
+        assert editor.add_audio_files(scene.scene_id, [new_id]) == 1
+
+        tracks = db.get_scene_tracks(scene.scene_id)
+        assert tracks[-1].audio_file_id == new_id
+        assert tracks[-1].play_mode is True
+        assert editor._current_scene is None  # nothing got opened
+
+    def test_re_adding_held_files_is_a_no_op(self, editor, db, scene):
+        held = [t.audio_file_id for t in db.get_scene_tracks(scene.scene_id)]
+        modified = record(editor.scene_modified)
+
+        assert editor.add_audio_files(scene.scene_id, held) == 0
+
+        assert [t.audio_file_id for t in db.get_scene_tracks(scene.scene_id)] == held
+        assert modified == []
+
+    def test_mixed_selection_appends_only_missing_files_in_order(
+        self, editor, db, scene
+    ):
+        held = [t.audio_file_id for t in db.get_scene_tracks(scene.scene_id)]
+        new_a, new_b = self._new_file(db, "a"), self._new_file(db, "b")
+
+        assert editor.add_audio_files(scene.scene_id, [new_a, held[0], new_b]) == 2
+
+        tracks = db.get_scene_tracks(scene.scene_id)
+        assert [t.audio_file_id for t in tracks] == [*held, new_a, new_b]
+        # Each new track gets its own slot (the dialog path used to give a
+        # whole batch the same position, leaving their order undefined).
+        positions = [t.position for t in tracks]
+        assert positions == sorted(set(positions))
+
+    def test_adding_to_the_open_scene_shows_the_new_track(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        new_id = self._new_file(db, "new")
+
+        editor.add_audio_files(scene.scene_id, [new_id])
+
+        track = self._track_for(db, scene.scene_id, new_id)
+        assert track.id in editor._track_controls
+
+    def test_adding_to_the_playing_scene_while_browsing_stays_silent(
+        self, editor, db, scene, second_scene
+    ):
+        _load(editor, db, scene.scene_id)
+        editor.toggle_playback()
+        _load(editor, db, second_scene.scene_id)  # browse; the scene plays on
+        new_id = self._new_file(db, "late")
+
+        editor.add_audio_files(scene.scene_id, [new_id])
+
+        for slot in (1, 2, 3):
+            assert self._track_for(db, scene.scene_id, new_id, slot).play_mode is (
+                False
+            )
+        track = self._track_for(db, scene.scene_id, new_id)
+        assert editor.mixer.get_player(track.id) is None
+
+        # Returning to the scene: the track is ready but not audible.
+        _load(editor, db, scene.scene_id)
+        player = editor.mixer.get_player(track.id)
+        assert player is not None
+        assert not player._is_fading()
+
+    def test_adding_to_a_stopped_scene_while_another_plays_defaults_on(
+        self, editor, db, scene, second_scene
+    ):
+        _load(editor, db, second_scene.scene_id)
+        editor.toggle_playback()
+        new_id = self._new_file(db, "new")
+
+        editor.add_audio_files(scene.scene_id, [new_id])
+
+        assert self._track_for(db, scene.scene_id, new_id).play_mode is True

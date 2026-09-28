@@ -267,16 +267,42 @@ class SceneEditor(QWidget):
             parent=self,
         )
         if dialog.exec():
-            files = dialog.get_selected_files()
-            play_mode = self._default_play_mode_for_new_content()
-            for file in files:
-                position = len(self._current_scene.tracks)
-                self.db.add_track_to_scene(
-                    self._current_scene.id, file.id, position, play_mode=play_mode
-                )
+            self.add_audio_files(
+                self._current_scene.id,
+                [f.id for f in dialog.get_selected_files() if f.id is not None],
+            )
 
+    def add_audio_files(self, scene_id: int, audio_file_ids: list[int]) -> int:
+        """Add library files to a scene as tracks; return how many were added.
+
+        Works on any scene, open in the editor or not (the library's "Add to
+        Scene" menu targets scenes from another tab). Files the scene already
+        holds are skipped, so re-adding is a no-op. New tracks append in the
+        given order with that scene's default play mode.
+        """
+        existing = self.db.get_scene_tracks(scene_id)
+        held = {t.audio_file_id for t in existing}
+        new_ids = [fid for fid in dict.fromkeys(audio_file_ids) if fid not in held]
+        if not new_ids:
+            return 0
+
+        play_mode = self._default_play_mode_for_new_content(scene_id)
+        next_position = max((t.position for t in existing), default=-1) + 1
+        for offset, file_id in enumerate(new_ids):
+            self.db.add_track_to_scene(
+                scene_id, file_id, next_position + offset, play_mode=play_mode
+            )
+        _log.info(
+            "scene_tracks_added",
+            scene_id=scene_id,
+            added=len(new_ids),
+            skipped=len(audio_file_ids) - len(new_ids),
+        )
+
+        if self._current_scene and self._current_scene.id == scene_id:
             self._refresh_tracks()
-            self.scene_modified.emit()
+        self.scene_modified.emit()
+        return len(new_ids)
 
     def _add_playlist_entry_control(self, entry: ScenePlaylistEntry):
         """Add a playlist entry control widget"""
@@ -327,7 +353,9 @@ class SceneEditor(QWidget):
                     self._current_scene.id,
                     playlist.id,
                     position,
-                    play_mode=self._default_play_mode_for_new_content(),
+                    play_mode=self._default_play_mode_for_new_content(
+                        self._current_scene.id
+                    ),
                 )
                 self._refresh_tracks()
                 self.scene_modified.emit()
@@ -907,17 +935,18 @@ class SceneEditor(QWidget):
             self._current_scene and self._current_scene.id == self._active_scene_id
         )
 
-    def _default_play_mode_for_new_content(self) -> bool:
-        """Default play mode for tracks/playlist entries being added.
+    def _default_play_mode_for_new_content(self, scene_id: int | None) -> bool:
+        """Default play mode for tracks/playlist entries being added to a scene.
 
         Adding to the scene that is audibly playing must never change what
         the players hear mid-session, so new content arrives with play mode
-        off there; everywhere else (stopped, paused, or a different scene)
-        it defaults on so a freshly built scene plays on the first press.
+        off there, whether or not that scene is open in the editor;
+        everywhere else (stopped, paused, or a different scene) it defaults
+        on so a freshly built scene plays on the first press.
         Seeded into every preset slot, so a preset switch can't surprise-
         start it either.
         """
-        return not (self._is_current_scene_active() and self._scene_playing)
+        return not (scene_id == self._active_scene_id and self._scene_playing)
 
     def _sync_scene_play_button(self):
         """Sync play button with current scene playback state"""
