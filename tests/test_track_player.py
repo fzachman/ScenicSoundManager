@@ -161,7 +161,7 @@ class TestTransport:
         player.play()
         assert player._position_timer.isActive()
         player.pause()
-        player.media_player.pause.assert_called_once()
+        player.media_player.set_pause.assert_called_once_with(1)
         assert not player._position_timer.isActive()
 
     def test_stop_calls_media_player_and_stops_timer(self, qapp, mock_engine):
@@ -277,28 +277,28 @@ class TestFades:
     def test_fade_out_pauses_after_completion(self, qapp, mock_engine):
         player = _make_player(mock_engine)
         player.target_volume = 100
-        player.media_player.pause.reset_mock()
+        player.media_player.set_pause.reset_mock()
 
         player.fade_out(duration_ms=1000, pause_after=True)
         assert player._is_fading()
         # pause should not have happened yet
-        player.media_player.pause.assert_not_called()
+        player.media_player.set_pause.assert_not_called()
 
         _drive_fade_to_completion(player)
 
         assert not player._is_fading()
-        player.media_player.pause.assert_called_once()
+        player.media_player.set_pause.assert_called_once_with(1)
         assert player._current_volume == 0
 
     def test_fade_out_no_pause_when_pause_after_false(self, qapp, mock_engine):
         player = _make_player(mock_engine)
         player.target_volume = 100
-        player.media_player.pause.reset_mock()
+        player.media_player.set_pause.reset_mock()
 
         player.fade_out(duration_ms=1000, pause_after=False)
         _drive_fade_to_completion(player)
 
-        player.media_player.pause.assert_not_called()
+        player.media_player.set_pause.assert_not_called()
         assert player._current_volume == 0
 
     def test_fade_to_volume_updates_target_and_fades_toward_it(self, qapp, mock_engine):
@@ -345,12 +345,56 @@ class TestFades:
         # going to perform, or a track could keep playing in a paused scene.
         player = _make_player(mock_engine)
         player.fade_out(duration_ms=1000, pause_after=True)
-        player.media_player.pause.reset_mock()
+        player.media_player.set_pause.reset_mock()
 
         player.target_volume = 70
         _drive_fade_to_completion(player)
 
-        player.media_player.pause.assert_called_once()
+        player.media_player.set_pause.assert_called_once_with(1)
+
+
+class _ToggleSemanticsMediaPlayer:
+    """libVLC stand-in for pause state: pause() TOGGLES, set_pause() sets."""
+
+    def __init__(self):
+        self.paused = False
+
+    def play(self):
+        self.paused = False
+
+    def pause(self):
+        self.paused = not self.paused
+
+    def set_pause(self, do_pause):
+        self.paused = bool(do_pause)
+
+    def audio_set_volume(self, volume):
+        pass
+
+
+@pytest.mark.skipif(vlc is None, reason="python-vlc not importable")
+class TestPauseIsIdempotent:
+    def test_pausing_an_already_paused_player_keeps_it_paused(self, qapp, mock_engine):
+        # Scene pause fades out EVERY mixer player, including one a card or
+        # preset switch had already faded out and paused. With the toggling
+        # pause() that second pause resumed it silently, and the next volume
+        # change (a preset switch while paused) made it audible.
+        player = _make_player(mock_engine)
+        fake = _ToggleSemanticsMediaPlayer()
+        player.media_player = fake
+        player.play()
+
+        player.fade_out(duration_ms=500, pause_after=True)  # card toggled off
+        _drive_fade_to_completion(player)
+        assert fake.paused
+
+        player.fade_out(duration_ms=1000, pause_after=True)  # scene paused
+        _drive_fade_to_completion(player)
+        assert fake.paused
+
+        player.target_volume = 100  # preset switch while paused
+        assert fake.paused
+        assert not player._position_timer.isActive()
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +457,7 @@ class TestFadeOutAndRelease:
         player.fade_out_and_release(1000)
         _drive_fade_to_completion(player)
 
-        media_player.pause.assert_not_called()
+        media_player.set_pause.assert_not_called()
         media_player.release.assert_called_once()
 
     def test_unavailable_engine_is_safe(self, qapp, unavailable_engine):

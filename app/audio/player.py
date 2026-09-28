@@ -126,9 +126,16 @@ class TrackPlayer(QObject):
             self._position_timer.start()
 
     def pause(self) -> None:
-        """Pause playback"""
+        """Pause playback (idempotent).
+
+        libVLC's pause() is a TOGGLE: on an already-paused player it
+        resumes. Scene pause fades out every mixer player, including tracks
+        a card or preset had already paused, so the toggle restarted those
+        silently (volume 0) and the next volume change — a preset switch —
+        made them audible in the "paused" scene. set_pause(1) only pauses.
+        """
         if self.media_player:
-            self.media_player.pause()
+            self.media_player.set_pause(1)
         self._position_timer.stop()
 
     def stop(self) -> None:
