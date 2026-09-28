@@ -992,6 +992,18 @@ class SceneEditor(QWidget):
         clear_layout(self.tracks_layout)
         self.tracks_container.clear_registry()
 
+    def refresh_playlist_track_counts(self):
+        """Re-read the track counts shown on the open scene's playlist cards.
+
+        Label-only (no card rebuild), so a playing scene is undisturbed.
+        """
+        if not self._playlist_entry_controls:
+            return
+        counts = self.db.get_playlist_track_counts()
+        for control in self._playlist_entry_controls.values():
+            if control.entry.playlist_id is not None:
+                control.set_track_count(counts.get(control.entry.playlist_id, 0))
+
     def refresh(self):
         """Refresh the current scene"""
         if self._current_scene:

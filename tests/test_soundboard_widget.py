@@ -458,3 +458,84 @@ class TestSelectBoard:
         board = db.add_soundboard(Soundboard(name="Late"))
         content.select_board(board)
         assert content.current_board_id() == board
+
+
+def _board_file_ids(db, board_id):
+    return [b.audio_file_id for b in db.get_soundboard_buttons(board_id)]
+
+
+class TestLibraryAddToSoundboard:
+    """add_audio_files / create_board back the library's "Add to Soundboard"
+    menu: append missing files to ANY board, skip held ones (a no-op), and
+    never cut the sound playing on the open board."""
+
+    def test_appends_to_a_board_that_is_not_open(self, qapp, db, player, audio_ids):
+        db.add_soundboard(Soundboard(name="Alpha"))  # opens first (alphabetical)
+        other = db.add_soundboard(Soundboard(name="Beta"))
+        content = make_content(db, player)
+
+        assert content.add_audio_files(other, audio_ids[:2]) == 2
+
+        assert _board_file_ids(db, other) == audio_ids[:2]
+        assert cells_of(content) == []  # the open board is untouched
+
+    def test_re_adding_held_files_is_a_no_op(self, qapp, db, player, audio_ids):
+        board_id = db.add_soundboard(Soundboard(name="Combat"))
+        db.add_button_to_soundboard(board_id, audio_ids[0])
+        content = make_content(db, player)
+
+        assert content.add_audio_files(board_id, [audio_ids[0]]) == 0
+        assert content.add_audio_files(board_id, audio_ids[:2]) == 1
+
+        assert _board_file_ids(db, board_id) == audio_ids[:2]
+
+    def test_adding_to_the_open_board_shows_new_buttons(
+        self, qapp, db, player, audio_ids
+    ):
+        board_id = db.add_soundboard(Soundboard(name="Combat"))
+        content = make_content(db, player)
+
+        content.add_audio_files(board_id, audio_ids)
+
+        assert [c.button.audio_file_id for c in cells_of(content)] == audio_ids
+
+    def test_add_keeps_the_playing_highlight_and_sound(
+        self, qapp, db, player, audio_ids
+    ):
+        board_id = db.add_soundboard(Soundboard(name="Combat"))
+        playing_id = db.add_button_to_soundboard(board_id, audio_ids[0])
+        content = make_content(db, player)
+        player._current_button_id = playing_id  # the slot holds this sound
+        player.button_started.emit(playing_id)
+        player.stop.reset_mock()
+
+        content.add_audio_files(board_id, [audio_ids[1]])
+
+        assert content._cells_by_button_id[playing_id].playing
+        player.stop.assert_not_called()
+
+    def test_create_board_keeps_the_open_board_open(self, qapp, db, player, audio_ids):
+        open_id = db.add_soundboard(Soundboard(name="Combat"))
+        content = make_content(db, player)
+        player.stop.reset_mock()
+
+        new_id = content.create_board("Ambient", audio_ids[:2])
+
+        assert _board_file_ids(db, new_id) == audio_ids[:2]
+        assert content.current_board_id() == open_id
+        combo = content.board_combo
+        assert [combo.itemText(i) for i in range(combo.count())] == [
+            "Ambient",
+            "Combat",
+        ]
+        player.stop.assert_not_called()  # a playing sound keeps playing
+
+    def test_first_board_created_becomes_the_open_board(
+        self, qapp, db, player, audio_ids
+    ):
+        content = make_content(db, player)
+
+        new_id = content.create_board("Spells", [audio_ids[0]])
+
+        assert content.current_board_id() == new_id
+        assert [c.button.audio_file_id for c in cells_of(content)] == [audio_ids[0]]

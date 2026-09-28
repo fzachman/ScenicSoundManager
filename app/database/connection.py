@@ -1271,6 +1271,13 @@ class DatabaseConnection:
             "playlist_tracks", "playlist_id", audio_file_ids
         )
 
+    def get_playlist_track_counts(self) -> dict[int, int]:
+        """Track count per playlist (playlists with no tracks are absent)"""
+        cursor = self._conn.execute(
+            "SELECT playlist_id, COUNT(*) AS n FROM playlist_tracks GROUP BY playlist_id"
+        )
+        return {row["playlist_id"]: row["n"] for row in cursor.fetchall()}
+
     def _containers_holding_all(
         self, table: str, container_column: str, audio_file_ids: list[int]
     ) -> set[int]:
@@ -1474,6 +1481,12 @@ class DatabaseConnection:
         )
         self._conn.commit()
         return self._insert_id(cursor)
+
+    def get_soundboards_containing_all(self, audio_file_ids: list[int]) -> set[int]:
+        """IDs of soundboards that already have a button for every given file"""
+        return self._containers_holding_all(
+            "soundboard_buttons", "soundboard_id", audio_file_ids
+        )
 
     def update_soundboard_button_volume(self, button_id: int, volume: float) -> None:
         """Update a soundboard button's stored volume (0.0-1.0)"""

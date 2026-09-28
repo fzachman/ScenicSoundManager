@@ -19,7 +19,7 @@ from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QAbstractItemView, QMenu
 
-from app.database import AudioFile, DatabaseConnection, Playlist, Scene
+from app.database import AudioFile, DatabaseConnection, Playlist, Scene, Soundboard
 from app.library.file_table import FileTableWidget
 from tests.control_helpers import record
 
@@ -312,10 +312,15 @@ def _submenu(menu, title):
     return next(a for a in menu.actions() if a.text() == title).menu()
 
 
+def _targets(menu, title):
+    """A submenu's target entries: everything after "New …" and its separator."""
+    return [a for a in _submenu(menu, title).actions() if not a.isSeparator()][1:]
+
+
 class TestAddToMenus:
-    """Right-click "Add to Playlist ▸" / "Add to Scene ▸": one entry per
-    playlist/scene (sidebar order), checkmarks on targets that already hold
-    the whole selection, and a request signal carrying the file IDs."""
+    """Right-click "Add to Playlist / Scene / Soundboard ▸": "New …" first,
+    then every target alphabetically, checkmarks on targets that already
+    hold the whole selection, and a request signal carrying the file IDs."""
 
     def test_submenus_sit_between_play_and_info(self, table):
         menu = _open_context_menu(table, [0])
@@ -324,33 +329,53 @@ class TestAddToMenus:
             "Play",
             "Add to Playlist",
             "Add to Scene",
+            "Add to Soundboard",
             "Info (1)",
             "Remove (1 files)",
         ]
 
-    def test_submenus_list_targets_in_sidebar_order(self, table, db):
+    def test_targets_are_listed_alphabetically(self, table, db):
+        # Created in non-alphabetical order, mixed case (sidebar order would
+        # be newest-first).
+        for name in ["tavern Tunes", "Battle Mix", "ambush Loop"]:
+            db.add_playlist(Playlist(name=name))
+        for title in ["Tavern", "Ambush"]:
+            db.add_scene(Scene(title=title))
+        for name in ["Spells", "Doors"]:
+            db.add_soundboard(Soundboard(name=name))
+
+        menu = _open_context_menu(table, [0])
+
+        assert [a.text() for a in _targets(menu, "Add to Playlist")] == [
+            "ambush Loop",
+            "Battle Mix",
+            "tavern Tunes",
+        ]
+        assert [a.text() for a in _targets(menu, "Add to Scene")] == [
+            "Ambush",
+            "Tavern",
+        ]
+        assert [a.text() for a in _targets(menu, "Add to Soundboard")] == [
+            "Doors",
+            "Spells",
+        ]
+
+    def test_each_submenu_starts_with_new_and_a_separator(self, table, db):
         db.add_playlist(Playlist(name="Battle Mix"))
-        db.add_playlist(Playlist(name="Tavern Tunes"))
-        db.add_scene(Scene(title="Ambush"))
 
         menu = _open_context_menu(table, [0])
 
-        # Newest-first, same as the sidebar (add_* inserts at position 0).
-        playlists = _submenu(menu, "Add to Playlist").actions()
-        assert [a.text() for a in playlists] == ["Tavern Tunes", "Battle Mix"]
-        scenes = _submenu(menu, "Add to Scene").actions()
-        assert [a.text() for a in scenes] == ["Ambush"]
+        actions = _submenu(menu, "Add to Playlist").actions()
+        assert actions[0].text() == "New Playlist…"
+        assert actions[1].isSeparator()
+        assert actions[2].text() == "Battle Mix"
 
-    def test_empty_submenus_show_a_disabled_placeholder(self, table):
+    def test_with_no_targets_only_new_is_offered(self, table):
         menu = _open_context_menu(table, [0])
 
-        for title, placeholder in [
-            ("Add to Playlist", "No Playlists"),
-            ("Add to Scene", "No Scenes"),
-        ]:
-            actions = _submenu(menu, title).actions()
-            assert [a.text() for a in actions] == [placeholder]
-            assert not actions[0].isEnabled()
+        for kind in ["Playlist", "Scene", "Soundboard"]:
+            actions = _submenu(menu, f"Add to {kind}").actions()
+            assert [a.text() for a in actions] == [f"New {kind}…"]
 
     def test_targets_holding_the_whole_selection_are_checked(self, table, db, files):
         holding = db.add_playlist(Playlist(name="Holding"))
@@ -358,56 +383,92 @@ class TestAddToMenus:
         db.add_track_to_playlist(holding, files[0].id)
         scene_id = db.add_scene(Scene(title="Scene"))
         db.add_track_to_scene(scene_id, files[0].id)
+        board_id = db.add_soundboard(Soundboard(name="Board"))
+        db.add_button_to_soundboard(board_id, files[0].id)
 
         menu = _open_context_menu(table, [0])
-        checked = [
-            a.text()
-            for a in _submenu(menu, "Add to Playlist").actions()
-            if a.isChecked()
-        ]
+        checked = [a.text() for a in _targets(menu, "Add to Playlist") if a.isChecked()]
         assert checked == ["Holding"]
-        assert _submenu(menu, "Add to Scene").actions()[0].isChecked()
+        assert _targets(menu, "Add to Scene")[0].isChecked()
+        assert _targets(menu, "Add to Soundboard")[0].isChecked()
 
         # A partial match (only one of two selected files) is not checked.
         menu = _open_context_menu(table, [0, 1])
-        assert not any(
-            a.isChecked() for a in _submenu(menu, "Add to Playlist").actions()
-        )
+        assert not any(a.isChecked() for a in _targets(menu, "Add to Playlist"))
 
-    def test_choosing_a_playlist_requests_files_in_table_order(self, table, db, files):
+    def test_choosing_a_target_requests_files_in_table_order(self, table, db, files):
         playlist_id = db.add_playlist(Playlist(name="Battle Mix"))
-        requests = record(table.add_to_playlist_requested)
+        requests = record(table.add_to_requested)
 
         menu = _open_context_menu(table, [2, 0])  # selected bottom-up
-        _submenu(menu, "Add to Playlist").actions()[0].trigger()
+        _targets(menu, "Add to Playlist")[0].trigger()
 
-        assert requests == [(playlist_id, [files[0].id, files[2].id])]
+        assert requests == [
+            ("playlist", playlist_id, "Battle Mix", [files[0].id, files[2].id])
+        ]
 
-    def test_choosing_a_scene_requests_the_files(self, table, db, files):
+    def test_scene_and_soundboard_targets_request_their_kind(self, table, db, files):
         scene_id = db.add_scene(Scene(title="Ambush"))
-        requests = record(table.add_to_scene_requested)
+        board_id = db.add_soundboard(Soundboard(name="Doors"))
+        requests = record(table.add_to_requested)
 
         menu = _open_context_menu(table, [1])
-        _submenu(menu, "Add to Scene").actions()[0].trigger()
+        _targets(menu, "Add to Scene")[0].trigger()
+        _targets(menu, "Add to Soundboard")[0].trigger()
 
-        assert requests == [(scene_id, [files[1].id])]
+        assert requests == [
+            ("scene", scene_id, "Ambush", [files[1].id]),
+            ("soundboard", board_id, "Doors", [files[1].id]),
+        ]
 
     def test_choosing_a_checked_target_still_requests(self, table, db, files):
         # The no-op lives in the add itself (it skips held files), so the
         # menu never has to guess; a checked entry sends the same request.
         playlist_id = db.add_playlist(Playlist(name="Holding"))
         db.add_track_to_playlist(playlist_id, files[0].id)
-        requests = record(table.add_to_playlist_requested)
+        requests = record(table.add_to_requested)
 
         menu = _open_context_menu(table, [0])
-        _submenu(menu, "Add to Playlist").actions()[0].trigger()
+        _targets(menu, "Add to Playlist")[0].trigger()
 
-        assert requests == [(playlist_id, [files[0].id])]
+        assert requests == [("playlist", playlist_id, "Holding", [files[0].id])]
 
     def test_ampersand_in_a_name_is_shown_literally(self, table, db):
         db.add_playlist(Playlist(name="Rock & Roll"))
+        requests = record(table.add_to_requested)
 
         menu = _open_context_menu(table, [0])
+        action = _targets(menu, "Add to Playlist")[0]
+        action.trigger()
 
-        # "&&" renders as a literal "&" instead of a mnemonic marker.
-        assert _submenu(menu, "Add to Playlist").actions()[0].text() == "Rock && Roll"
+        # "&&" renders as a literal "&" instead of a mnemonic marker; the
+        # request carries the real name.
+        assert action.text() == "Rock && Roll"
+        assert requests[0][2] == "Rock & Roll"
+
+    def test_new_prompts_for_a_name_then_requests_creation(self, table, files):
+        dialog = MagicMock()
+        dialog.exec.return_value = True
+        dialog.get_text.return_value = "Boss Fight"
+        requests = record(table.new_target_requested)
+
+        menu = _open_context_menu(table, [0, 1])
+        with patch(
+            "app.library.file_table.TextInputDialog", return_value=dialog
+        ) as make_dialog:
+            _submenu(menu, "Add to Scene").actions()[0].trigger()
+
+        assert make_dialog.call_args.kwargs["title"] == "New Scene"
+        assert make_dialog.call_args.kwargs["ok_text"] == "Create"
+        assert requests == [("scene", "Boss Fight", [files[0].id, files[1].id])]
+
+    def test_cancelling_the_name_prompt_requests_nothing(self, table):
+        dialog = MagicMock()
+        dialog.exec.return_value = False
+        requests = record(table.new_target_requested)
+
+        menu = _open_context_menu(table, [0])
+        with patch("app.library.file_table.TextInputDialog", return_value=dialog):
+            _submenu(menu, "Add to Playlist").actions()[0].trigger()
+
+        assert requests == []

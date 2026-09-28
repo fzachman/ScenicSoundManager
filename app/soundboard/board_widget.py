@@ -28,10 +28,13 @@ from ..audio import SoundboardPlayer
 from ..database import DatabaseConnection, Soundboard, SoundboardButton
 from ..shared.icons import IconLibrary
 from ..shared.layouts import FlowLayout, clear_layout
+from ..shared.logging import get_logger
 from ..shared.styles import Styles
 from ..shared.theme import theme_manager
 from ..shared.volume_slider import VolumeSlider
 from .edit_dialog import SoundboardEditDialog
+
+_log = get_logger(__name__)
 
 SOUNDBOARD_BUTTON_MIME = "application/x-soundmanager-soundboard-button"
 
@@ -467,6 +470,14 @@ class SoundboardContent(QWidget):
             if button.id is not None:
                 self._cells_by_button_id[button.id] = cell
         self.grid.populate(cells)
+        # A reload (reorder, remove, add) must not drop the playing highlight.
+        # current_button_id mirrors button_started/stopped exactly (None when
+        # idle); VLC's is_playing() can lag just after a start.
+        playing_id = self.player.current_button_id
+        if playing_id is not None:
+            playing_cell = self._cells_by_button_id.get(playing_id)
+            if playing_cell is not None:
+                playing_cell.set_playing(True)
 
     def _on_reorder(self, button_ids: list) -> None:
         board_id = self.current_board_id()
@@ -542,3 +553,53 @@ class SoundboardContent(QWidget):
                     self.db.add_button_to_soundboard(board_id, file.id)
             # Re-select by id: a rename may have moved the board alphabetically.
             self._reload_boards(select_id=board_id)
+
+    # Library "Add to Soundboard" entry points
+
+    def add_audio_files(self, board_id: int, audio_file_ids: list[int]) -> int:
+        """Append buttons for library files to any board; return how many
+        were added. Files the board already has are skipped (a no-op)."""
+        held = {b.audio_file_id for b in self.db.get_soundboard_buttons(board_id)}
+        new_ids = [fid for fid in dict.fromkeys(audio_file_ids) if fid not in held]
+        if not new_ids:
+            return 0
+        for file_id in new_ids:
+            self.db.add_button_to_soundboard(board_id, file_id)  # appends
+        _log.info(
+            "soundboard_buttons_added",
+            soundboard_id=board_id,
+            added=len(new_ids),
+            skipped=len(audio_file_ids) - len(new_ids),
+        )
+        if board_id == self.current_board_id():
+            self._load_buttons()
+        return len(new_ids)
+
+    def create_board(self, name: str, audio_file_ids: list[int]) -> int:
+        """Create a board holding the given files; return its id.
+
+        The open board stays open, so a sound playing on it keeps playing.
+        """
+        board_id = self.db.add_soundboard(Soundboard(name=name))
+        self.add_audio_files(board_id, audio_file_ids)
+        self._refresh_board_list()
+        return board_id
+
+    def _refresh_board_list(self) -> None:
+        """Rebuild the combo but keep the open board selected.
+
+        Unlike _reload_boards, this reloads the grid (and so stops the
+        player) only when the open board changes, i.e. when there was none.
+        """
+        current_id = self.current_board_id()
+        boards = self.db.get_all_soundboards()
+        self.board_combo.blockSignals(True)
+        self.board_combo.clear()
+        for board in boards:
+            self.board_combo.addItem(board.name, board.id)
+        index = next((i for i, b in enumerate(boards) if b.id == current_id), 0)
+        if boards:
+            self.board_combo.setCurrentIndex(index)
+        self.board_combo.blockSignals(False)
+        if self.current_board_id() != current_id:
+            self._on_board_selected()

@@ -1,14 +1,20 @@
 """Base list widget for sidebar lists"""
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QHBoxLayout,
     QLabel,
+    QListView,
     QListWidget,
     QListWidgetItem,
     QMenu,
     QPushButton,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
@@ -18,6 +24,9 @@ from .dialogs import TextInputDialog
 from .icons import IconLibrary
 from .styles import Styles
 from .theme import theme_manager
+
+# Item data role carrying the optional right-aligned count for a row.
+COUNT_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class BaseListWidget(QWidget):
@@ -89,6 +98,13 @@ class BaseListWidget(QWidget):
         self.list_widget.customContextMenuRequested.connect(self._show_context_menu)
         self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.NoDragDrop)
         self.list_widget.setSpacing(2)
+        self.list_widget.setItemDelegate(CountBadgeDelegate(self.list_widget))
+        # Rows fit the view width (see CountBadgeDelegate.sizeHint) and are
+        # re-laid out when the sidebar is resized.
+        self.list_widget.setResizeMode(QListView.ResizeMode.Adjust)
+        self.list_widget.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self.list_widget.model().rowsMoved.connect(self._on_rows_moved)
         layout.addWidget(self.list_widget)
 
@@ -112,11 +128,16 @@ class BaseListWidget(QWidget):
         """Update the list widget"""
         current_id = self.get_selected_id()
 
+        counts = self._item_counts()
         self.list_widget.clear()
         for item in self._items:
             display_text = getattr(item, self._display_attr)
             list_item = QListWidgetItem(display_text)
             list_item.setData(Qt.ItemDataRole.UserRole, item.id)
+            if counts is not None:
+                count = counts.get(item.id, 0)
+                list_item.setData(COUNT_ROLE, count)
+                list_item.setToolTip(self._count_tooltip(count))
             self.list_widget.addItem(list_item)
 
             if item.id == current_id:
@@ -340,3 +361,66 @@ class BaseListWidget(QWidget):
 
     def _emit_deleted(self, item_id: int):
         raise NotImplementedError
+
+    # --- Optional hooks ---
+
+    def _item_counts(self) -> dict[int, int] | None:
+        """Per-item counts to show at the right of each row (None = none).
+
+        Items missing from the dict show 0.
+        """
+        return None
+
+    def _count_tooltip(self, count: int) -> str:
+        return str(count)
+
+
+class CountBadgeDelegate(QStyledItemDelegate):
+    """Paints a row's COUNT_ROLE number, muted and right-aligned.
+
+    The row keeps its stylesheet background/selection, and the name is
+    pre-elided so a long one stops short of the count instead of running
+    under it. Rows without a count paint normally.
+    """
+
+    GAP = 10  # px between the (elided) name and the count
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        view = option.widget
+        if isinstance(view, QAbstractItemView):
+            # List mode sizes every row to the widest one, so one long name
+            # would widen them all past the view (sideways scrolling, counts
+            # drawn out of sight). Capped, long names elide instead.
+            size.setWidth(min(size.width(), view.viewport().width()))
+        return size
+
+    def paint(self, painter, option, index):
+        count = index.data(COUNT_ROLE)
+        if count is None:
+            super().paint(painter, option, index)
+            return
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        widget = opt.widget
+        style = widget.style() if widget else QApplication.style()
+        if style is None:
+            super().paint(painter, option, index)
+            return
+        text_rect = style.subElementRect(
+            QStyle.SubElement.SE_ItemViewItemText, opt, widget
+        )
+        count_text = str(count)
+        reserve = opt.fontMetrics.horizontalAdvance(count_text) + self.GAP
+        opt.text = opt.fontMetrics.elidedText(
+            opt.text, Qt.TextElideMode.ElideRight, max(0, text_rect.width() - reserve)
+        )
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+        painter.save()
+        painter.setPen(QColor(Styles.TEXT_MUTED))
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            count_text,
+        )
+        painter.restore()

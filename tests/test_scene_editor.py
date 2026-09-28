@@ -717,3 +717,20 @@ class TestAddAudioFiles:
         editor.add_audio_files(scene.scene_id, [new_id])
 
         assert self._track_for(db, scene.scene_id, new_id).play_mode is True
+
+
+class TestPlaylistCardCounts:
+    def test_refresh_updates_counts_without_rebuilding_cards(self, editor, db, scene):
+        _load(editor, db, scene.scene_id)
+        card = editor._playlist_entry_controls[scene.entry_id]
+        assert card.info_label.text() == "1 track"
+        entry = db.get_scene(scene.scene_id).playlist_entries[0]
+        new_id = db.add_audio_file(
+            AudioFile(file_path="/fake/pl_new.mp3", title="New", duration_seconds=60.0)
+        )
+        db.add_track_to_playlist(entry.playlist_id, new_id)
+
+        editor.refresh_playlist_track_counts()
+
+        assert editor._playlist_entry_controls[scene.entry_id] is card
+        assert card.info_label.text() == "2 tracks"

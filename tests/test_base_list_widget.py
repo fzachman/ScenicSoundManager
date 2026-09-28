@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.shared.base_list_widget import BaseListWidget
+from app.shared.base_list_widget import COUNT_ROLE, BaseListWidget
 
 
 class _FakeList(BaseListWidget):
@@ -96,3 +96,58 @@ class TestFocusList:
         empty = _FakeList([])
         empty.focus_list()  # must not raise
         assert empty.get_selected_id() is None
+
+
+class _CountedList(_FakeList):
+    def _item_counts(self):
+        return {1: 12}  # item 2 has none -> shows 0
+
+    def _count_tooltip(self, count):
+        return f"{count} things"
+
+
+class TestItemCounts:
+    def test_rows_carry_counts_and_tooltips(self, qapp):
+        listw = _CountedList(_items(2))
+
+        rows = [listw.list_widget.item(i) for i in range(2)]
+        assert [r.data(COUNT_ROLE) for r in rows] == [12, 0]
+        assert [r.toolTip() for r in rows] == ["12 things", "0 things"]
+
+    def test_long_names_do_not_widen_rows_past_the_view(self, qapp):
+        # Regression: list mode sized every row to the widest name, so the
+        # right-aligned counts were painted out of sight.
+        listw = _CountedList(
+            [
+                SimpleNamespace(id=1, name="Short"),
+                SimpleNamespace(id=2, name="A very long playlist name " * 6),
+            ]
+        )
+        listw.resize(240, 300)
+        listw.show()
+        qapp.processEvents()
+
+        view = listw.list_widget
+        for i in range(view.count()):
+            rect = view.visualItemRect(view.item(i))
+            assert rect.width() <= view.viewport().width()
+        listw.close()
+
+    def test_lists_without_counts_carry_none(self, listw):
+        assert listw.list_widget.item(0).data(COUNT_ROLE) is None
+
+    def test_rows_with_counts_paint(self, qapp):
+        # Smoke test: the delegate's elide-and-draw path runs without error
+        # under the app's list stylesheet.
+        from app.shared.styles import Styles
+
+        listw = _CountedList(
+            [SimpleNamespace(id=1, name="A very long playlist name " * 4)]
+        )
+        listw.setStyleSheet(Styles.app_stylesheet())
+        listw.resize(220, 300)
+        listw.show()
+        qapp.processEvents()
+
+        assert not listw.list_widget.viewport().grab().isNull()
+        listw.close()

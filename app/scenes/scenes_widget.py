@@ -92,6 +92,20 @@ class ScenesWidget(QWidget):
         """Add library files to a scene, skipping ones it already holds."""
         return self.scene_editor.add_audio_files(scene_id, audio_file_ids)
 
+    def create_scene(self, name: str, audio_file_ids: list[int]) -> int:
+        """Create a scene holding the given files; return its id.
+
+        The sidebar gains the new scene, but the open one stays open.
+        """
+        scene_id = self.db.add_scene(Scene(title=name))
+        self.scene_list.refresh_scenes()
+        self.scene_editor.add_audio_files(scene_id, audio_file_ids)
+        return scene_id
+
+    def refresh_playlist_track_counts(self):
+        """Update the open scene's playlist cards after a playlist changed."""
+        self.scene_editor.refresh_playlist_track_counts()
+
     # --- Keyboard-shortcut entry points (delegated to editor / list) ---
 
     def toggle_playback(self):

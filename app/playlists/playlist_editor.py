@@ -353,6 +353,10 @@ class PlaylistEditor(QWidget):
         self.title_edit.hide()
         header.addWidget(self.title_edit)
 
+        # "12 tracks"; set by _refresh_tracks, blank when no playlist is open
+        self.count_label = QLabel("")
+        header.addWidget(self.count_label, 0, Qt.AlignmentFlag.AlignBottom)
+
         header.addStretch()
 
         # Playback controls
@@ -422,6 +426,9 @@ class PlaylistEditor(QWidget):
         """
         self.title_label.setStyleSheet(Styles.title_style(size=28))
         self.title_edit.setStyleSheet(Styles.title_input_style(size=28))
+        self.count_label.setStyleSheet(
+            Styles.subtle_text_style(13, "padding-bottom: 6px;")
+        )
         self.next_btn.setStyleSheet(Styles.secondary_button_style(compact=True))
         self.empty_label.setStyleSheet(Styles.empty_state_style())
         self._sync_shuffle_button()
@@ -496,6 +503,8 @@ class PlaylistEditor(QWidget):
             return
 
         self._current_playlist = playlist
+        count = len(playlist.tracks)
+        self.count_label.setText(f"{count} track{'s' if count != 1 else ''}")
         # Keep the active copy in sync when the open playlist IS the active
         # one — edits (add/remove tracks) must reach playback immediately.
         if self._active_playlist and self._active_playlist.id == playlist.id:
@@ -1119,6 +1128,7 @@ class PlaylistEditor(QWidget):
         self.title_label.show()
         self.title_label.setText("Select a playlist")
         self.title_label.setToolTip("")
+        self.count_label.setText("")
         self.add_tracks_btn.setEnabled(False)
         self.play_toggle_btn.setEnabled(False)
         self.shuffle_btn.setEnabled(False)

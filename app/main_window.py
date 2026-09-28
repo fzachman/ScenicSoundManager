@@ -39,6 +39,15 @@ from .database import (
     validate_backup,
 )
 from .library import LibraryWidget
+from .library.add_targets import (
+    KINDS,
+    PLAYLIST,
+    SCENE,
+    SOUNDBOARD,
+    TargetKind,
+    added_message,
+    created_message,
+)
 from .playlists import PlaylistsWidget
 from .remote import (
     DEFAULT_PORT,
@@ -808,12 +817,18 @@ class MainWindow(QMainWindow):
         self.library_widget.library_updated.connect(
             self.scenes_widget.refresh_current_scene
         )
-        # Library right-click "Add to Playlist / Add to Scene"
-        file_table = self.library_widget.file_table
-        file_table.add_to_playlist_requested.connect(
-            self.playlists_widget.add_audio_files
+        # Deleting library files can shrink playlists.
+        self.library_widget.library_updated.connect(
+            self.playlists_widget.refresh_track_counts
         )
-        file_table.add_to_scene_requested.connect(self.scenes_widget.add_audio_files)
+        # Library right-click "Add to Playlist / Scene / Soundboard"
+        file_table = self.library_widget.file_table
+        file_table.add_to_requested.connect(self._on_library_add_to)
+        file_table.new_target_requested.connect(self._on_library_new_target)
+        # Scene playlist cards show their playlist's track count.
+        self.playlists_widget.playlist_modified.connect(
+            self.scenes_widget.refresh_playlist_track_counts
+        )
         self.scenes_widget.playback_state_changed.connect(
             self._on_scene_playback_changed
         )
@@ -901,6 +916,30 @@ class MainWindow(QMainWindow):
         if 0 <= index < self.tab_widget.count():
             self.tab_widget.setCurrentIndex(index)
         self._tab_restore_done = True
+
+    def _on_library_add_to(
+        self, kind_key: str, target_id: int, name: str, file_ids: list
+    ) -> None:
+        """Library "Add to …" choice: add, then confirm with a toast."""
+        kind = KINDS[kind_key]
+        adders: dict[TargetKind, Callable[[int, list[int]], int]] = {
+            PLAYLIST: self.playlists_widget.add_audio_files,
+            SCENE: self.scenes_widget.add_audio_files,
+            SOUNDBOARD: self.soundboard_content.add_audio_files,
+        }
+        added = adders[kind](target_id, file_ids)
+        self.library_widget.show_toast(added_message(kind, name, added, len(file_ids)))
+
+    def _on_library_new_target(self, kind_key: str, name: str, file_ids: list) -> None:
+        """Library "New …" choice: create it holding the files, then confirm."""
+        kind = KINDS[kind_key]
+        creators: dict[TargetKind, Callable[[str, list[int]], int]] = {
+            PLAYLIST: self.playlists_widget.create_playlist,
+            SCENE: self.scenes_widget.create_scene,
+            SOUNDBOARD: self.soundboard_content.create_board,
+        }
+        creators[kind](name, file_ids)
+        self.library_widget.show_toast(created_message(kind, name, len(file_ids)))
 
     def _on_scene_selection_changed(self, scene_id: int):
         settings = QSettings()

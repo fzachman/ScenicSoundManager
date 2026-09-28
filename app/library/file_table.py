@@ -1,7 +1,6 @@
 """Sortable file list table for library"""
 
 import os
-from collections.abc import Callable
 
 from PyQt6.QtCore import QByteArray, QEvent, QSettings, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QColor
@@ -21,9 +20,11 @@ from app.shared.logging import get_logger
 
 from ..audio import AudioEngine, TrackPlayer
 from ..database import AudioFile, DatabaseConnection
+from ..shared.dialogs import TextInputDialog
 from ..shared.icons import IconLibrary
 from ..shared.styles import Styles
 from ..shared.theme import theme_manager
+from .add_targets import PLAYLIST, SCENE, SOUNDBOARD, TargetKind
 from .tag_manager import TagAssigner
 
 _log = get_logger(__name__)
@@ -67,8 +68,9 @@ class FileTableWidget(QTableWidget):
     tags_bulk_assigned = pyqtSignal()  # Emitted after bulk tag assignment
     file_metadata_changed = pyqtSignal()  # Emitted after inline title/artist edit
     sort_requested = pyqtSignal(int, Qt.SortOrder)  # column index, sort order
-    add_to_playlist_requested = pyqtSignal(int, list)  # playlist_id, audio_file_ids
-    add_to_scene_requested = pyqtSignal(int, list)  # scene_id, audio_file_ids
+    # Right-click "Add to …": kind is a TargetKind.key ("playlist", ...)
+    add_to_requested = pyqtSignal(str, int, str, list)  # kind, id, name, file_ids
+    new_target_requested = pyqtSignal(str, str, list)  # kind, name, file_ids
     SETTINGS_GROUP = "library/file_table"
     SETTINGS_HEADER_STATE = "header_state"
     SETTINGS_COLUMN_VISIBILITY = "column_visibility"
@@ -570,23 +572,34 @@ class FileTableWidget(QTableWidget):
         # order the user sees.
         selected = (self._get_file_at_row(r) for r in sorted(i.row() for i in rows))
         file_ids = [f.id for f in selected if f is not None and f.id is not None]
-        self._add_target_submenu(
-            menu.addMenu("Add to Playlist"),
-            [
-                (p.id, p.name or "Untitled Playlist")
-                for p in self.db.get_all_playlists()
-            ],
-            empty_text="No Playlists",
-            holding_ids=self.db.get_playlists_containing_all(file_ids),
-            on_selected=lambda pid: self.add_to_playlist_requested.emit(pid, file_ids),
-        )
-        self._add_target_submenu(
-            menu.addMenu("Add to Scene"),
-            [(s.id, s.title or "Untitled Scene") for s in self.db.get_all_scenes()],
-            empty_text="No Scenes",
-            holding_ids=self.db.get_scenes_containing_all(file_ids),
-            on_selected=lambda sid: self.add_to_scene_requested.emit(sid, file_ids),
-        )
+        db = self.db
+        for kind, targets, holding_ids in (
+            (
+                PLAYLIST,
+                [(p.id, p.name or "Untitled Playlist") for p in db.get_all_playlists()],
+                db.get_playlists_containing_all(file_ids),
+            ),
+            (
+                SCENE,
+                [(s.id, s.title or "Untitled Scene") for s in db.get_all_scenes()],
+                db.get_scenes_containing_all(file_ids),
+            ),
+            (
+                SOUNDBOARD,
+                [
+                    (b.id, b.name or "Untitled Soundboard")
+                    for b in db.get_all_soundboards()
+                ],
+                db.get_soundboards_containing_all(file_ids),
+            ),
+        ):
+            self._fill_add_to_menu(
+                menu.addMenu(f"Add to {kind.title}"),
+                kind,
+                targets,
+                holding_ids,
+                file_ids,
+            )
 
         tag_action = menu.addAction(f"Info ({len(rows)})")
         tag_action.triggered.connect(self._open_get_info)
@@ -596,15 +609,16 @@ class FileTableWidget(QTableWidget):
 
         menu.exec(self.mapToGlobal(pos))
 
-    @staticmethod
-    def _add_target_submenu(
+    def _fill_add_to_menu(
+        self,
         submenu: QMenu | None,
+        kind: TargetKind,
         targets: list[tuple[int | None, str]],
-        empty_text: str,
         holding_ids: set[int],
-        on_selected: Callable[[int], None],
-    ):
-        """Fill an "Add to …" submenu with (id, label) targets.
+        file_ids: list[int],
+    ) -> None:
+        """Fill an "Add to …" submenu: "New …" first, then the (id, name)
+        targets alphabetically.
 
         Targets that already hold every selected file get a checkmark. They
         stay clickable: the add skips files a target already holds, so
@@ -612,20 +626,43 @@ class FileTableWidget(QTableWidget):
         """
         if submenu is None:
             return
-        if not targets:
-            placeholder = QAction(empty_text, submenu)
-            placeholder.setEnabled(False)
-            submenu.addAction(placeholder)
-            return
-        for target_id, label in targets:
+        new_action = QAction(f"New {kind.title}…", submenu)
+        new_action.triggered.connect(
+            lambda checked=False: self._prompt_new_target(kind, file_ids)
+        )
+        submenu.addAction(new_action)
+        if targets:
+            submenu.addSeparator()
+        for target_id, name in sorted(targets, key=lambda t: t[1].casefold()):
             if target_id is None:
                 continue
             # "&" would otherwise be eaten as a mnemonic marker.
-            action = QAction(label.replace("&", "&&"), submenu)
+            action = QAction(name.replace("&", "&&"), submenu)
             action.setCheckable(True)
             action.setChecked(target_id in holding_ids)
-            action.triggered.connect(lambda checked=False, i=target_id: on_selected(i))
+            action.triggered.connect(
+                lambda checked=False, i=target_id, n=name: self.add_to_requested.emit(
+                    kind.key, i, n, file_ids
+                )
+            )
             submenu.addAction(action)
+
+    def _prompt_new_target(self, kind: TargetKind, file_ids: list[int]) -> None:
+        """Ask for a name, then request a new container holding the files.
+
+        Runs from a menu action (never straight from the right-click), so
+        the modal dialog can't strand the mouse grab.
+        """
+        dialog = TextInputDialog(
+            self,
+            title=f"New {kind.title}",
+            label=f"{kind.title} name:",
+            ok_text="Create",
+        )
+        if dialog.exec():
+            name = dialog.get_text()
+            if name:
+                self.new_target_requested.emit(kind.key, name, file_ids)
 
     def _delete_selected(self):
         """Delete selected files from library"""

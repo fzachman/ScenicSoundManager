@@ -19,6 +19,7 @@ from ..database import AudioFile, DatabaseConnection
 from ..shared.dialogs import DuplicateFilesDialog, FilePickerDialog
 from ..shared.styles import Styles
 from ..shared.theme import theme_manager
+from ..shared.toast import Toast
 from .file_table import FileTableWidget
 from .metadata import MetadataExtractor, compute_fingerprint
 from .pagination_bar import PaginationBar
@@ -110,6 +111,9 @@ class LibraryWidget(QWidget):
         table_area.addWidget(self.drop_hint, 1)
 
         layout.addLayout(table_area, 1)
+
+        # Floats over the table's bottom edge (not in the layout).
+        self.toast = Toast(self)
 
     def _apply_theme_styles(self):
         """Apply palette-dependent styles; re-run on theme change."""
@@ -332,6 +336,10 @@ class LibraryWidget(QWidget):
     def get_selected_files(self) -> list[AudioFile]:
         """Get currently selected files"""
         return self.file_table.get_selected_files()
+
+    def show_toast(self, message: str) -> None:
+        """Show a brief confirmation that never blocks or takes focus."""
+        self.toast.show_message(message)
 
     def refresh(self):
         """Refresh the library view"""

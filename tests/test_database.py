@@ -13,6 +13,7 @@ from app.database import (
     NewerDatabaseError,
     Playlist,
     Scene,
+    Soundboard,
     Tag,
 )
 
@@ -1240,3 +1241,32 @@ class TestContainersHoldingAll:
 
         assert db.get_playlists_containing_all([]) == set()
         assert db.get_scenes_containing_all([]) == set()
+
+    def test_soundboard_holding_every_file_is_returned(self, db, file_ids):
+        full = db.add_soundboard(Soundboard(name="Full"))
+        partial = db.add_soundboard(Soundboard(name="Partial"))
+        for fid in file_ids[:2]:
+            db.add_button_to_soundboard(full, fid)
+        db.add_button_to_soundboard(partial, file_ids[0])
+
+        assert db.get_soundboards_containing_all(file_ids[:2]) == {full}
+        assert db.get_soundboards_containing_all([file_ids[0]]) == {full, partial}
+
+
+class TestPlaylistTrackCounts:
+    def test_counts_per_playlist_and_empty_ones_are_absent(self, db):
+        file_ids = [
+            db.add_audio_file(AudioFile(file_path=f"/music/{i}.mp3", title=str(i)))
+            for i in range(3)
+        ]
+        two = db.add_playlist(Playlist(name="Two"))
+        one = db.add_playlist(Playlist(name="One"))
+        empty = db.add_playlist(Playlist(name="Empty"))
+        for fid in file_ids[:2]:
+            db.add_track_to_playlist(two, fid)
+        db.add_track_to_playlist(one, file_ids[2])
+
+        counts = db.get_playlist_track_counts()
+
+        assert counts == {two: 2, one: 1}
+        assert empty not in counts

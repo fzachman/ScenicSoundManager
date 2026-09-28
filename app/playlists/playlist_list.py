@@ -67,6 +67,12 @@ class PlaylistListWidget(BaseListWidget):
     def _reorder_items(self, ids):
         self.db.reorder_playlists(ids)
 
+    def _item_counts(self):
+        return self.db.get_playlist_track_counts()
+
+    def _count_tooltip(self, count):
+        return f"{count} track{'s' if count != 1 else ''}"
+
     # --- Signal emitters ---
 
     def _emit_selected(self, item):

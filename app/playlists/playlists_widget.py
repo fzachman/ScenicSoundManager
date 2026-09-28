@@ -16,6 +16,7 @@ class PlaylistsWidget(QWidget):
     playback_state_changed = pyqtSignal(
         object, object, bool
     )  # playlist_id, playlist_name, is_playing
+    playlist_modified = pyqtSignal()  # a playlist's tracks changed
 
     def __init__(self, db: DatabaseConnection, audio_engine: AudioEngine, parent=None):
         super().__init__(parent)
@@ -54,6 +55,9 @@ class PlaylistsWidget(QWidget):
         self.playlist_editor.playback_state_changed.connect(
             self.playback_state_changed.emit
         )
+        # Track adds/removes change the sidebar counts.
+        self.playlist_editor.playlist_modified.connect(self.refresh_track_counts)
+        self.playlist_editor.playlist_modified.connect(self.playlist_modified.emit)
 
     def _on_playlist_selected(self, playlist: Playlist):
         """Handle playlist selection"""
@@ -90,6 +94,20 @@ class PlaylistsWidget(QWidget):
     def add_audio_files(self, playlist_id: int, audio_file_ids: list[int]) -> int:
         """Append library files to a playlist, skipping ones it already holds."""
         return self.playlist_editor.add_audio_files(playlist_id, audio_file_ids)
+
+    def create_playlist(self, name: str, audio_file_ids: list[int]) -> int:
+        """Create a playlist holding the given files; return its id.
+
+        The sidebar gains the new playlist, but the open one stays open.
+        """
+        playlist_id = self.db.add_playlist(Playlist(name=name))
+        self.playlist_editor.add_audio_files(playlist_id, audio_file_ids)
+        self.playlist_list.refresh_playlists()
+        return playlist_id
+
+    def refresh_track_counts(self):
+        """Re-read the sidebar's per-playlist track counts."""
+        self.playlist_list.refresh_playlists()
 
     # --- Keyboard-shortcut entry points (delegated to editor / list) ---
 

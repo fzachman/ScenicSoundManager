@@ -643,3 +643,28 @@ class TestAddAudioFiles:
         assert [t.audio_file_id for t in editor._active_playlist.tracks] == [
             t.audio_file_id for t in playlist.tracks
         ]
+
+
+class TestHeaderTrackCount:
+    """The header shows the open playlist's track count next to its name."""
+
+    def test_count_follows_load_add_remove_and_clear(self, editor, db, playlist):
+        editor.load_playlist(playlist)
+        assert editor.count_label.text() == "3 tracks"
+
+        editor.add_audio_files(playlist.id, [_new_file(db, "new")])
+        assert editor.count_label.text() == "4 tracks"
+
+        editor._remove_track(playlist.tracks[0].id)
+        assert editor.count_label.text() == "3 tracks"
+
+        editor.clear()
+        assert editor.count_label.text() == ""
+
+    def test_singular_and_empty(self, editor, db):
+        empty = db.get_playlist(db.add_playlist(Playlist(name="Empty")))
+        editor.load_playlist(empty)
+        assert editor.count_label.text() == "0 tracks"
+
+        editor.add_audio_files(empty.id, [_new_file(db, "only")])
+        assert editor.count_label.text() == "1 track"

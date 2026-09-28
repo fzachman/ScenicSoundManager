@@ -98,7 +98,9 @@ class PlaylistEntryControl(SceneControlCard):
         # Momentary action, but styled with the active-accent (PRIMARY blue) look
         # so it matches the shuffle/repeat buttons.
         self.next_btn.setStyleSheet(Styles.icon_toggle_button_style(True, size=28))
-        self.info_label.setStyleSheet(Styles.subtle_text_style(size=11))
+        self.info_label.setStyleSheet(
+            Styles.subtle_text_style(12, "padding-left: 6px;")
+        )
         self._update_shuffle_button()
 
     # --- UI ---
@@ -122,7 +124,19 @@ class PlaylistEntryControl(SceneControlCard):
         self.title_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
-        top_row.addWidget(self.title_label, 1)
+        top_row.addWidget(self.title_label)
+
+        # Track count, beside the title where it's easy to see
+        self.info_label = QLabel()
+        self.info_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
+        if self.entry.playlist:
+            self.set_track_count(len(self.entry.playlist.tracks or []))
+        else:
+            self.info_label.setText("Unknown")
+        top_row.addWidget(self.info_label)
+        top_row.addStretch(1)
 
         # Play/Pause toggle button (shared builder; styled by _update_play_mode_ui)
         top_row.addWidget(self._build_play_button())
@@ -163,23 +177,8 @@ class PlaylistEntryControl(SceneControlCard):
         volume_row.addStretch()
         layout.addLayout(volume_row)
 
-        # Bottom row: track count info + shuffle + repeat
+        # Bottom row: shuffle + repeat
         bottom_row = QHBoxLayout()
-
-        # Track count from playlist
-        if self.entry.playlist:
-            track_count = (
-                len(self.entry.playlist.tracks) if self.entry.playlist.tracks else 0
-            )
-            info_text = f"{track_count} track{'s' if track_count != 1 else ''}"
-        else:
-            info_text = "Unknown"
-        self.info_label = QLabel(info_text)
-        self.info_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
-        )
-        bottom_row.addWidget(self.info_label)
-
         bottom_row.addStretch()
 
         # Shuffle toggle (unique to playlist entries)
@@ -194,6 +193,10 @@ class PlaylistEntryControl(SceneControlCard):
         bottom_row.addWidget(self._build_repeat_button())
 
         layout.addLayout(bottom_row)
+
+    def set_track_count(self, count: int) -> None:
+        """Show how many tracks the playlist holds (e.g. after an add)."""
+        self.info_label.setText(f"{count} track{'s' if count != 1 else ''}")
 
     # --- Now-playing display ---
 

@@ -139,6 +139,23 @@ class TestConstructor:
         control = PlaylistEntryControl(make_entry(playlist=None))
         assert control.info_label.text() == "Unknown"
 
+    def test_track_count_sits_beside_the_title(self, qapp):
+        control = PlaylistEntryControl(
+            make_entry(playlist=make_playlist(track_count=2))
+        )
+        top_row = control.layout().itemAt(0).layout()
+        widgets = [top_row.itemAt(i).widget() for i in range(top_row.count())]
+        assert widgets.index(control.info_label) == (
+            widgets.index(control.title_label) + 1
+        )
+
+    def test_set_track_count_updates_the_label(self, qapp):
+        control = PlaylistEntryControl(
+            make_entry(playlist=make_playlist(track_count=2))
+        )
+        control.set_track_count(1)
+        assert control.info_label.text() == "1 track"
+
     def test_volume_slider_reflects_initial_volume(self, qapp):
         assert PlaylistEntryControl(make_entry(volume=0.5)).volume_slider.value() == 50
 

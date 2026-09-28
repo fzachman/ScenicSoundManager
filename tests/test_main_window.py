@@ -44,6 +44,9 @@ def main_window(qapp, tmp_path, monkeypatch):
     )
     window = main_window_module.MainWindow()
     yield window
+    # Drain deferred calls (e.g. the tab-focus singleShot, which reads the
+    # scene list from the db) while the db is still open.
+    qapp.processEvents()
     window.db.close()
 
 
@@ -641,23 +644,94 @@ def test_soundboards_menu_checks_open_board_and_opens_on_trigger(main_window):
     assert main_window.soundboards_menu.actions()[0].isChecked()
 
 
-def test_library_add_to_menus_reach_playlists_and_scenes(main_window):
+def _held_file_ids(db, kind, target_id):
+    if kind == "playlist":
+        return [t.audio_file_id for t in db.get_playlist_tracks(target_id)]
+    if kind == "scene":
+        return [t.audio_file_id for t in db.get_scene_tracks(target_id)]
+    return [b.audio_file_id for b in db.get_soundboard_buttons(target_id)]
+
+
+def test_library_add_to_reaches_each_kind_and_confirms(main_window):
+    from app.database import AudioFile, Scene, Soundboard
+
+    db = main_window.db
+    file_id = db.add_audio_file(AudioFile(file_path="/music/a.mp3", title="A"))
+    targets = {
+        "playlist": (db.add_playlist(Playlist(name="Battle Mix")), "Battle Mix"),
+        "scene": (db.add_scene(Scene(title="Ambush")), "Ambush"),
+        "soundboard": (db.add_soundboard(Soundboard(name="Doors")), "Doors"),
+    }
+    file_table = main_window.library_widget.file_table
+    toast = main_window.library_widget.toast
+
+    for kind, (target_id, name) in targets.items():
+        file_table.add_to_requested.emit(kind, target_id, name, [file_id])
+        assert _held_file_ids(db, kind, target_id) == [file_id]
+        assert toast.message() == f"Added to {kind} “{name}”"
+
+        # Again: a no-op (not a duplicate-row error), and the toast says so.
+        file_table.add_to_requested.emit(kind, target_id, name, [file_id])
+        assert _held_file_ids(db, kind, target_id) == [file_id]
+        assert toast.message() == f"Already in {kind} “{name}”"
+
+
+def test_library_new_target_creates_each_kind_and_confirms(main_window):
+    from app.database import AudioFile
+
+    db = main_window.db
+    ids = [
+        db.add_audio_file(AudioFile(file_path=f"/music/{i}.mp3", title=str(i)))
+        for i in range(2)
+    ]
+    file_table = main_window.library_widget.file_table
+    toast = main_window.library_widget.toast
+
+    file_table.new_target_requested.emit("playlist", "Boss Fight", ids)
+    playlist = next(p for p in db.get_all_playlists() if p.name == "Boss Fight")
+    assert _held_file_ids(db, "playlist", playlist.id) == ids
+    assert toast.message() == "Created playlist “Boss Fight” with 2 tracks"
+    sidebar = main_window.playlists_widget.playlist_list.list_widget
+    assert [sidebar.item(i).text() for i in range(sidebar.count())] == ["Boss Fight"]
+
+    file_table.new_target_requested.emit("scene", "Dragon Lair", ids[:1])
+    scene = next(s for s in db.get_all_scenes() if s.title == "Dragon Lair")
+    assert _held_file_ids(db, "scene", scene.id) == ids[:1]
+    assert toast.message() == "Created scene “Dragon Lair” with 1 track"
+
+    file_table.new_target_requested.emit("soundboard", "Spells", ids)
+    board = next(b for b in db.get_all_soundboards() if b.name == "Spells")
+    assert _held_file_ids(db, "soundboard", board.id) == ids
+    assert toast.message() == "Created soundboard “Spells” with 2 sounds"
+    combo = main_window.soundboard_content.board_combo
+    assert [combo.itemText(i) for i in range(combo.count())] == ["Spells"]
+
+
+def test_library_adds_keep_sidebar_and_scene_card_counts_current(main_window):
     from app.database import AudioFile, Scene
+    from app.shared.base_list_widget import COUNT_ROLE
 
     db = main_window.db
     file_id = db.add_audio_file(AudioFile(file_path="/music/a.mp3", title="A"))
     playlist_id = db.add_playlist(Playlist(name="Battle Mix"))
     scene_id = db.add_scene(Scene(title="Ambush"))
-    file_table = main_window.library_widget.file_table
+    db.add_playlist_to_scene(scene_id, playlist_id)
+    main_window.playlists_widget.playlist_list.refresh_playlists()
+    main_window.scenes_widget.scene_list.refresh_scenes()
+    main_window.scenes_widget.select_scene(scene_id)
+    card = next(
+        iter(main_window.scenes_widget.scene_editor._playlist_entry_controls.values())
+    )
+    sidebar = main_window.playlists_widget.playlist_list.list_widget
+    assert sidebar.item(0).data(COUNT_ROLE) == 0
+    assert card.info_label.text() == "0 tracks"
 
-    file_table.add_to_playlist_requested.emit(playlist_id, [file_id])
-    file_table.add_to_scene_requested.emit(scene_id, [file_id])
-    # A second request for the same target is a no-op, not a duplicate error.
-    file_table.add_to_playlist_requested.emit(playlist_id, [file_id])
-    file_table.add_to_scene_requested.emit(scene_id, [file_id])
+    main_window.library_widget.file_table.add_to_requested.emit(
+        "playlist", playlist_id, "Battle Mix", [file_id]
+    )
 
-    assert [t.audio_file_id for t in db.get_playlist_tracks(playlist_id)] == [file_id]
-    assert [t.audio_file_id for t in db.get_scene_tracks(scene_id)] == [file_id]
+    assert sidebar.item(0).data(COUNT_ROLE) == 1
+    assert card.info_label.text() == "1 track"
 
 
 def test_show_scene_switches_tab_and_selects(main_window, monkeypatch):

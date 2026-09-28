@@ -379,6 +379,7 @@ class TextInputDialog(QDialog):
         title: str = "Input",
         label: str = "Enter value:",
         default: str = "",
+        ok_text: str = "OK",
     ):
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -396,7 +397,7 @@ class TextInputDialog(QDialog):
         button_layout = QHBoxLayout()
         cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
-        self.ok_btn = QPushButton("OK")
+        self.ok_btn = QPushButton(ok_text)
         self.ok_btn.clicked.connect(self._validate_and_accept)
         button_layout.addStretch()
         button_layout.addWidget(cancel_btn)
